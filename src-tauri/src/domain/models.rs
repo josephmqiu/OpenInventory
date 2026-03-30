@@ -181,4 +181,3 @@ pub struct UpdateLanAccessInput {
     pub enabled: bool,
     pub port: u16,
 }
-

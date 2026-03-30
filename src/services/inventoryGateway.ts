@@ -257,7 +257,7 @@ export async function issueMaterialPublic(input: StockMutationInput): Promise<Pu
   return fetchJson<PublicIssueContext>(`/public/items/${encodeURIComponent(input.itemId)}/issue`, {
     method: "POST",
     body: JSON.stringify(input),
-  }, false);
+  });
 }
 
 export async function updateBackupPlan(input: UpdateBackupPlanInput): Promise<AppSnapshot> {

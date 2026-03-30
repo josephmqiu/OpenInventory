@@ -345,7 +345,14 @@ fn build_router(db: InventoryDb, access_key: String) -> Router {
 
     let public = Router::new()
         .route("/items/:item_id/context", get(load_public_issue_context))
-        .route("/items/:item_id/issue", post(issue_material_public))
+        .merge(
+            Router::new()
+                .route("/items/:item_id/issue", post(issue_material_public))
+                .route_layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    require_access_key,
+                )),
+        )
         .with_state(state.clone());
 
     Router::new()
@@ -531,4 +538,158 @@ fn serve_embedded_file(request_path: &str) -> Response {
 
 fn generate_access_key() -> String {
     Alphanumeric.sample_string(&mut rand::thread_rng(), 24)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use axum::http::Request;
+    use serde_json::{json, Value};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process;
+    use tower::util::ServiceExt;
+
+    use crate::domain::models::CreateInventoryItemInput;
+
+    struct TestDb {
+        root_dir: PathBuf,
+        db: InventoryDb,
+    }
+
+    impl Drop for TestDb {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root_dir);
+        }
+    }
+
+    fn setup_test_db() -> TestDb {
+        let root_dir = std::env::temp_dir().join(format!(
+            "open-inventory-lan-tests-{}-{}",
+            process::id(),
+            generate_access_key()
+        ));
+        fs::create_dir_all(&root_dir).expect("create test directory");
+
+        let db_path = root_dir.join("inventory-monitor.db");
+        let db = InventoryDb::new(db_path);
+        db.initialize().expect("initialize test database");
+
+        TestDb { root_dir, db }
+    }
+
+    fn create_item(test_db: &TestDb, sku: &str, initial_quantity: i64) -> String {
+        let result = test_db
+            .db
+            .create_inventory_item(CreateInventoryItemInput {
+                sku: sku.to_string(),
+                name: format!("{sku} Widget"),
+                category: "Hardware".to_string(),
+                location: "Main Shelf".to_string(),
+                unit: "pcs".to_string(),
+                supplier: "ACME".to_string(),
+                reorder_quantity: 1,
+                initial_quantity,
+            })
+            .expect("create inventory item");
+
+        result
+            .snapshot
+            .items
+            .into_iter()
+            .find(|item| item.sku == sku)
+            .expect("find created item")
+            .id
+    }
+
+    async fn response_json(response: Response) -> Value {
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        serde_json::from_slice(&body).expect("parse response body")
+    }
+
+    #[tokio::test]
+    async fn public_issue_context_remains_accessible_without_key() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-PUBLIC-CONTEXT", 5);
+        let router = build_router(test_db.db.clone(), "expected-key".to_string());
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/public/items/{item_id}/context"))
+                    .method("GET")
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("handle request");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn public_issue_requires_access_key() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-PUBLIC-ISSUE", 5);
+        let router = build_router(test_db.db.clone(), "expected-key".to_string());
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/public/items/{item_id}/issue"))
+                    .method("POST")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({
+                            "itemId": item_id,
+                            "quantity": 1,
+                            "performedBy": "Alex",
+                            "reason": "QR issue"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("build request"),
+            )
+            .await
+            .expect("handle request");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json(response).await;
+        assert_eq!(body["message"], "Access key required or invalid.");
+    }
+
+    #[tokio::test]
+    async fn public_issue_accepts_valid_access_key() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-PUBLIC-AUTH", 5);
+        let router = build_router(test_db.db.clone(), "expected-key".to_string());
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/public/items/{item_id}/issue"))
+                    .method("POST")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-inventory-key", "expected-key")
+                    .body(Body::from(
+                        json!({
+                            "itemId": item_id,
+                            "quantity": 1,
+                            "performedBy": "Alex",
+                            "reason": "QR issue"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("build request"),
+            )
+            .await
+            .expect("handle request");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["item"]["currentQuantity"], 4);
+    }
 }
