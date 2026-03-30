@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
+use crate::domain::error::{AppError, AppResult};
 use crate::domain::models::{
     AddPersonnelInput, AlertStatus, AppSnapshot, BackupPlan, BackupStatus, BackupTargetType,
     CreateInventoryItemInput, InventoryAlert, InventoryItem, Language, PersonnelMember,
@@ -46,31 +47,35 @@ struct ItemRecord {
     reorder_quantity: i64,
 }
 
+fn database_error<E: std::fmt::Display>(error: E) -> AppError {
+    AppError::DatabaseError(error.to_string())
+}
+
 impl InventoryDb {
     pub fn new(path: PathBuf) -> Self {
         Self { path }
     }
 
-    pub fn initialize(&self) -> Result<(), String> {
+    pub fn initialize(&self) -> AppResult<()> {
         if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            fs::create_dir_all(parent).map_err(AppError::from)?;
         }
 
-        fs::create_dir_all(self.qr_code_dir()).map_err(|error| error.to_string())?;
+        fs::create_dir_all(self.qr_code_dir()).map_err(AppError::from)?;
 
         let connection = self.open_connection()?;
         connection
             .execute_batch(schema::schema_sql())
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         self.ensure_qr_assets()
     }
 
-    pub fn refresh_qr_assets(&self) -> Result<(), String> {
+    pub fn refresh_qr_assets(&self) -> AppResult<()> {
         self.ensure_qr_assets()
     }
 
-    pub fn load_snapshot(&self) -> Result<AppSnapshot, String> {
+    pub fn load_snapshot(&self) -> AppResult<AppSnapshot> {
         self.ensure_qr_assets()?;
         let connection = self.open_connection()?;
 
@@ -97,7 +102,7 @@ impl InventoryDb {
                 ORDER BY i.name
                 "#,
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         let items = items_statement
             .query_map([], |row| {
@@ -123,9 +128,9 @@ impl InventoryDb {
                     last_updated: row.get(11)?,
                 })
             })
-            .map_err(|error| error.to_string())?
+            .map_err(database_error)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         let mut alerts_statement = connection
             .prepare(
@@ -143,7 +148,7 @@ impl InventoryDb {
                 ORDER BY a.triggered_at DESC
                 "#,
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         let alerts = alerts_statement
             .query_map([], |row| {
@@ -157,9 +162,9 @@ impl InventoryDb {
                     triggered_at: row.get(6)?,
                 })
             })
-            .map_err(|error| error.to_string())?
+            .map_err(database_error)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         let mut personnel_statement = connection
             .prepare(
@@ -169,7 +174,7 @@ impl InventoryDb {
                 ORDER BY name
                 "#,
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         let personnel = personnel_statement
             .query_map([], |row| {
@@ -178,26 +183,22 @@ impl InventoryDb {
                     name: row.get(1)?,
                 })
             })
-            .map_err(|error| error.to_string())?
+            .map_err(database_error)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         let target_path =
-            read_setting(&connection, "backup.target_path").map_err(|error| error.to_string())?;
+            read_setting(&connection, "backup.target_path").map_err(database_error)?;
         let target_type =
-            read_setting(&connection, "backup.target_type").map_err(|error| error.to_string())?;
-        let schedule =
-            read_setting(&connection, "backup.schedule").map_err(|error| error.to_string())?;
-        let retention =
-            read_setting(&connection, "backup.retention").map_err(|error| error.to_string())?;
-        let last_successful_backup = read_setting(&connection, "backup.last_successful")
-            .map_err(|error| error.to_string())?;
-        let next_scheduled_backup = read_setting(&connection, "backup.next_scheduled")
-            .map_err(|error| error.to_string())?;
-        let backup_status =
-            read_setting(&connection, "backup.status").map_err(|error| error.to_string())?;
-        let language =
-            read_setting(&connection, "app.language").map_err(|error| error.to_string())?;
+            read_setting(&connection, "backup.target_type").map_err(database_error)?;
+        let schedule = read_setting(&connection, "backup.schedule").map_err(database_error)?;
+        let retention = read_setting(&connection, "backup.retention").map_err(database_error)?;
+        let last_successful_backup =
+            read_setting(&connection, "backup.last_successful").map_err(database_error)?;
+        let next_scheduled_backup =
+            read_setting(&connection, "backup.next_scheduled").map_err(database_error)?;
+        let backup_status = read_setting(&connection, "backup.status").map_err(database_error)?;
+        let language = read_setting(&connection, "app.language").map_err(database_error)?;
 
         Ok(AppSnapshot {
             items,
@@ -228,7 +229,7 @@ impl InventoryDb {
     pub fn create_inventory_item(
         &self,
         input: CreateInventoryItemInput,
-    ) -> Result<MutationResult, String> {
+    ) -> AppResult<MutationResult> {
         let requested_sku = input.sku.trim();
         let name = require_text(&input.name, "Item name")?;
         let category = require_text(&input.category, "Category")?;
@@ -237,19 +238,17 @@ impl InventoryDb {
         let supplier = input.supplier.trim();
 
         if input.reorder_quantity < 0 || input.initial_quantity < 0 {
-            return Err("Quantity values must be zero or greater.".into());
+            return Err(AppError::ValidationError(
+                "Quantity values must be zero or greater.".into(),
+            ));
         }
 
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
 
-        let sku = resolve_sku(&transaction, requested_sku).map_err(|error| error.to_string())?;
-        let supplier_id =
-            ensure_supplier(&transaction, supplier).map_err(|error| error.to_string())?;
-        let location_id =
-            ensure_location(&transaction, location).map_err(|error| error.to_string())?;
+        let sku = resolve_sku(&transaction, requested_sku)?;
+        let supplier_id = ensure_supplier(&transaction, supplier).map_err(database_error)?;
+        let location_id = ensure_location(&transaction, location).map_err(database_error)?;
         let item_id = generate_id("item");
         let qr_path = self.qr_code_path(&item_id);
         let qr_path_value = path_to_db_value(&qr_path);
@@ -279,7 +278,7 @@ impl InventoryDb {
                     status,
                 ],
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         let qr_payload = self.qr_payload_for_item(&item_id, &sku)?;
         write_item_qr_png(&qr_path, &qr_payload)?;
@@ -297,7 +296,7 @@ impl InventoryDb {
                 None,
                 None,
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
         }
 
         let alert_created = sync_low_stock_alert(
@@ -306,8 +305,8 @@ impl InventoryDb {
             input.reorder_quantity,
             input.initial_quantity,
         )
-        .map_err(|error| error.to_string())?;
-        transaction.commit().map_err(|error| error.to_string())?;
+        .map_err(database_error)?;
+        transaction.commit().map_err(database_error)?;
 
         Ok(MutationResult {
             snapshot: self.load_snapshot()?,
@@ -323,7 +322,7 @@ impl InventoryDb {
     pub fn update_inventory_item(
         &self,
         input: UpdateInventoryItemInput,
-    ) -> Result<MutationResult, String> {
+    ) -> AppResult<MutationResult> {
         let name = require_text(&input.name, "Item name")?;
         let category = require_text(&input.category, "Category")?;
         let unit = require_text(&input.unit, "Unit")?;
@@ -331,21 +330,17 @@ impl InventoryDb {
         let supplier = input.supplier.trim();
 
         if input.reorder_quantity < 0 {
-            return Err("Reorder level must be zero or greater.".into());
+            return Err(AppError::ValidationError(
+                "Reorder level must be zero or greater.".into(),
+            ));
         }
 
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
-        let item =
-            get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
-        let sku = resolve_updated_sku(&transaction, &input.item_id, input.sku.trim(), &item.sku)
-            .map_err(|error| error.to_string())?;
-        let supplier_id =
-            ensure_supplier(&transaction, supplier).map_err(|error| error.to_string())?;
-        let location_id =
-            ensure_location(&transaction, location).map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
+        let item = get_item_record(&transaction, &input.item_id)?;
+        let sku = resolve_updated_sku(&transaction, &input.item_id, input.sku.trim(), &item.sku)?;
+        let supplier_id = ensure_supplier(&transaction, supplier).map_err(database_error)?;
+        let location_id = ensure_location(&transaction, location).map_err(database_error)?;
         let status = stock_status_key(item.current_quantity, input.reorder_quantity);
         let expected_qr_path = self.qr_code_path(&input.item_id);
         let expected_qr_value = path_to_db_value(&expected_qr_path);
@@ -382,7 +377,7 @@ impl InventoryDb {
                     input.item_id,
                 ],
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         if qr_needs_refresh {
             let qr_payload = self.qr_payload_for_item(&input.item_id, &sku)?;
@@ -395,8 +390,8 @@ impl InventoryDb {
             input.reorder_quantity,
             item.current_quantity,
         )
-        .map_err(|error| error.to_string())?;
-        transaction.commit().map_err(|error| error.to_string())?;
+        .map_err(database_error)?;
+        transaction.commit().map_err(database_error)?;
 
         if let Some(previous_path) = item.barcode.clone() {
             if previous_path != expected_qr_value {
@@ -415,18 +410,17 @@ impl InventoryDb {
         })
     }
 
-    pub fn receive_stock(&self, input: StockMutationInput) -> Result<MutationResult, String> {
+    pub fn receive_stock(&self, input: StockMutationInput) -> AppResult<MutationResult> {
         if input.quantity <= 0 {
-            return Err("Receive quantity must be greater than zero.".into());
+            return Err(AppError::ValidationError(
+                "Receive quantity must be greater than zero.".into(),
+            ));
         }
         let performed_by = require_text(&input.performed_by, "Performed by")?;
 
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
-        let item =
-            get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
+        let item = get_item_record(&transaction, &input.item_id)?;
         let new_quantity = item.current_quantity + input.quantity;
         let status = stock_status_key(new_quantity, item.reorder_quantity);
 
@@ -435,7 +429,7 @@ impl InventoryDb {
                 "UPDATE inventory_items SET current_quantity = ?1, status = ?2, updated_at = datetime('now', 'localtime') WHERE id = ?3",
                 params![new_quantity, status, item.id],
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         insert_movement(
             &transaction,
@@ -449,12 +443,12 @@ impl InventoryDb {
             None,
             Some(performed_by),
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(database_error)?;
 
         let alert_created =
             sync_low_stock_alert(&transaction, &item.id, item.reorder_quantity, new_quantity)
-                .map_err(|error| error.to_string())?;
-        transaction.commit().map_err(|error| error.to_string())?;
+                .map_err(database_error)?;
+        transaction.commit().map_err(database_error)?;
 
         Ok(MutationResult {
             snapshot: self.load_snapshot()?,
@@ -467,24 +461,23 @@ impl InventoryDb {
         })
     }
 
-    pub fn issue_material(&self, input: StockMutationInput) -> Result<MutationResult, String> {
+    pub fn issue_material(&self, input: StockMutationInput) -> AppResult<MutationResult> {
         if input.quantity <= 0 {
-            return Err("Issue quantity must be greater than zero.".into());
+            return Err(AppError::ValidationError(
+                "Issue quantity must be greater than zero.".into(),
+            ));
         }
         let performed_by = require_text(&input.performed_by, "Performed by")?;
 
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
-        let item =
-            get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
+        let item = get_item_record(&transaction, &input.item_id)?;
 
         if input.quantity > item.current_quantity {
-            return Err(format!(
-                "Cannot issue {} units. Current available stock for {} is {}.",
-                input.quantity, item.sku, item.current_quantity
-            ));
+            return Err(AppError::InsufficientStock {
+                available: item.current_quantity,
+                requested: input.quantity,
+            });
         }
 
         let new_quantity = item.current_quantity - input.quantity;
@@ -495,7 +488,7 @@ impl InventoryDb {
                 "UPDATE inventory_items SET current_quantity = ?1, status = ?2, updated_at = datetime('now', 'localtime') WHERE id = ?3",
                 params![new_quantity, status, item.id],
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
         insert_movement(
             &transaction,
@@ -509,12 +502,12 @@ impl InventoryDb {
             None,
             Some(performed_by),
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(database_error)?;
 
         let alert_created =
             sync_low_stock_alert(&transaction, &item.id, item.reorder_quantity, new_quantity)
-                .map_err(|error| error.to_string())?;
-        transaction.commit().map_err(|error| error.to_string())?;
+                .map_err(database_error)?;
+        transaction.commit().map_err(database_error)?;
 
         Ok(MutationResult {
             snapshot: self.load_snapshot()?,
@@ -527,54 +520,45 @@ impl InventoryDb {
         })
     }
 
-    pub fn update_backup_plan(&self, input: UpdateBackupPlanInput) -> Result<AppSnapshot, String> {
+    pub fn update_backup_plan(&self, input: UpdateBackupPlanInput) -> AppResult<AppSnapshot> {
         let target_path = input.target_path.trim();
         let schedule = input.schedule.trim();
         let retention = input.retention.trim();
         let status = backup_status_key(target_path);
 
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
 
-        write_setting(&transaction, "backup.target_path", target_path)
-            .map_err(|error| error.to_string())?;
+        write_setting(&transaction, "backup.target_path", target_path).map_err(database_error)?;
         write_setting(
             &transaction,
             "backup.target_type",
             backup_target_type_key(&input.target_type),
         )
-        .map_err(|error| error.to_string())?;
-        write_setting(&transaction, "backup.schedule", schedule)
-            .map_err(|error| error.to_string())?;
-        write_setting(&transaction, "backup.retention", retention)
-            .map_err(|error| error.to_string())?;
-        write_setting(&transaction, "backup.status", status).map_err(|error| error.to_string())?;
+        .map_err(database_error)?;
+        write_setting(&transaction, "backup.schedule", schedule).map_err(database_error)?;
+        write_setting(&transaction, "backup.retention", retention).map_err(database_error)?;
+        write_setting(&transaction, "backup.status", status).map_err(database_error)?;
 
-        transaction.commit().map_err(|error| error.to_string())?;
+        transaction.commit().map_err(database_error)?;
         self.load_snapshot()
     }
 
-    pub fn update_language(&self, language: Language) -> Result<(), String> {
+    pub fn update_language(&self, language: Language) -> AppResult<()> {
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
 
         write_setting(&transaction, "app.language", language_key(&language))
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
-        transaction.commit().map_err(|error| error.to_string())?;
+        transaction.commit().map_err(database_error)?;
         Ok(())
     }
 
-    pub fn remove_inventory_item(&self, item_id: String) -> Result<AppSnapshot, String> {
+    pub fn remove_inventory_item(&self, item_id: String) -> AppResult<AppSnapshot> {
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
-        let item = get_item_record(&transaction, &item_id).map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
+        let item = get_item_record(&transaction, &item_id)?;
 
         if let Some(barcode_path) = item.barcode.as_deref() {
             delete_file_if_exists(Path::new(barcode_path))?;
@@ -585,30 +569,28 @@ impl InventoryDb {
                 "DELETE FROM low_stock_alerts WHERE item_id = ?1",
                 params![item.id.clone()],
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
         transaction
             .execute(
                 "DELETE FROM inventory_movements WHERE item_id = ?1",
                 params![item.id.clone()],
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
         transaction
             .execute(
                 "DELETE FROM inventory_items WHERE id = ?1",
                 params![item.id],
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
-        transaction.commit().map_err(|error| error.to_string())?;
+        transaction.commit().map_err(database_error)?;
         self.load_snapshot()
     }
 
-    pub fn add_personnel(&self, input: AddPersonnelInput) -> Result<AppSnapshot, String> {
+    pub fn add_personnel(&self, input: AddPersonnelInput) -> AppResult<AppSnapshot> {
         let name = require_text(&input.name, "Personnel name")?;
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
 
         let existing: Option<String> = transaction
             .query_row(
@@ -617,9 +599,11 @@ impl InventoryDb {
                 |row| row.get(0),
             )
             .optional()
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
         if existing.is_some() {
-            return Err("Personnel name already exists.".into());
+            return Err(AppError::ValidationError(
+                "Personnel name already exists.".into(),
+            ));
         }
 
         let personnel_id = generate_id("person");
@@ -628,38 +612,33 @@ impl InventoryDb {
                 "INSERT INTO personnel (id, name, created_at, updated_at) VALUES (?1, ?2, datetime('now', 'localtime'), datetime('now', 'localtime'))",
                 params![personnel_id, name],
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
-        transaction.commit().map_err(|error| error.to_string())?;
+        transaction.commit().map_err(database_error)?;
         self.load_snapshot()
     }
 
-    pub fn remove_personnel(&self, personnel_id: String) -> Result<AppSnapshot, String> {
+    pub fn remove_personnel(&self, personnel_id: String) -> AppResult<AppSnapshot> {
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
 
         let deleted = transaction
             .execute("DELETE FROM personnel WHERE id = ?1", params![personnel_id])
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
         if deleted == 0 {
-            return Err("Personnel record not found.".into());
+            return Err(AppError::NotFound("Personnel record not found.".into()));
         }
 
-        transaction.commit().map_err(|error| error.to_string())?;
+        transaction.commit().map_err(database_error)?;
         self.load_snapshot()
     }
 
-    pub fn load_lan_access_settings(&self) -> Result<LanAccessSettings, String> {
+    pub fn load_lan_access_settings(&self) -> AppResult<LanAccessSettings> {
         let connection = self.open_connection()?;
-        let enabled =
-            read_setting(&connection, "lan.enabled").map_err(|error| error.to_string())?;
-        let port = read_setting(&connection, "lan.port").map_err(|error| error.to_string())?;
-        let access_key =
-            read_setting(&connection, "lan.access_key").map_err(|error| error.to_string())?;
-        let primary_url =
-            read_setting(&connection, "lan.primary_url").map_err(|error| error.to_string())?;
+        let enabled = read_setting(&connection, "lan.enabled").map_err(database_error)?;
+        let port = read_setting(&connection, "lan.port").map_err(database_error)?;
+        let access_key = read_setting(&connection, "lan.access_key").map_err(database_error)?;
+        let primary_url = read_setting(&connection, "lan.primary_url").map_err(database_error)?;
 
         Ok(LanAccessSettings {
             enabled: matches!(enabled.as_deref(), Some("true")),
@@ -673,33 +652,31 @@ impl InventoryDb {
         })
     }
 
-    pub fn save_lan_access_settings(&self, settings: &LanAccessSettings) -> Result<(), String> {
+    pub fn save_lan_access_settings(&self, settings: &LanAccessSettings) -> AppResult<()> {
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
 
         write_setting(
             &transaction,
             "lan.enabled",
             if settings.enabled { "true" } else { "false" },
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(database_error)?;
         write_setting(&transaction, "lan.port", &settings.port.to_string())
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
         write_setting(&transaction, "lan.access_key", &settings.access_key)
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
         write_setting(&transaction, "lan.primary_url", &settings.primary_url)
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
 
-        transaction.commit().map_err(|error| error.to_string())?;
+        transaction.commit().map_err(database_error)?;
         Ok(())
     }
-    fn open_connection(&self) -> Result<Connection, String> {
-        let connection = Connection::open(&self.path).map_err(|error| error.to_string())?;
+    fn open_connection(&self) -> AppResult<Connection> {
+        let connection = Connection::open(&self.path).map_err(database_error)?;
         connection
             .execute_batch("PRAGMA foreign_keys = ON;")
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
         Ok(connection)
     }
 
@@ -714,20 +691,18 @@ impl InventoryDb {
         self.qr_code_dir().join(format!("{}.png", item_id))
     }
 
-    fn ensure_qr_assets(&self) -> Result<(), String> {
-        fs::create_dir_all(self.qr_code_dir()).map_err(|error| error.to_string())?;
+    fn ensure_qr_assets(&self) -> AppResult<()> {
+        fs::create_dir_all(self.qr_code_dir()).map_err(AppError::from)?;
         let desired_signature = self.qr_payload_signature()?;
         let mut connection = self.open_connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
+        let transaction = connection.transaction().map_err(database_error)?;
         let current_signature = read_setting(&transaction, "qr.payload_signature")
-            .map_err(|error| error.to_string())?
+            .map_err(database_error)?
             .unwrap_or_default();
         let signature_changed = current_signature != desired_signature;
         let mut statement = transaction
             .prepare("SELECT id, sku, COALESCE(barcode, '') FROM inventory_items ORDER BY id")
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
         let items = statement
             .query_map([], |row| {
                 Ok((
@@ -736,9 +711,9 @@ impl InventoryDb {
                     row.get::<_, String>(2)?,
                 ))
             })
-            .map_err(|error| error.to_string())?
+            .map_err(database_error)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
         drop(statement);
 
         for (item_id, sku, barcode) in items {
@@ -755,7 +730,7 @@ impl InventoryDb {
                         "UPDATE inventory_items SET barcode = ?1 WHERE id = ?2",
                         params![expected_value, item_id],
                     )
-                    .map_err(|error| error.to_string())?;
+                    .map_err(database_error)?;
                 if !barcode.is_empty() && barcode != expected_value {
                     delete_file_if_exists(Path::new(&barcode))?;
                 }
@@ -763,8 +738,8 @@ impl InventoryDb {
         }
 
         write_setting(&transaction, "qr.payload_signature", &desired_signature)
-            .map_err(|error| error.to_string())?;
-        transaction.commit().map_err(|error| error.to_string())?;
+            .map_err(database_error)?;
+        transaction.commit().map_err(database_error)?;
         Ok(())
     }
 }
@@ -791,7 +766,7 @@ fn write_setting(transaction: &Transaction<'_>, key: &str, value: &str) -> rusql
     Ok(())
 }
 
-fn resolve_sku(transaction: &Transaction<'_>, requested_sku: &str) -> rusqlite::Result<String> {
+fn resolve_sku(transaction: &Transaction<'_>, requested_sku: &str) -> AppResult<String> {
     if !requested_sku.is_empty() {
         let existing: Option<String> = transaction
             .query_row(
@@ -799,11 +774,10 @@ fn resolve_sku(transaction: &Transaction<'_>, requested_sku: &str) -> rusqlite::
                 params![requested_sku],
                 |row| row.get(0),
             )
-            .optional()?;
+            .optional()
+            .map_err(database_error)?;
         if existing.is_some() {
-            return Err(rusqlite::Error::InvalidParameterName(
-                "SKU already exists.".into(),
-            ));
+            return Err(AppError::DuplicateSku("SKU already exists.".into()));
         }
         return Ok(requested_sku.to_string());
     }
@@ -816,7 +790,8 @@ fn resolve_sku(transaction: &Transaction<'_>, requested_sku: &str) -> rusqlite::
                 params![candidate],
                 |row| row.get(0),
             )
-            .optional()?;
+            .optional()
+            .map_err(database_error)?;
         if existing.is_none() {
             return Ok(candidate);
         }
@@ -828,7 +803,7 @@ fn resolve_updated_sku(
     item_id: &str,
     requested_sku: &str,
     current_sku: &str,
-) -> rusqlite::Result<String> {
+) -> AppResult<String> {
     let candidate = if requested_sku.is_empty() {
         current_sku.to_string()
     } else {
@@ -841,11 +816,10 @@ fn resolve_updated_sku(
             params![candidate, item_id],
             |row| row.get(0),
         )
-        .optional()?;
+        .optional()
+        .map_err(database_error)?;
     if existing.is_some() {
-        return Err(rusqlite::Error::InvalidParameterName(
-            "SKU already exists.".into(),
-        ));
+        return Err(AppError::DuplicateSku("SKU already exists.".into()));
     }
 
     Ok(candidate)
@@ -917,8 +891,9 @@ fn ensure_location(
     Ok(Some(location_id))
 }
 
-fn get_item_record(transaction: &Transaction<'_>, item_id: &str) -> rusqlite::Result<ItemRecord> {
-    transaction.query_row(
+fn get_item_record(transaction: &Transaction<'_>, item_id: &str) -> AppResult<ItemRecord> {
+    transaction
+        .query_row(
         "SELECT id, sku, name, barcode, current_quantity, reorder_quantity FROM inventory_items WHERE id = ?1",
         params![item_id],
         |row| {
@@ -932,6 +907,10 @@ fn get_item_record(transaction: &Transaction<'_>, item_id: &str) -> rusqlite::Re
             })
         },
     )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => AppError::NotFound("Item not found.".into()),
+            _ => database_error(error),
+        })
 }
 
 fn insert_movement(
@@ -1011,10 +990,10 @@ fn sync_low_stock_alert(
     Ok(false)
 }
 
-fn require_text<'a>(value: &'a str, label: &str) -> Result<&'a str, String> {
+fn require_text<'a>(value: &'a str, label: &str) -> AppResult<&'a str> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        return Err(format!("{} is required.", label));
+        return Err(AppError::ValidationError(format!("{} is required.", label)));
     }
     Ok(trimmed)
 }
@@ -1109,7 +1088,7 @@ fn generate_id(prefix: &str) -> String {
 }
 
 impl InventoryDb {
-    fn qr_payload_for_item(&self, item_id: &str, sku: &str) -> Result<String, String> {
+    fn qr_payload_for_item(&self, item_id: &str, sku: &str) -> AppResult<String> {
         let settings = self.load_lan_access_settings()?;
         if settings.enabled && !settings.primary_url.trim().is_empty() {
             return Ok(format!(
@@ -1123,7 +1102,7 @@ impl InventoryDb {
         Ok(sku.to_string())
     }
 
-    fn qr_payload_signature(&self) -> Result<String, String> {
+    fn qr_payload_signature(&self) -> AppResult<String> {
         let settings = self.load_lan_access_settings()?;
         if settings.enabled && !settings.primary_url.trim().is_empty() {
             return Ok(format!(
@@ -1137,26 +1116,26 @@ impl InventoryDb {
     }
 }
 
-fn barcode_path_to_data_url(value: &str) -> Result<String, String> {
+fn barcode_path_to_data_url(value: &str) -> AppResult<String> {
     if value.trim().is_empty() {
         return Ok(String::new());
     }
-    qr::png_file_to_data_url(Path::new(value))
+    qr::png_file_to_data_url(Path::new(value)).map_err(AppError::DatabaseError)
 }
 
 fn path_to_db_value(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-fn write_item_qr_png(path: &Path, sku: &str) -> Result<(), String> {
-    qr::write_qr_png(path, sku)
+fn write_item_qr_png(path: &Path, sku: &str) -> AppResult<()> {
+    qr::write_qr_png(path, sku).map_err(AppError::DatabaseError)
 }
 
-fn delete_file_if_exists(path: &Path) -> Result<(), String> {
+fn delete_file_if_exists(path: &Path) -> AppResult<()> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.to_string()),
+        Err(error) => Err(AppError::from(error)),
     }
 }
 
@@ -1343,10 +1322,10 @@ mod tests {
             .expect("query alert by id")
     }
 
-    fn err_string<T>(result: Result<T, String>) -> String {
+    fn err_string<T>(result: AppResult<T>) -> String {
         match result {
             Ok(_) => panic!("expected operation to fail"),
-            Err(error) => error,
+            Err(error) => error.to_string(),
         }
     }
 

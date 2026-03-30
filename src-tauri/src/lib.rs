@@ -9,15 +9,16 @@ use std::path::{Path, PathBuf};
 
 use tauri::Manager;
 
+use domain::error::{AppError, AppResult};
 use infrastructure::db::InventoryDb;
 use infrastructure::lan::LanServerController;
 
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            let db = InventoryDb::new(resolve_database_path(app)?);
-            application::inventory_service::initialize(&db)?;
-            let lan = LanServerController::new(db.clone())?;
+            let db = InventoryDb::new(resolve_database_path(app).map_err(String::from)?);
+            application::inventory_service::initialize(&db).map_err(String::from)?;
+            let lan = LanServerController::new(db.clone()).map_err(String::from)?;
             app.manage(db);
             app.manage(lan);
             Ok(())
@@ -43,13 +44,13 @@ pub fn run() {
         .expect("error while running inventory monitor");
 }
 
-fn resolve_database_path<R: tauri::Runtime>(app: &tauri::App<R>) -> Result<PathBuf, String> {
-    let current_dir = env::current_dir().map_err(|error| error.to_string())?;
+fn resolve_database_path<R: tauri::Runtime>(app: &tauri::App<R>) -> AppResult<PathBuf> {
+    let current_dir = env::current_dir().map_err(AppError::from)?;
     let app_data_dir = app
         .path()
         .app_local_data_dir()
         .or_else(|_| app.path().app_data_dir())
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| AppError::DatabaseError(error.to_string()))?;
     let runtime_data_dir = app_data_dir.join("data");
 
     migrate_legacy_runtime_data(&current_dir.join("data"), &runtime_data_dir)?;
@@ -57,12 +58,12 @@ fn resolve_database_path<R: tauri::Runtime>(app: &tauri::App<R>) -> Result<PathB
     Ok(runtime_data_dir.join("inventory-monitor.db"))
 }
 
-fn migrate_legacy_runtime_data(legacy_data_dir: &Path, runtime_data_dir: &Path) -> Result<(), String> {
+fn migrate_legacy_runtime_data(legacy_data_dir: &Path, runtime_data_dir: &Path) -> AppResult<()> {
     if legacy_data_dir == runtime_data_dir || !legacy_data_dir.exists() {
         return Ok(());
     }
 
-    fs::create_dir_all(runtime_data_dir).map_err(|error| error.to_string())?;
+    fs::create_dir_all(runtime_data_dir).map_err(AppError::from)?;
 
     move_if_missing(
         &legacy_data_dir.join("inventory-monitor.db"),
@@ -79,33 +80,33 @@ fn migrate_legacy_runtime_data(legacy_data_dir: &Path, runtime_data_dir: &Path) 
     Ok(())
 }
 
-fn move_if_missing(source: &Path, destination: &Path) -> Result<(), String> {
+fn move_if_missing(source: &Path, destination: &Path) -> AppResult<()> {
     if !source.exists() || destination.exists() {
         return Ok(());
     }
 
     if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        fs::create_dir_all(parent).map_err(AppError::from)?;
     }
 
     match fs::rename(source, destination) {
         Ok(()) => Ok(()),
         Err(_) => {
-            fs::copy(source, destination).map_err(|error| error.to_string())?;
-            fs::remove_file(source).map_err(|error| error.to_string())
+            fs::copy(source, destination).map_err(AppError::from)?;
+            fs::remove_file(source).map_err(AppError::from)
         }
     }
 }
 
-fn move_directory_contents_if_missing(source_dir: &Path, destination_dir: &Path) -> Result<(), String> {
+fn move_directory_contents_if_missing(source_dir: &Path, destination_dir: &Path) -> AppResult<()> {
     if !source_dir.exists() {
         return Ok(());
     }
 
-    fs::create_dir_all(destination_dir).map_err(|error| error.to_string())?;
+    fs::create_dir_all(destination_dir).map_err(AppError::from)?;
 
-    for entry in fs::read_dir(source_dir).map_err(|error| error.to_string())? {
-        let entry = entry.map_err(|error| error.to_string())?;
+    for entry in fs::read_dir(source_dir).map_err(AppError::from)? {
+        let entry = entry.map_err(AppError::from)?;
         let source_path = entry.path();
         let destination_path = destination_dir.join(entry.file_name());
 
@@ -120,12 +121,11 @@ fn move_directory_contents_if_missing(source_dir: &Path, destination_dir: &Path)
     Ok(())
 }
 
-fn remove_dir_if_empty(path: &Path) -> Result<(), String> {
+fn remove_dir_if_empty(path: &Path) -> AppResult<()> {
     match fs::remove_dir(path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => Ok(()),
-        Err(error) => Err(error.to_string()),
+        Err(error) => Err(AppError::from(error)),
     }
 }
-

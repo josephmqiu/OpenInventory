@@ -3,6 +3,7 @@ use tauri::{AppHandle, State};
 use tauri_plugin_notification::NotificationExt;
 
 use crate::application::inventory_service;
+use crate::domain::error::AppError;
 use crate::domain::models::{
     AddPersonnelInput, AppSnapshot, CreateInventoryItemInput, LanAccessState, Language,
     StockMutationInput, UpdateBackupPlanInput, UpdateInventoryItemInput, UpdateLanAccessInput,
@@ -25,12 +26,14 @@ pub fn app_health() -> AppHealth {
 }
 
 #[tauri::command]
-pub fn load_app_snapshot(db: State<'_, InventoryDb>) -> Result<AppSnapshot, String> {
+pub fn load_app_snapshot(db: State<'_, InventoryDb>) -> Result<AppSnapshot, AppError> {
     inventory_service::load_snapshot(db.inner())
 }
 
 #[tauri::command]
-pub fn load_lan_access_state(lan: State<'_, LanServerController>) -> Result<LanAccessState, String> {
+pub fn load_lan_access_state(
+    lan: State<'_, LanServerController>,
+) -> Result<LanAccessState, AppError> {
     lan.load_state()
 }
 
@@ -38,14 +41,14 @@ pub fn load_lan_access_state(lan: State<'_, LanServerController>) -> Result<LanA
 pub fn update_lan_access(
     input: UpdateLanAccessInput,
     lan: State<'_, LanServerController>,
-) -> Result<LanAccessState, String> {
+) -> Result<LanAccessState, AppError> {
     lan.update_settings(input)
 }
 
 #[tauri::command]
 pub fn regenerate_lan_access_key(
     lan: State<'_, LanServerController>,
-) -> Result<LanAccessState, String> {
+) -> Result<LanAccessState, AppError> {
     lan.regenerate_access_key()
 }
 
@@ -54,7 +57,7 @@ pub fn create_inventory_item(
     app: AppHandle,
     input: CreateInventoryItemInput,
     db: State<'_, InventoryDb>,
-) -> Result<AppSnapshot, String> {
+) -> Result<AppSnapshot, AppError> {
     let result = inventory_service::create_inventory_item(db.inner(), input)?;
     notify_low_stock_if_needed(&app, result.low_stock_notification.as_ref());
     Ok(result.snapshot)
@@ -65,7 +68,7 @@ pub fn update_inventory_item(
     app: AppHandle,
     input: UpdateInventoryItemInput,
     db: State<'_, InventoryDb>,
-) -> Result<AppSnapshot, String> {
+) -> Result<AppSnapshot, AppError> {
     let result = inventory_service::update_inventory_item(db.inner(), input)?;
     notify_low_stock_if_needed(&app, result.low_stock_notification.as_ref());
     Ok(result.snapshot)
@@ -76,7 +79,7 @@ pub fn receive_stock(
     app: AppHandle,
     input: StockMutationInput,
     db: State<'_, InventoryDb>,
-) -> Result<AppSnapshot, String> {
+) -> Result<AppSnapshot, AppError> {
     let result = inventory_service::receive_stock(db.inner(), input)?;
     notify_low_stock_if_needed(&app, result.low_stock_notification.as_ref());
     Ok(result.snapshot)
@@ -87,7 +90,7 @@ pub fn issue_material(
     app: AppHandle,
     input: StockMutationInput,
     db: State<'_, InventoryDb>,
-) -> Result<AppSnapshot, String> {
+) -> Result<AppSnapshot, AppError> {
     let result = inventory_service::issue_material(db.inner(), input)?;
     notify_low_stock_if_needed(&app, result.low_stock_notification.as_ref());
     Ok(result.snapshot)
@@ -97,12 +100,12 @@ pub fn issue_material(
 pub fn update_backup_plan(
     input: UpdateBackupPlanInput,
     db: State<'_, InventoryDb>,
-) -> Result<AppSnapshot, String> {
+) -> Result<AppSnapshot, AppError> {
     inventory_service::update_backup_plan(db.inner(), input)
 }
 
 #[tauri::command]
-pub fn update_app_language(language: Language, db: State<'_, InventoryDb>) -> Result<(), String> {
+pub fn update_app_language(language: Language, db: State<'_, InventoryDb>) -> Result<(), AppError> {
     inventory_service::update_language(db.inner(), language)
 }
 
@@ -110,7 +113,7 @@ pub fn update_app_language(language: Language, db: State<'_, InventoryDb>) -> Re
 pub fn remove_inventory_item(
     item_id: String,
     db: State<'_, InventoryDb>,
-) -> Result<AppSnapshot, String> {
+) -> Result<AppSnapshot, AppError> {
     inventory_service::remove_inventory_item(db.inner(), item_id)
 }
 
@@ -118,7 +121,7 @@ pub fn remove_inventory_item(
 pub fn add_personnel(
     input: AddPersonnelInput,
     db: State<'_, InventoryDb>,
-) -> Result<AppSnapshot, String> {
+) -> Result<AppSnapshot, AppError> {
     inventory_service::add_personnel(db.inner(), input)
 }
 
@@ -126,7 +129,7 @@ pub fn add_personnel(
 pub fn remove_personnel(
     personnel_id: String,
     db: State<'_, InventoryDb>,
-) -> Result<AppSnapshot, String> {
+) -> Result<AppSnapshot, AppError> {
     inventory_service::remove_personnel(db.inner(), personnel_id)
 }
 

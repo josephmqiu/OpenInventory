@@ -14,11 +14,12 @@ use mime_guess::from_path;
 use rand::distributions::{Alphanumeric, DistString};
 use serde::Deserialize;
 use serde_json::json;
+use tauri::async_runtime::JoinHandle;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
-use tauri::async_runtime::JoinHandle;
 
 use crate::application::inventory_service;
+use crate::domain::error::{AppError, AppResult};
 use crate::domain::models::{
     AddPersonnelInput, AppSnapshot, CreateInventoryItemInput, LanAccessState, LanAccessStatus,
     Language, PublicIssueContext, StockMutationInput, UpdateBackupPlanInput,
@@ -47,7 +48,6 @@ pub struct LanServerController {
     runtime: Mutex<RuntimeState>,
 }
 
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdateLanguagePayload {
@@ -59,11 +59,20 @@ struct ApiError {
     message: String,
 }
 
-impl ApiError {
-    fn bad_request(message: String) -> Self {
+impl ApiError {}
+
+impl From<AppError> for ApiError {
+    fn from(value: AppError) -> Self {
+        let status = match value {
+            AppError::NotFound(_) => StatusCode::NOT_FOUND,
+            AppError::DuplicateSku(_) | AppError::InsufficientStock { .. } => StatusCode::CONFLICT,
+            AppError::ValidationError(_) => StatusCode::BAD_REQUEST,
+            AppError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+
         Self {
-            status: StatusCode::BAD_REQUEST,
-            message,
+            status,
+            message: value.to_string(),
         }
     }
 }
@@ -81,7 +90,7 @@ impl IntoResponse for ApiError {
 }
 
 impl LanServerController {
-    pub fn new(db: InventoryDb) -> Result<Self, String> {
+    pub fn new(db: InventoryDb) -> AppResult<Self> {
         let controller = Self {
             db,
             runtime: Mutex::new(RuntimeState {
@@ -103,14 +112,16 @@ impl LanServerController {
         Ok(controller)
     }
 
-    pub fn load_state(&self) -> Result<LanAccessState, String> {
+    pub fn load_state(&self) -> AppResult<LanAccessState> {
         let settings = self.db.load_lan_access_settings()?;
         Ok(self.state_from_settings(&settings))
     }
 
-    pub fn update_settings(&self, input: UpdateLanAccessInput) -> Result<LanAccessState, String> {
+    pub fn update_settings(&self, input: UpdateLanAccessInput) -> AppResult<LanAccessState> {
         if input.port == 0 {
-            return Err("LAN access port must be between 1 and 65535.".into());
+            return Err(AppError::ValidationError(
+                "LAN access port must be between 1 and 65535.".into(),
+            ));
         }
 
         let mut settings = self.db.load_lan_access_settings()?;
@@ -122,7 +133,7 @@ impl LanServerController {
         Ok(self.state_from_settings(&settings))
     }
 
-    pub fn regenerate_access_key(&self) -> Result<LanAccessState, String> {
+    pub fn regenerate_access_key(&self) -> AppResult<LanAccessState> {
         let mut settings = self.db.load_lan_access_settings()?;
         settings.access_key = generate_access_key();
         self.db.save_lan_access_settings(&settings)?;
@@ -130,12 +141,15 @@ impl LanServerController {
         Ok(self.state_from_settings(&settings))
     }
 
-    fn apply_settings(&self, settings: &LanAccessSettings) -> Result<(), String> {
+    fn apply_settings(&self, settings: &LanAccessSettings) -> AppResult<()> {
         self.stop_server();
 
         if !settings.enabled {
             self.db.refresh_qr_assets()?;
-            let mut runtime = self.runtime.lock().map_err(|_| "LAN server state is unavailable.".to_string())?;
+            let mut runtime = self
+                .runtime
+                .lock()
+                .map_err(|_| AppError::DatabaseError("LAN server state is unavailable.".into()))?;
             runtime.status = LanAccessStatus::Stopped;
             runtime.status_message = "LAN access is disabled.".into();
             runtime.urls.clear();
@@ -155,7 +169,9 @@ impl LanServerController {
                 updated_settings.primary_url = primary_url;
                 self.db.save_lan_access_settings(&updated_settings)?;
                 self.db.refresh_qr_assets()?;
-                let mut runtime = self.runtime.lock().map_err(|_| "LAN server state is unavailable.".to_string())?;
+                let mut runtime = self.runtime.lock().map_err(|_| {
+                    AppError::DatabaseError("LAN server state is unavailable.".into())
+                })?;
                 runtime.status = LanAccessStatus::Running;
                 runtime.status_message = "LAN access is running on your local network.".into();
                 runtime.urls = started.urls;
@@ -164,9 +180,11 @@ impl LanServerController {
                 Ok(())
             }
             Err(error) => {
-                let mut runtime = self.runtime.lock().map_err(|_| "LAN server state is unavailable.".to_string())?;
+                let mut runtime = self.runtime.lock().map_err(|_| {
+                    AppError::DatabaseError("LAN server state is unavailable.".into())
+                })?;
                 runtime.status = LanAccessStatus::Error;
-                runtime.status_message = error.clone();
+                runtime.status_message = error.to_string();
                 runtime.urls.clear();
                 runtime.shutdown = None;
                 runtime.task = None;
@@ -203,7 +221,7 @@ struct StartedServer {
     task: JoinHandle<()>,
 }
 
-fn start_server(settings: &LanAccessSettings, db: InventoryDb) -> Result<StartedServer, String> {
+fn start_server(settings: &LanAccessSettings, db: InventoryDb) -> AppResult<StartedServer> {
     let listener = bind_listener(settings.port)?;
     let urls = build_access_urls(settings.port);
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
@@ -236,16 +254,14 @@ fn start_server(settings: &LanAccessSettings, db: InventoryDb) -> Result<Started
     })
 }
 
-fn bind_listener(port: u16) -> Result<StdTcpListener, String> {
+fn bind_listener(port: u16) -> AppResult<StdTcpListener> {
     let std_listener = StdTcpListener::bind(("0.0.0.0", port)).map_err(|error| {
-        format!(
+        AppError::DatabaseError(format!(
             "Unable to start LAN access on port {}. Check whether another app is already using it. {}",
             port, error
-        )
+        ))
     })?;
-    std_listener
-        .set_nonblocking(true)
-        .map_err(|error| error.to_string())?;
+    std_listener.set_nonblocking(true).map_err(AppError::from)?;
     Ok(std_listener)
 }
 
@@ -256,9 +272,10 @@ fn build_access_urls(port: u16) -> Vec<String> {
         let mut ranked: Vec<(i32, String)> = interfaces
             .into_iter()
             .filter_map(|(name, ip)| match ip {
-                IpAddr::V4(address) if !address.is_loopback() => {
-                    Some((interface_priority(&name, &address.to_string()), address.to_string()))
-                }
+                IpAddr::V4(address) if !address.is_loopback() => Some((
+                    interface_priority(&name, &address.to_string()),
+                    address.to_string(),
+                )),
                 _ => None,
             })
             .collect();
@@ -310,14 +327,20 @@ fn build_router(db: InventoryDb, access_key: String) -> Router {
         .route("/health", get(http_health))
         .route("/snapshot", get(load_snapshot))
         .route("/items", post(create_inventory_item))
-        .route("/items/:item_id", put(update_inventory_item).delete(remove_inventory_item))
+        .route(
+            "/items/:item_id",
+            put(update_inventory_item).delete(remove_inventory_item),
+        )
         .route("/items/:item_id/receive", post(receive_stock))
         .route("/items/:item_id/issue", post(issue_material))
         .route("/personnel", post(add_personnel))
         .route("/personnel/:personnel_id", delete(remove_personnel))
         .route("/backup-plan", put(update_backup_plan))
         .route("/language", put(update_language))
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_access_key))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_access_key,
+        ))
         .with_state(state.clone());
 
     let public = Router::new()
@@ -365,7 +388,7 @@ async fn http_health() -> Json<serde_json::Value> {
 async fn load_snapshot(State(state): State<HttpApiState>) -> Result<Json<AppSnapshot>, ApiError> {
     inventory_service::load_snapshot(&state.db)
         .map(Json)
-        .map_err(ApiError::bad_request)
+        .map_err(ApiError::from)
 }
 
 async fn load_public_issue_context(
@@ -374,14 +397,15 @@ async fn load_public_issue_context(
 ) -> Result<Json<PublicIssueContext>, ApiError> {
     inventory_service::load_public_issue_context(&state.db, &item_id)
         .map(Json)
-        .map_err(ApiError::bad_request)
+        .map_err(ApiError::from)
 }
 
 async fn create_inventory_item(
     State(state): State<HttpApiState>,
     Json(input): Json<CreateInventoryItemInput>,
 ) -> Result<Json<AppSnapshot>, ApiError> {
-    let result = inventory_service::create_inventory_item(&state.db, input).map_err(ApiError::bad_request)?;
+    let result =
+        inventory_service::create_inventory_item(&state.db, input).map_err(ApiError::from)?;
     Ok(Json(result.snapshot))
 }
 
@@ -391,7 +415,8 @@ async fn update_inventory_item(
     Json(mut input): Json<UpdateInventoryItemInput>,
 ) -> Result<Json<AppSnapshot>, ApiError> {
     input.item_id = item_id;
-    let result = inventory_service::update_inventory_item(&state.db, input).map_err(ApiError::bad_request)?;
+    let result =
+        inventory_service::update_inventory_item(&state.db, input).map_err(ApiError::from)?;
     Ok(Json(result.snapshot))
 }
 
@@ -401,7 +426,7 @@ async fn receive_stock(
     Json(mut input): Json<StockMutationInput>,
 ) -> Result<Json<AppSnapshot>, ApiError> {
     input.item_id = item_id;
-    let result = inventory_service::receive_stock(&state.db, input).map_err(ApiError::bad_request)?;
+    let result = inventory_service::receive_stock(&state.db, input).map_err(ApiError::from)?;
     Ok(Json(result.snapshot))
 }
 
@@ -411,7 +436,7 @@ async fn issue_material(
     Json(mut input): Json<StockMutationInput>,
 ) -> Result<Json<AppSnapshot>, ApiError> {
     input.item_id = item_id;
-    let result = inventory_service::issue_material(&state.db, input).map_err(ApiError::bad_request)?;
+    let result = inventory_service::issue_material(&state.db, input).map_err(ApiError::from)?;
     Ok(Json(result.snapshot))
 }
 
@@ -423,7 +448,7 @@ async fn issue_material_public(
     input.item_id = item_id;
     inventory_service::issue_material_public(&state.db, input)
         .map(Json)
-        .map_err(ApiError::bad_request)
+        .map_err(ApiError::from)
 }
 
 async fn update_backup_plan(
@@ -432,14 +457,14 @@ async fn update_backup_plan(
 ) -> Result<Json<AppSnapshot>, ApiError> {
     inventory_service::update_backup_plan(&state.db, input)
         .map(Json)
-        .map_err(ApiError::bad_request)
+        .map_err(ApiError::from)
 }
 
 async fn update_language(
     State(state): State<HttpApiState>,
     Json(payload): Json<UpdateLanguagePayload>,
 ) -> Result<StatusCode, ApiError> {
-    inventory_service::update_language(&state.db, payload.language).map_err(ApiError::bad_request)?;
+    inventory_service::update_language(&state.db, payload.language).map_err(ApiError::from)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -449,7 +474,7 @@ async fn remove_inventory_item(
 ) -> Result<Json<AppSnapshot>, ApiError> {
     inventory_service::remove_inventory_item(&state.db, item_id)
         .map(Json)
-        .map_err(ApiError::bad_request)
+        .map_err(ApiError::from)
 }
 
 async fn add_personnel(
@@ -458,7 +483,7 @@ async fn add_personnel(
 ) -> Result<Json<AppSnapshot>, ApiError> {
     inventory_service::add_personnel(&state.db, input)
         .map(Json)
-        .map_err(ApiError::bad_request)
+        .map_err(ApiError::from)
 }
 
 async fn remove_personnel(
@@ -467,7 +492,7 @@ async fn remove_personnel(
 ) -> Result<Json<AppSnapshot>, ApiError> {
     inventory_service::remove_personnel(&state.db, personnel_id)
         .map(Json)
-        .map_err(ApiError::bad_request)
+        .map_err(ApiError::from)
 }
 
 async fn serve_embedded_app(uri: Uri) -> Response {
@@ -484,7 +509,11 @@ fn serve_embedded_file(request_path: &str) -> Response {
                 .find("assets/")
                 .and_then(|index| EMBEDDED_FRONTEND.get_file(&asset_path[index..]))
         })
-        .or_else(|| (!asset_path.contains('.')).then(|| EMBEDDED_FRONTEND.get_file("index.html")).flatten());
+        .or_else(|| {
+            (!asset_path.contains('.'))
+                .then(|| EMBEDDED_FRONTEND.get_file("index.html"))
+                .flatten()
+        });
 
     let Some(file) = file else {
         return StatusCode::NOT_FOUND.into_response();
@@ -494,7 +523,8 @@ fn serve_embedded_file(request_path: &str) -> Response {
     let mut response = Response::new(Body::from(file.contents().to_vec()));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_str(mime.as_ref()).unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+        HeaderValue::from_str(mime.as_ref())
+            .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
     );
     response
 }
@@ -502,18 +532,3 @@ fn serve_embedded_file(request_path: &str) -> Response {
 fn generate_access_key() -> String {
     Alphanumeric.sample_string(&mut rand::thread_rng(), 24)
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
