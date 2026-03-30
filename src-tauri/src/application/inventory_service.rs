@@ -1,6 +1,6 @@
-﻿use crate::domain::models::{
+use crate::domain::models::{
     AddPersonnelInput, AppSnapshot, CreateInventoryItemInput, CreateRefillOrderInput,
-    StockMutationInput,
+    StockMutationInput, UpdateInventoryItemInput,
 };
 use crate::infrastructure::db::{InventoryDb, MutationResult};
 
@@ -14,6 +14,10 @@ pub fn load_snapshot(db: &InventoryDb) -> Result<AppSnapshot, String> {
 
 pub fn create_inventory_item(db: &InventoryDb, input: CreateInventoryItemInput) -> Result<MutationResult, String> {
     db.create_inventory_item(input)
+}
+
+pub fn update_inventory_item(db: &InventoryDb, input: UpdateInventoryItemInput) -> Result<MutationResult, String> {
+    db.update_inventory_item(input)
 }
 
 pub fn receive_stock(db: &InventoryDb, input: StockMutationInput) -> Result<MutationResult, String> {

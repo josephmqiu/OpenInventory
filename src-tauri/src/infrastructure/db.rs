@@ -10,6 +10,7 @@ use crate::domain::models::{
     AddPersonnelInput, AlertStatus, AppSnapshot, BackupPlan, BackupStatus, BackupTargetType,
     CreateInventoryItemInput, CreateRefillOrderInput, InventoryAlert, InventoryItem, PersonnelMember,
     RefillOrder, RefillOrderLine, RefillOrderStatus, StockMutationInput, StockStatus,
+    UpdateInventoryItemInput,
 };
 use crate::infrastructure::schema;
 
@@ -352,6 +353,70 @@ impl InventoryDb {
         })
     }
 
+    pub fn update_inventory_item(&self, input: UpdateInventoryItemInput) -> Result<MutationResult, String> {
+        let name = require_text(&input.name, "Item name")?;
+        let category = require_text(&input.category, "Category")?;
+        let unit = require_text(&input.unit, "Unit")?;
+        let location = require_text(&input.location, "Location")?;
+        let supplier = input.supplier.trim();
+
+        if input.reorder_quantity < 0 {
+            return Err("Reorder level must be zero or greater.".into());
+        }
+
+        let mut connection = self.open_connection()?;
+        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let item = get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
+        let sku = resolve_updated_sku(&transaction, &input.item_id, input.sku.trim(), &item.sku)
+            .map_err(|error| error.to_string())?;
+        let supplier_id = ensure_supplier(&transaction, supplier).map_err(|error| error.to_string())?;
+        let location_id = ensure_location(&transaction, location).map_err(|error| error.to_string())?;
+        let status = stock_status_key(item.current_quantity, input.reorder_quantity);
+
+        transaction
+            .execute(
+                r#"
+                UPDATE inventory_items
+                SET sku = ?1,
+                    name = ?2,
+                    category = ?3,
+                    location_id = ?4,
+                    supplier_id = ?5,
+                    unit_of_measure = ?6,
+                    reorder_quantity = ?7,
+                    status = ?8,
+                    updated_at = datetime('now', 'localtime')
+                WHERE id = ?9
+                "#,
+                params![
+                    sku,
+                    name,
+                    category,
+                    location_id,
+                    supplier_id,
+                    unit,
+                    input.reorder_quantity,
+                    status,
+                    input.item_id,
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+
+        let alert_created = sync_low_stock_alert(&transaction, &input.item_id, input.reorder_quantity, item.current_quantity)
+            .map_err(|error| error.to_string())?;
+        transaction.commit().map_err(|error| error.to_string())?;
+
+        Ok(MutationResult {
+            snapshot: self.load_snapshot()?,
+            low_stock_notification: alert_created.then(|| LowStockNotification {
+                item_name: name.to_string(),
+                sku,
+                current_quantity: item.current_quantity,
+                threshold_quantity: input.reorder_quantity,
+            }),
+        })
+    }
+
     pub fn receive_stock(&self, input: StockMutationInput) -> Result<MutationResult, String> {
         if input.quantity <= 0 {
             return Err("Receive quantity must be greater than zero.".into());
@@ -660,6 +725,32 @@ fn resolve_sku(transaction: &Transaction<'_>, requested_sku: &str) -> rusqlite::
     }
 }
 
+fn resolve_updated_sku(
+    transaction: &Transaction<'_>,
+    item_id: &str,
+    requested_sku: &str,
+    current_sku: &str,
+) -> rusqlite::Result<String> {
+    let candidate = if requested_sku.is_empty() {
+        current_sku.to_string()
+    } else {
+        requested_sku.to_string()
+    };
+
+    let existing: Option<String> = transaction
+        .query_row(
+            "SELECT id FROM inventory_items WHERE lower(sku) = lower(?1) AND id <> ?2",
+            params![candidate, item_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if existing.is_some() {
+        return Err(rusqlite::Error::InvalidParameterName("SKU already exists.".into()));
+    }
+
+    Ok(candidate)
+}
+
 fn generate_sku() -> String {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -884,4 +975,8 @@ fn generate_id(prefix: &str) -> String {
     let sequence = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("{}-{}-{}", prefix, stamp, sequence)
 }
+
+
+
+
 

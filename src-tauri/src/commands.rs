@@ -1,11 +1,11 @@
-﻿use serde::Serialize;
+use serde::Serialize;
 use tauri::{AppHandle, State};
 use tauri_plugin_notification::NotificationExt;
 
 use crate::application::inventory_service;
 use crate::domain::models::{
     AddPersonnelInput, AppSnapshot, CreateInventoryItemInput, CreateRefillOrderInput,
-    StockMutationInput,
+    StockMutationInput, UpdateInventoryItemInput,
 };
 use crate::infrastructure::db::{InventoryDb, LowStockNotification};
 
@@ -35,6 +35,17 @@ pub fn create_inventory_item(
     db: State<'_, InventoryDb>,
 ) -> Result<AppSnapshot, String> {
     let result = inventory_service::create_inventory_item(db.inner(), input)?;
+    notify_low_stock_if_needed(&app, result.low_stock_notification.as_ref());
+    Ok(result.snapshot)
+}
+
+#[tauri::command]
+pub fn update_inventory_item(
+    app: AppHandle,
+    input: UpdateInventoryItemInput,
+    db: State<'_, InventoryDb>,
+) -> Result<AppSnapshot, String> {
+    let result = inventory_service::update_inventory_item(db.inner(), input)?;
     notify_low_stock_if_needed(&app, result.low_stock_notification.as_ref());
     Ok(result.snapshot)
 }

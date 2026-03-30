@@ -1,4 +1,4 @@
-﻿export type Language = "en" | "zh-CN";
+export type Language = "en" | "zh-CN";
 
 export type StockStatus = "in_stock" | "low_stock" | "out_of_stock";
 export type AlertStatus = "open" | "acknowledged" | "resolved";
@@ -93,6 +93,17 @@ export interface CreateInventoryItemInput {
   initialQuantity: number;
 }
 
+export interface UpdateInventoryItemInput {
+  itemId: string;
+  sku: string;
+  name: string;
+  category: string;
+  location: string;
+  unit: string;
+  supplier: string;
+  reorderQuantity: number;
+}
+
 export interface StockMutationInput {
   itemId: string;
   quantity: number;
@@ -117,6 +128,7 @@ export interface AddPersonnelInput {
 
 export type ActionKind =
   | "createItem"
+  | "modifyItem"
   | "receiveStock"
   | "issueMaterial"
   | "createRefillOrder"

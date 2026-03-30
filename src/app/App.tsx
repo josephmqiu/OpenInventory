@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { buildDashboardMetrics } from "../domain/inventory";
 import type {
   ActionKind,
@@ -8,11 +8,13 @@ import type {
   InventoryAlert,
   Language,
   StockMutationInput,
+  UpdateInventoryItemInput,
 } from "../domain/models";
 import { dictionaries } from "./i18n";
 import { AlertsPanel } from "../ui/components/AlertsPanel";
 import { BackupPanel } from "../ui/components/BackupPanel";
 import { InventoryTable } from "../ui/components/InventoryTable";
+import { ItemManagementTable } from "../ui/components/ItemManagementTable";
 import { MetricCard } from "../ui/components/MetricCard";
 import { PersonnelPanel } from "../ui/components/PersonnelPanel";
 import { RefillOrdersTable } from "../ui/components/RefillOrdersTable";
@@ -26,13 +28,14 @@ import {
   receiveStock,
   removeInventoryItem,
   removePersonnel,
+  updateInventoryItem,
 } from "../services/inventoryGateway";
 import type { Dictionary } from "./i18n";
 
-type Section = "dashboard" | "inventory" | "refillOrders" | "alerts" | "personnel" | "settings";
+type Section = "dashboard" | "inventory" | "itemManagement" | "refillOrders" | "alerts" | "personnel" | "settings";
 type NoticeTone = "success" | "warning";
 
-const navOrder: Section[] = ["dashboard", "inventory", "refillOrders", "alerts", "personnel", "settings"];
+const navOrder: Section[] = ["dashboard", "inventory", "itemManagement", "refillOrders", "alerts", "personnel", "settings"];
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unable to complete the requested action.";
@@ -66,6 +69,25 @@ function buildMutationNotice(
     )}`,
     tone: "warning",
   };
+}
+
+function sectionSubtitle(section: Section, dictionary: Dictionary): string {
+  switch (section) {
+    case "inventory":
+      return dictionary.inventoryOperationsHint;
+    case "itemManagement":
+      return dictionary.manageItemsHint;
+    case "refillOrders":
+      return dictionary.noRefillOrdersHint;
+    case "alerts":
+      return dictionary.noAlertsHint;
+    case "personnel":
+      return dictionary.managePersonnelHint;
+    case "settings":
+      return dictionary.backupStorageHint;
+    default:
+      return dictionary.currentInventoryLevels;
+  }
 }
 
 export function App() {
@@ -135,6 +157,9 @@ export function App() {
   const handleCreateItem = async (input: CreateInventoryItemInput) =>
     runMutation(() => createInventoryItem(input), dictionary.successCreateItem);
 
+  const handleUpdateItem = async (input: UpdateInventoryItemInput) =>
+    runMutation(() => updateInventoryItem(input), dictionary.successUpdateItem);
+
   const handleReceiveStock = async (input: StockMutationInput) =>
     runMutation(() => receiveStock(input), dictionary.successReceiveStock);
 
@@ -198,7 +223,7 @@ export function App() {
         <header className="topbar">
           <div>
             <h2>{dictionary[section]}</h2>
-            <p>{dictionary.currentInventoryLevels}</p>
+            <p>{sectionSubtitle(section, dictionary)}</p>
           </div>
           <label className="language-switch">
             <span>{dictionary.language}</span>
@@ -221,6 +246,7 @@ export function App() {
           personnel={snapshot.personnel}
           onClose={closeAction}
           onCreateItem={handleCreateItem}
+          onUpdateItem={handleUpdateItem}
           onReceiveStock={handleReceiveStock}
           onIssueMaterial={handleIssueMaterial}
           onCreateRefillOrder={handleCreateRefillOrder}
@@ -248,9 +274,17 @@ export function App() {
               busy={busy}
               dictionary={dictionary}
               items={snapshot.items}
-              onCreateItem={() => openAction("createItem")}
               onIssueMaterial={() => openAction("issueMaterial")}
               onReceiveStock={() => openAction("receiveStock")}
+            />
+          )}
+          {section === "itemManagement" && (
+            <ItemManagementTable
+              busy={busy}
+              dictionary={dictionary}
+              items={snapshot.items}
+              onCreateItem={() => openAction("createItem")}
+              onModifyItem={(itemId) => openAction("modifyItem", itemId)}
               onRemoveItem={(itemId) => openAction("removeItem", itemId)}
             />
           )}

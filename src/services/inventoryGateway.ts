@@ -7,6 +7,7 @@ import type {
   PersonnelMember,
   StockMutationInput,
   StockStatus,
+  UpdateInventoryItemInput,
 } from "../domain/models";
 
 declare global {
@@ -80,6 +81,9 @@ function syncAlerts(item: InventoryItem): void {
         status: "open",
         triggeredAt: nowStamp(),
       });
+    } else {
+      alert.currentQuantity = item.currentQuantity;
+      alert.thresholdQuantity = item.reorderQuantity;
     }
     return;
   }
@@ -87,6 +91,7 @@ function syncAlerts(item: InventoryItem): void {
   if (alert) {
     alert.status = "resolved";
     alert.currentQuantity = item.currentQuantity;
+    alert.thresholdQuantity = item.reorderQuantity;
   }
 }
 
@@ -123,6 +128,52 @@ function applyCreateInventoryItem(input: CreateInventoryItemInput): AppSnapshot 
     items: [...browserSnapshot.items, item].sort((left, right) => left.name.localeCompare(right.name)),
   };
   syncAlerts(item);
+  return browserSnapshot;
+}
+
+function applyUpdateInventoryItem(input: UpdateInventoryItemInput): AppSnapshot {
+  const item = getItemOrThrow(input.itemId);
+  const previousSku = item.sku;
+  const nextSku = input.sku.trim() || item.sku;
+  const duplicate = browserSnapshot.items.find(
+    (entry) => entry.id !== item.id && entry.sku.toLowerCase() === nextSku.toLowerCase(),
+  );
+  if (duplicate) {
+    throw new Error("SKU already exists.");
+  }
+
+  item.sku = nextSku;
+  item.name = input.name.trim();
+  item.category = input.category.trim();
+  item.location = input.location.trim();
+  item.unit = input.unit.trim();
+  item.supplier = input.supplier.trim();
+  item.reorderQuantity = input.reorderQuantity;
+  item.status = computeStockStatus(item.currentQuantity, item.reorderQuantity);
+  item.lastUpdated = nowStamp();
+
+  browserSnapshot.refillOrders.forEach((order) => {
+    order.lines.forEach((line) => {
+      if (line.sku === previousSku) {
+        line.sku = item.sku;
+        line.itemName = item.name;
+      }
+    });
+  });
+
+  browserSnapshot.alerts.forEach((alert) => {
+    if (alert.sku === previousSku) {
+      alert.sku = item.sku;
+      alert.itemName = item.name;
+    }
+  });
+
+  syncAlerts(item);
+
+  browserSnapshot = {
+    ...browserSnapshot,
+    items: [...browserSnapshot.items].sort((left, right) => left.name.localeCompare(right.name)),
+  };
   return browserSnapshot;
 }
 
@@ -258,6 +309,10 @@ export async function loadAppSnapshot(): Promise<AppSnapshot> {
 
 export async function createInventoryItem(input: CreateInventoryItemInput): Promise<AppSnapshot> {
   return invokeOrFallback("create_inventory_item", { input }, () => applyCreateInventoryItem(input));
+}
+
+export async function updateInventoryItem(input: UpdateInventoryItemInput): Promise<AppSnapshot> {
+  return invokeOrFallback("update_inventory_item", { input }, () => applyUpdateInventoryItem(input));
 }
 
 export async function receiveStock(input: StockMutationInput): Promise<AppSnapshot> {

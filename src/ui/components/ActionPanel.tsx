@@ -7,6 +7,7 @@ import type {
   InventoryItem,
   PersonnelMember,
   StockMutationInput,
+  UpdateInventoryItemInput,
 } from "../../domain/models";
 
 interface ActionPanelProps {
@@ -18,6 +19,7 @@ interface ActionPanelProps {
   personnel: PersonnelMember[];
   onClose: () => void;
   onCreateItem: (input: CreateInventoryItemInput) => Promise<void>;
+  onUpdateItem: (input: UpdateInventoryItemInput) => Promise<void>;
   onReceiveStock: (input: StockMutationInput) => Promise<void>;
   onIssueMaterial: (input: StockMutationInput) => Promise<void>;
   onCreateRefillOrder: (input: CreateRefillOrderInput) => Promise<void>;
@@ -61,6 +63,7 @@ export function ActionPanel({
   personnel,
   onClose,
   onCreateItem,
+  onUpdateItem,
   onReceiveStock,
   onIssueMaterial,
   onCreateRefillOrder,
@@ -102,37 +105,10 @@ export function ActionPanel({
     return Array.from(new Set([...DEFAULT_CATEGORIES, ...existing])).sort((left, right) => left.localeCompare(right));
   }, [items]);
 
-  useEffect(() => {
-    const firstCategory = categoryOptions[0] ?? DEFAULT_CATEGORIES[0];
-    const preferredItemId = activeItemId || items[0]?.id || "";
-    const preferredPersonnel = personnel[0]?.name ?? "";
-
-    setCategoryMode(firstCategory);
-    setNewCategoryName("");
-    setStockForm({ itemId: preferredItemId, quantity: 0, reason: "", performedBy: preferredPersonnel });
-    setOrderForm({
-      orderNumber: "",
-      supplier: items.find((item) => item.id === preferredItemId)?.supplier ?? items[0]?.supplier ?? "",
-      itemId: preferredItemId,
-      orderDate: today(),
-      expectedDeliveryDate: "",
-      createdBy: "",
-      orderedQuantity: 0,
-      unitCost: 0,
-    });
-    setRemoveItemId(preferredItemId);
-    setItemForm({
-      sku: "",
-      name: "",
-      category: firstCategory,
-      location: "",
-      unit: UNIT_OPTIONS[0],
-      supplier: "",
-      reorderQuantity: 0,
-      initialQuantity: 0,
-    });
-  }, [action, activeItemId, categoryOptions, items, personnel]);
-
+  const selectedManagedItem = useMemo(
+    () => items.find((item) => item.id === activeItemId) ?? null,
+    [activeItemId, items],
+  );
   const selectedStockItem = useMemo(
     () => items.find((item) => item.id === stockForm.itemId) ?? null,
     [items, stockForm.itemId],
@@ -146,12 +122,59 @@ export function ActionPanel({
     [items, removeItemId],
   );
 
+  useEffect(() => {
+    const firstCategory = categoryOptions[0] ?? DEFAULT_CATEGORIES[0];
+    const preferredItemId = activeItemId || items[0]?.id || "";
+    const preferredPersonnel = personnel[0]?.name ?? "";
+    const managedItem = items.find((item) => item.id === activeItemId) ?? null;
+    const initialCategory = managedItem?.category ?? firstCategory;
+    const nextCategoryMode = categoryOptions.includes(initialCategory) ? initialCategory : NEW_CATEGORY_VALUE;
+
+    setCategoryMode(nextCategoryMode);
+    setNewCategoryName(nextCategoryMode === NEW_CATEGORY_VALUE ? initialCategory : "");
+    setStockForm({ itemId: preferredItemId, quantity: 0, reason: "", performedBy: preferredPersonnel });
+    setOrderForm({
+      orderNumber: "",
+      supplier: items.find((item) => item.id === preferredItemId)?.supplier ?? items[0]?.supplier ?? "",
+      itemId: preferredItemId,
+      orderDate: today(),
+      expectedDeliveryDate: "",
+      createdBy: "",
+      orderedQuantity: 0,
+      unitCost: 0,
+    });
+    setRemoveItemId(preferredItemId);
+    setItemForm(
+      managedItem
+        ? {
+            sku: managedItem.sku,
+            name: managedItem.name,
+            category: managedItem.category,
+            location: managedItem.location,
+            unit: managedItem.unit,
+            supplier: managedItem.supplier,
+            reorderQuantity: managedItem.reorderQuantity,
+            initialQuantity: managedItem.currentQuantity,
+          }
+        : {
+            sku: "",
+            name: "",
+            category: firstCategory,
+            location: "",
+            unit: UNIT_OPTIONS[0],
+            supplier: "",
+            reorderQuantity: 0,
+            initialQuantity: 0,
+          },
+    );
+  }, [action, activeItemId, categoryOptions, items, personnel]);
+
   if (!action) {
     return null;
   }
 
   const requiresExistingItems =
-    action === "receiveStock" || action === "issueMaterial" || action === "createRefillOrder" || action === "removeItem";
+    action === "modifyItem" || action === "receiveStock" || action === "issueMaterial" || action === "createRefillOrder" || action === "removeItem";
   const requiresPersonnel = action === "receiveStock" || action === "issueMaterial";
   const hasItems = items.length > 0;
   const hasPersonnel = personnel.length > 0;
@@ -168,7 +191,7 @@ export function ActionPanel({
 
   const handleSubmit = async () => {
     try {
-      if (action === "createItem") {
+      if (action === "createItem" || action === "modifyItem") {
         const categoryValue = categoryMode === NEW_CATEGORY_VALUE ? newCategoryName.trim() : itemForm.category.trim();
         if (
           !itemForm.name.trim() ||
@@ -176,14 +199,32 @@ export function ActionPanel({
           !itemForm.location.trim() ||
           !itemForm.unit.trim() ||
           itemForm.reorderQuantity < 0 ||
-          itemForm.initialQuantity < 0
+          (action === "createItem" && itemForm.initialQuantity < 0)
         ) {
           throw new Error(dictionary.formValidationError);
         }
 
-        await onCreateItem({
-          ...itemForm,
+        if (action === "createItem") {
+          await onCreateItem({
+            ...itemForm,
+            category: categoryValue,
+          });
+          return;
+        }
+
+        if (!selectedManagedItem) {
+          throw new Error(dictionary.formValidationError);
+        }
+
+        await onUpdateItem({
+          itemId: selectedManagedItem.id,
+          sku: itemForm.sku,
+          name: itemForm.name,
           category: categoryValue,
+          location: itemForm.location,
+          unit: itemForm.unit,
+          supplier: itemForm.supplier,
+          reorderQuantity: itemForm.reorderQuantity,
         });
         return;
       }
@@ -230,6 +271,7 @@ export function ActionPanel({
   };
 
   const submitDisabled = busy || (requiresPersonnel && !hasPersonnel);
+  const itemFormMode = action === "createItem" || action === "modifyItem";
 
   return (
     <section className="panel action-panel">
@@ -250,7 +292,7 @@ export function ActionPanel({
         </div>
       ) : (
         <>
-          {action === "createItem" && (
+          {itemFormMode && (
             <div className="form-grid">
               <label>
                 <FieldLabel label={dictionary.sku} optionalText={dictionary.autoGeneratedIfBlank} />
@@ -299,10 +341,20 @@ export function ActionPanel({
                 <FieldLabel label={dictionary.reorderLevel} required />
                 <input required type="number" min="0" value={itemForm.reorderQuantity} onChange={(event) => setItemForm({ ...itemForm, reorderQuantity: Number(event.target.value) })} />
               </label>
-              <label>
-                <FieldLabel label={dictionary.initialQuantity} required />
-                <input required type="number" min="0" value={itemForm.initialQuantity} onChange={(event) => setItemForm({ ...itemForm, initialQuantity: Number(event.target.value) })} />
-              </label>
+              {action === "createItem" ? (
+                <label>
+                  <FieldLabel label={dictionary.initialQuantity} required />
+                  <input required type="number" min="0" value={itemForm.initialQuantity} onChange={(event) => setItemForm({ ...itemForm, initialQuantity: Number(event.target.value) })} />
+                </label>
+              ) : selectedManagedItem ? (
+                <div className="form-summary">
+                  <strong>{selectedManagedItem.name}</strong>
+                  <span>
+                    {dictionary.currentQuantity}: {selectedManagedItem.currentQuantity} {selectedManagedItem.unit}
+                  </span>
+                  <span>{dictionary.currentQuantityManagedHint}</span>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -455,7 +507,13 @@ export function ActionPanel({
               disabled={submitDisabled}
               type="button"
             >
-              {busy ? `${dictionary.save}...` : action === "removeItem" ? dictionary.removeItem : dictionary.save}
+              {busy
+                ? `${dictionary.save}...`
+                : action === "removeItem"
+                  ? dictionary.removeItem
+                  : action === "modifyItem"
+                    ? dictionary.modifyItem
+                    : dictionary.save}
             </button>
           </div>
         </>

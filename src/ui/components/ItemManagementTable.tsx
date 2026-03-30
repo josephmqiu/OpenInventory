@@ -1,35 +1,32 @@
 import type { Dictionary } from "../../app/i18n";
 import type { InventoryItem } from "../../domain/models";
 
-interface InventoryTableProps {
+interface ItemManagementTableProps {
   busy: boolean;
   dictionary: Dictionary;
   items: InventoryItem[];
-  onIssueMaterial: () => void;
-  onReceiveStock: () => void;
+  onCreateItem: () => void;
+  onModifyItem: (itemId: string) => void;
+  onRemoveItem: (itemId: string) => void;
 }
 
-function toLabel(value: string): string {
-  return value.split("_").join(" ");
-}
-
-export function InventoryTable({
+export function ItemManagementTable({
   busy,
   dictionary,
   items,
-  onIssueMaterial,
-  onReceiveStock,
-}: InventoryTableProps) {
+  onCreateItem,
+  onModifyItem,
+  onRemoveItem,
+}: ItemManagementTableProps) {
   return (
     <section className="panel">
       <div className="panel__header">
         <div>
-          <h2>{dictionary.currentInventoryLevels}</h2>
-          <p>{dictionary.inventoryOperationsHint}</p>
+          <h2>{dictionary.itemManagement}</h2>
+          <p>{dictionary.manageItemsHint}</p>
         </div>
         <div className="panel__actions">
-          <button disabled={busy} onClick={onReceiveStock} type="button">{dictionary.receiveStock}</button>
-          <button className="button-secondary" disabled={busy} onClick={onIssueMaterial} type="button">{dictionary.issueMaterial}</button>
+          <button disabled={busy} onClick={onCreateItem} type="button">{dictionary.createItem}</button>
         </div>
       </div>
       {items.length === 0 ? (
@@ -46,30 +43,36 @@ export function InventoryTable({
                 <th>{dictionary.itemName}</th>
                 <th>{dictionary.category}</th>
                 <th>{dictionary.location}</th>
-                <th>{dictionary.currentQuantity}</th>
                 <th>{dictionary.unit}</th>
+                <th>{dictionary.supplier}</th>
                 <th>{dictionary.reorderLevel}</th>
-                <th>{dictionary.status}</th>
+                <th>{dictionary.currentQuantity}</th>
                 <th>{dictionary.lastUpdated}</th>
+                <th>{dictionary.manage}</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.id}>
                   <td>{item.sku}</td>
-                  <td>
-                    <div className="cell-title">{item.name}</div>
-                    <div className="cell-subtitle">{item.supplier}</div>
-                  </td>
+                  <td className="cell-title">{item.name}</td>
                   <td>{item.category}</td>
                   <td>{item.location}</td>
-                  <td className="cell-strong">{item.currentQuantity}</td>
                   <td>{item.unit}</td>
+                  <td>{item.supplier || dictionary.notAvailable}</td>
                   <td>{item.reorderQuantity}</td>
-                  <td>
-                    <span className={`status-pill status-pill--${item.status}`}>{toLabel(item.status)}</span>
-                  </td>
+                  <td className="cell-strong">{item.currentQuantity}</td>
                   <td>{item.lastUpdated}</td>
+                  <td>
+                    <div className="row-actions row-actions--spread">
+                      <button className="button-secondary button-inline" disabled={busy} onClick={() => onModifyItem(item.id)} type="button">
+                        {dictionary.modifyItem}
+                      </button>
+                      <button className="button-danger button-inline" disabled={busy} onClick={() => onRemoveItem(item.id)} type="button">
+                        {dictionary.removeItem}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

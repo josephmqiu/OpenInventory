@@ -1,4 +1,4 @@
-﻿mod application;
+mod application;
 mod commands;
 mod domain;
 mod infrastructure;
@@ -23,6 +23,7 @@ pub fn run() {
             commands::app_health,
             commands::load_app_snapshot,
             commands::create_inventory_item,
+            commands::update_inventory_item,
             commands::receive_stock,
             commands::issue_material,
             commands::create_refill_order,

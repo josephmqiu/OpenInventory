@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -136,6 +136,19 @@ pub struct CreateInventoryItemInput {
     pub supplier: String,
     pub reorder_quantity: i64,
     pub initial_quantity: i64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInventoryItemInput {
+    pub item_id: String,
+    pub sku: String,
+    pub name: String,
+    pub category: String,
+    pub location: String,
+    pub unit: String,
+    pub supplier: String,
+    pub reorder_quantity: i64,
 }
 
 #[derive(Deserialize)]

@@ -1,13 +1,19 @@
+import type { ActionKind, Language } from "../domain/models";
+
 export interface Dictionary {
   appName: string;
   tagline: string;
   dashboard: string;
   inventory: string;
+  itemManagement: string;
   refillOrders: string;
   alerts: string;
   personnel: string;
   settings: string;
   currentInventoryLevels: string;
+  inventoryOperationsHint: string;
+  manageItemsHint: string;
+  currentQuantityManagedHint: string;
   totalItems: string;
   totalUnits: string;
   lowStock: string;
@@ -41,10 +47,12 @@ export interface Dictionary {
   backupReady: string;
   needsAttention: string;
   createItem: string;
+  modifyItem: string;
   receiveStock: string;
   issueMaterial: string;
   createRefillOrder: string;
   removeItem: string;
+  manage: string;
   loadingWorkspace: string;
   noInventoryItems: string;
   noInventoryItemsHint: string;
@@ -81,6 +89,7 @@ export interface Dictionary {
   actionPanelTitle: Record<ActionKind, string>;
   actionPanelHint: Record<ActionKind, string>;
   successCreateItem: string;
+  successUpdateItem: string;
   successReceiveStock: string;
   successIssueMaterial: string;
   successCreateRefillOrder: string;
@@ -91,19 +100,21 @@ export interface Dictionary {
   formValidationError: string;
 }
 
-import type { ActionKind, Language } from "../domain/models";
-
 export const dictionaries: Record<Language, Dictionary> = {
   en: {
     appName: "Inventory Monitor",
     tagline: "Local-first inventory control with refill tracking and backup readiness.",
     dashboard: "Dashboard",
     inventory: "Inventory",
+    itemManagement: "Item Management",
     refillOrders: "Refill Orders",
     alerts: "Alerts",
     personnel: "Personnel",
     settings: "Settings",
     currentInventoryLevels: "Current Inventory Levels",
+    inventoryOperationsHint: "Receive and issue stock from the live inventory list.",
+    manageItemsHint: "Create, modify, and delete item records only in this page.",
+    currentQuantityManagedHint: "Current quantity is managed through Receive Stock and Issue Material, not through item editing.",
     totalItems: "Total Items",
     totalUnits: "Total Units",
     lowStock: "Low Stock",
@@ -137,10 +148,12 @@ export const dictionaries: Record<Language, Dictionary> = {
     backupReady: "Backup target validated",
     needsAttention: "Needs attention",
     createItem: "Create Item",
+    modifyItem: "Modify Item",
     receiveStock: "Receive Stock",
     issueMaterial: "Issue Material",
     createRefillOrder: "Create Refill Order",
     removeItem: "Remove Item",
+    manage: "Manage",
     loadingWorkspace: "Loading inventory workspace...",
     noInventoryItems: "No inventory records yet.",
     noInventoryItemsHint: "Create the first item to start tracking on-hand quantity and low-stock rules.",
@@ -176,6 +189,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     deleteItemImpact: "Related stock movements, alerts, and refill-order lines for this item will also be removed. Refill orders with no remaining lines will be deleted.",
     actionPanelTitle: {
       createItem: "Create Inventory Item",
+      modifyItem: "Modify Inventory Item",
       receiveStock: "Receive Stock",
       issueMaterial: "Issue Material",
       createRefillOrder: "Create Refill Order",
@@ -183,12 +197,14 @@ export const dictionaries: Record<Language, Dictionary> = {
     },
     actionPanelHint: {
       createItem: "Register a new inventory record with on-hand quantity and reorder thresholds.",
+      modifyItem: "Update item master data without changing the on-hand quantity.",
       receiveStock: "Add materials into inventory and refresh the current quantity immediately.",
       issueMaterial: "Remove materials from inventory and evaluate low-stock alerts.",
       createRefillOrder: "Record a purchase order before stock is physically received.",
       removeItem: "Remove an item and its related operational records from the inventory database.",
     },
     successCreateItem: "Inventory item created.",
+    successUpdateItem: "Inventory item updated.",
     successReceiveStock: "Stock receipt recorded.",
     successIssueMaterial: "Material issue recorded.",
     successCreateRefillOrder: "Refill order created.",
@@ -204,11 +220,15 @@ export const dictionaries: Record<Language, Dictionary> = {
     tagline: "\u652f\u6301\u8865\u8d27\u8ba2\u5355\u3001\u4f4e\u5e93\u5b58\u9884\u8b66\u548c\u5907\u4efd\u7ba1\u7406\u7684\u672c\u5730\u5e93\u5b58\u7cfb\u7edf\u3002",
     dashboard: "\u6982\u89c8",
     inventory: "\u5e93\u5b58",
+    itemManagement: "\u7269\u6599\u7ba1\u7406",
     refillOrders: "\u8865\u8d27\u8ba2\u5355",
     alerts: "\u9884\u8b66",
     personnel: "\u4eba\u5458\u7ba1\u7406",
     settings: "\u8bbe\u7f6e",
     currentInventoryLevels: "\u5f53\u524d\u5e93\u5b58\u6c34\u5e73",
+    inventoryOperationsHint: "\u5728\u5f53\u524d\u5e93\u5b58\u5217\u8868\u4e2d\u6267\u884c\u5165\u5e93\u548c\u51fa\u5e93\u64cd\u4f5c\u3002",
+    manageItemsHint: "\u53ea\u5728\u6b64\u9875\u9762\u521b\u5efa\u3001\u4fee\u6539\u548c\u5220\u9664\u7269\u6599\u8bb0\u5f55\u3002",
+    currentQuantityManagedHint: "\u5f53\u524d\u6570\u91cf\u901a\u8fc7\u5165\u5e93\u548c\u51fa\u5e93\u7ba1\u7406\uff0c\u4e0d\u5728\u7269\u6599\u7f16\u8f91\u4e2d\u4fee\u6539\u3002",
     totalItems: "\u7269\u6599\u603b\u6570",
     totalUnits: "\u5e93\u5b58\u603b\u91cf",
     lowStock: "\u4f4e\u5e93\u5b58",
@@ -242,10 +262,12 @@ export const dictionaries: Record<Language, Dictionary> = {
     backupReady: "\u5907\u4efd\u76ee\u6807\u5df2\u9a8c\u8bc1",
     needsAttention: "\u9700\u8981\u5904\u7406",
     createItem: "\u65b0\u589e\u7269\u6599",
+    modifyItem: "\u4fee\u6539\u7269\u6599",
     receiveStock: "\u5165\u5e93",
     issueMaterial: "\u51fa\u5e93",
     createRefillOrder: "\u521b\u5efa\u8865\u8d27\u5355",
     removeItem: "\u79fb\u9664\u7269\u6599",
+    manage: "\u7ba1\u7406",
     loadingWorkspace: "\u6b63\u5728\u52a0\u8f7d\u5e93\u5b58\u5de5\u4f5c\u533a...",
     noInventoryItems: "\u8fd8\u6ca1\u6709\u5e93\u5b58\u8bb0\u5f55\u3002",
     noInventoryItemsHint: "\u5148\u521b\u5efa\u7b2c\u4e00\u4e2a\u7269\u6599\uff0c\u518d\u5f00\u59cb\u8ddf\u8e2a\u73b0\u5b58\u6570\u91cf\u548c\u4f4e\u5e93\u5b58\u89c4\u5219\u3002",
@@ -281,6 +303,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     deleteItemImpact: "\u8be5\u7269\u6599\u7684\u5e93\u5b58\u53d8\u52a8\u3001\u9884\u8b66\u3001\u8865\u8d27\u8ba2\u5355\u660e\u7ec6\u4e5f\u4f1a\u88ab\u5220\u9664\u3002\u5982\u679c\u8865\u8d27\u5355\u6ca1\u6709\u5269\u4f59\u660e\u7ec6\uff0c\u8be5\u8865\u8d27\u5355\u4e5f\u4f1a\u88ab\u5220\u9664\u3002",
     actionPanelTitle: {
       createItem: "\u65b0\u589e\u5e93\u5b58\u7269\u6599",
+      modifyItem: "\u4fee\u6539\u5e93\u5b58\u7269\u6599",
       receiveStock: "\u8bb0\u5f55\u5165\u5e93",
       issueMaterial: "\u8bb0\u5f55\u51fa\u5e93",
       createRefillOrder: "\u521b\u5efa\u8865\u8d27\u5355",
@@ -288,12 +311,14 @@ export const dictionaries: Record<Language, Dictionary> = {
     },
     actionPanelHint: {
       createItem: "\u521b\u5efa\u65b0\u5e93\u5b58\u8bb0\u5f55\uff0c\u5e76\u8bbe\u5b9a\u73b0\u6709\u6570\u91cf\u4e0e\u8865\u8d27\u9608\u503c\u3002",
+      modifyItem: "\u66f4\u65b0\u7269\u6599\u4e3b\u6570\u636e\uff0c\u4e0d\u6539\u53d8\u5f53\u524d\u5e93\u5b58\u6570\u91cf\u3002",
       receiveStock: "\u5c06\u6750\u6599\u5165\u5e93\uff0c\u5e76\u7acb\u5373\u66f4\u65b0\u5f53\u524d\u5e93\u5b58\u6570\u91cf\u3002",
       issueMaterial: "\u4ece\u5e93\u5b58\u4e2d\u9886\u7528\u6750\u6599\uff0c\u5e76\u68c0\u67e5\u4f4e\u5e93\u5b58\u9884\u8b66\u3002",
       createRefillOrder: "\u5728\u7269\u7406\u6536\u8d27\u4e4b\u524d\u5148\u8bb0\u5f55\u91c7\u8d2d\u8ba2\u5355\u3002",
       removeItem: "\u5c06\u7269\u6599\u53ca\u5176\u76f8\u5173\u8fd0\u8425\u8bb0\u5f55\u4ece\u5e93\u5b58\u6570\u636e\u5e93\u4e2d\u5220\u9664\u3002",
     },
     successCreateItem: "\u5df2\u521b\u5efa\u5e93\u5b58\u7269\u6599\u3002",
+    successUpdateItem: "\u5df2\u66f4\u65b0\u5e93\u5b58\u7269\u6599\u3002",
     successReceiveStock: "\u5df2\u8bb0\u5f55\u5165\u5e93\u3002",
     successIssueMaterial: "\u5df2\u8bb0\u5f55\u51fa\u5e93\u3002",
     successCreateRefillOrder: "\u5df2\u521b\u5efa\u8865\u8d27\u5355\u3002",
