@@ -1,0 +1,465 @@
+import { useEffect, useMemo, useState } from "react";
+import type { Dictionary } from "../../app/i18n";
+import type {
+  ActionKind,
+  CreateInventoryItemInput,
+  CreateRefillOrderInput,
+  InventoryItem,
+  PersonnelMember,
+  StockMutationInput,
+} from "../../domain/models";
+
+interface ActionPanelProps {
+  action: ActionKind | null;
+  activeItemId: string;
+  busy: boolean;
+  dictionary: Dictionary;
+  items: InventoryItem[];
+  personnel: PersonnelMember[];
+  onClose: () => void;
+  onCreateItem: (input: CreateInventoryItemInput) => Promise<void>;
+  onReceiveStock: (input: StockMutationInput) => Promise<void>;
+  onIssueMaterial: (input: StockMutationInput) => Promise<void>;
+  onCreateRefillOrder: (input: CreateRefillOrderInput) => Promise<void>;
+  onRemoveItem: (itemId: string) => Promise<void>;
+  onError: (message: string) => void;
+}
+
+const DEFAULT_CATEGORIES = [
+  "Raw Material",
+  "Parts",
+  "Chemical",
+  "Packaging",
+  "Consumable",
+  "Finished Goods",
+];
+
+const UNIT_OPTIONS = ["pcs", "kg", "g", "liters", "meters", "boxes", "packs", "rolls", "sheets"];
+const NEW_CATEGORY_VALUE = "__new__";
+const today = () => new Date().toISOString().slice(0, 10);
+
+function toErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function FieldLabel({ label, required, optionalText }: { label: string; required?: boolean; optionalText?: string }) {
+  return (
+    <span>
+      {label}
+      {required ? <strong className="field-indicator field-indicator--required"> *</strong> : null}
+      {optionalText ? <em className="field-indicator field-indicator--optional"> ({optionalText})</em> : null}
+    </span>
+  );
+}
+
+export function ActionPanel({
+  action,
+  activeItemId,
+  busy,
+  dictionary,
+  items,
+  personnel,
+  onClose,
+  onCreateItem,
+  onReceiveStock,
+  onIssueMaterial,
+  onCreateRefillOrder,
+  onRemoveItem,
+  onError,
+}: ActionPanelProps) {
+  const [itemForm, setItemForm] = useState<CreateInventoryItemInput>({
+    sku: "",
+    name: "",
+    category: DEFAULT_CATEGORIES[0],
+    location: "",
+    unit: UNIT_OPTIONS[0],
+    supplier: "",
+    reorderQuantity: 0,
+    initialQuantity: 0,
+  });
+  const [categoryMode, setCategoryMode] = useState<string>(DEFAULT_CATEGORIES[0]);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [stockForm, setStockForm] = useState<StockMutationInput>({
+    itemId: "",
+    quantity: 0,
+    reason: "",
+    performedBy: "",
+  });
+  const [orderForm, setOrderForm] = useState<CreateRefillOrderInput>({
+    orderNumber: "",
+    supplier: "",
+    itemId: "",
+    orderDate: today(),
+    expectedDeliveryDate: "",
+    createdBy: "",
+    orderedQuantity: 0,
+    unitCost: 0,
+  });
+  const [removeItemId, setRemoveItemId] = useState("");
+
+  const categoryOptions = useMemo(() => {
+    const existing = items.map((item) => item.category.trim()).filter((value) => value.length > 0);
+    return Array.from(new Set([...DEFAULT_CATEGORIES, ...existing])).sort((left, right) => left.localeCompare(right));
+  }, [items]);
+
+  useEffect(() => {
+    const firstCategory = categoryOptions[0] ?? DEFAULT_CATEGORIES[0];
+    const preferredItemId = activeItemId || items[0]?.id || "";
+    const preferredPersonnel = personnel[0]?.name ?? "";
+
+    setCategoryMode(firstCategory);
+    setNewCategoryName("");
+    setStockForm({ itemId: preferredItemId, quantity: 0, reason: "", performedBy: preferredPersonnel });
+    setOrderForm({
+      orderNumber: "",
+      supplier: items.find((item) => item.id === preferredItemId)?.supplier ?? items[0]?.supplier ?? "",
+      itemId: preferredItemId,
+      orderDate: today(),
+      expectedDeliveryDate: "",
+      createdBy: "",
+      orderedQuantity: 0,
+      unitCost: 0,
+    });
+    setRemoveItemId(preferredItemId);
+    setItemForm({
+      sku: "",
+      name: "",
+      category: firstCategory,
+      location: "",
+      unit: UNIT_OPTIONS[0],
+      supplier: "",
+      reorderQuantity: 0,
+      initialQuantity: 0,
+    });
+  }, [action, activeItemId, categoryOptions, items, personnel]);
+
+  const selectedStockItem = useMemo(
+    () => items.find((item) => item.id === stockForm.itemId) ?? null,
+    [items, stockForm.itemId],
+  );
+  const selectedOrderItem = useMemo(
+    () => items.find((item) => item.id === orderForm.itemId) ?? null,
+    [items, orderForm.itemId],
+  );
+  const selectedRemoveItem = useMemo(
+    () => items.find((item) => item.id === removeItemId) ?? null,
+    [items, removeItemId],
+  );
+
+  if (!action) {
+    return null;
+  }
+
+  const requiresExistingItems =
+    action === "receiveStock" || action === "issueMaterial" || action === "createRefillOrder" || action === "removeItem";
+  const requiresPersonnel = action === "receiveStock" || action === "issueMaterial";
+  const hasItems = items.length > 0;
+  const hasPersonnel = personnel.length > 0;
+
+  const handleCategoryChange = (value: string) => {
+    setCategoryMode(value);
+    if (value === NEW_CATEGORY_VALUE) {
+      setItemForm({ ...itemForm, category: "" });
+      return;
+    }
+    setNewCategoryName("");
+    setItemForm({ ...itemForm, category: value });
+  };
+
+  const handleSubmit = async () => {
+    try {
+      if (action === "createItem") {
+        const categoryValue = categoryMode === NEW_CATEGORY_VALUE ? newCategoryName.trim() : itemForm.category.trim();
+        if (
+          !itemForm.name.trim() ||
+          !categoryValue ||
+          !itemForm.location.trim() ||
+          !itemForm.unit.trim() ||
+          itemForm.reorderQuantity < 0 ||
+          itemForm.initialQuantity < 0
+        ) {
+          throw new Error(dictionary.formValidationError);
+        }
+
+        await onCreateItem({
+          ...itemForm,
+          category: categoryValue,
+        });
+        return;
+      }
+
+      if (!hasItems) {
+        throw new Error(dictionary.noInventoryItems);
+      }
+
+      if (requiresPersonnel && !hasPersonnel) {
+        throw new Error(dictionary.personnelRequiredHint);
+      }
+
+      if (action === "receiveStock") {
+        if (!stockForm.itemId || stockForm.quantity <= 0 || !stockForm.performedBy) {
+          throw new Error(dictionary.formValidationError);
+        }
+        await onReceiveStock(stockForm);
+        return;
+      }
+
+      if (action === "issueMaterial") {
+        if (!stockForm.itemId || stockForm.quantity <= 0 || !stockForm.performedBy) {
+          throw new Error(dictionary.formValidationError);
+        }
+        await onIssueMaterial(stockForm);
+        return;
+      }
+
+      if (action === "createRefillOrder") {
+        if (!orderForm.itemId || !orderForm.orderNumber.trim() || !orderForm.supplier.trim() || !orderForm.orderDate || orderForm.orderedQuantity <= 0 || orderForm.unitCost < 0) {
+          throw new Error(dictionary.formValidationError);
+        }
+        await onCreateRefillOrder(orderForm);
+        return;
+      }
+
+      if (!removeItemId) {
+        throw new Error(dictionary.formValidationError);
+      }
+      await onRemoveItem(removeItemId);
+    } catch (error) {
+      onError(toErrorMessage(error, dictionary.formValidationError));
+    }
+  };
+
+  const submitDisabled = busy || (requiresPersonnel && !hasPersonnel);
+
+  return (
+    <section className="panel action-panel">
+      <div className="panel__header">
+        <div>
+          <h2>{dictionary.actionPanelTitle[action]}</h2>
+          <p>{dictionary.actionPanelHint[action]}</p>
+        </div>
+        <button className="button-secondary" onClick={onClose} type="button">
+          {dictionary.cancel}
+        </button>
+      </div>
+
+      {requiresExistingItems && !hasItems ? (
+        <div className="empty-state">
+          <h3>{dictionary.noInventoryItems}</h3>
+          <p>{dictionary.noInventoryItemsHint}</p>
+        </div>
+      ) : (
+        <>
+          {action === "createItem" && (
+            <div className="form-grid">
+              <label>
+                <FieldLabel label={dictionary.sku} optionalText={dictionary.autoGeneratedIfBlank} />
+                <input placeholder={dictionary.autoGeneratedIfBlank} value={itemForm.sku} onChange={(event) => setItemForm({ ...itemForm, sku: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.itemName} required />
+                <input required value={itemForm.name} onChange={(event) => setItemForm({ ...itemForm, name: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.category} required />
+                <select required value={categoryMode} onChange={(event) => handleCategoryChange(event.target.value)}>
+                  {categoryOptions.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                  <option value={NEW_CATEGORY_VALUE}>{dictionary.addNewCategory}</option>
+                </select>
+              </label>
+              {categoryMode === NEW_CATEGORY_VALUE && (
+                <label>
+                  <FieldLabel label={dictionary.newCategoryName} required />
+                  <input required value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} />
+                </label>
+              )}
+              <label>
+                <FieldLabel label={dictionary.location} required />
+                <input required value={itemForm.location} onChange={(event) => setItemForm({ ...itemForm, location: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.unit} required />
+                <select required value={itemForm.unit} onChange={(event) => setItemForm({ ...itemForm, unit: event.target.value })}>
+                  {UNIT_OPTIONS.map((unit) => (
+                    <option key={unit} value={unit}>
+                      {unit}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <FieldLabel label={dictionary.supplier} optionalText={dictionary.optionalField} />
+                <input value={itemForm.supplier} onChange={(event) => setItemForm({ ...itemForm, supplier: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.reorderLevel} required />
+                <input required type="number" min="0" value={itemForm.reorderQuantity} onChange={(event) => setItemForm({ ...itemForm, reorderQuantity: Number(event.target.value) })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.initialQuantity} required />
+                <input required type="number" min="0" value={itemForm.initialQuantity} onChange={(event) => setItemForm({ ...itemForm, initialQuantity: Number(event.target.value) })} />
+              </label>
+            </div>
+          )}
+
+          {(action === "receiveStock" || action === "issueMaterial") && (
+            <div className="form-grid">
+              {!hasPersonnel && (
+                <div className="form-summary form-summary--warning">
+                  <strong>{dictionary.personnel}</strong>
+                  <span>{dictionary.personnelRequiredHint}</span>
+                </div>
+              )}
+              <label>
+                <FieldLabel label={dictionary.selectItem} required />
+                <select value={stockForm.itemId} onChange={(event) => setStockForm({ ...stockForm, itemId: event.target.value })}>
+                  {items.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.sku} - {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <FieldLabel label={dictionary.quantity} required />
+                <input type="number" min="0" value={stockForm.quantity} onChange={(event) => setStockForm({ ...stockForm, quantity: Number(event.target.value) })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.reason} />
+                <input value={stockForm.reason} onChange={(event) => setStockForm({ ...stockForm, reason: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.performedBy} required />
+                <select
+                  value={stockForm.performedBy}
+                  onChange={(event) => setStockForm({ ...stockForm, performedBy: event.target.value })}
+                >
+                  <option value="">{dictionary.selectPersonnel}</option>
+                  {personnel.map((member) => (
+                    <option key={member.id} value={member.name}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedStockItem && (
+                <div className="form-summary">
+                  <strong>{selectedStockItem.name}</strong>
+                  <span>
+                    {dictionary.currentQuantity}: {selectedStockItem.currentQuantity} {selectedStockItem.unit}
+                  </span>
+                  <span>{dictionary.reorderLevel}: {selectedStockItem.reorderQuantity}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {action === "createRefillOrder" && (
+            <div className="form-grid">
+              <label>
+                <FieldLabel label={dictionary.orderNumber} required />
+                <input value={orderForm.orderNumber} onChange={(event) => setOrderForm({ ...orderForm, orderNumber: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.supplier} required />
+                <input value={orderForm.supplier} onChange={(event) => setOrderForm({ ...orderForm, supplier: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.selectItem} required />
+                <select
+                  value={orderForm.itemId}
+                  onChange={(event) => {
+                    const nextItem = items.find((item) => item.id === event.target.value);
+                    setOrderForm({
+                      ...orderForm,
+                      itemId: event.target.value,
+                      supplier: nextItem?.supplier || orderForm.supplier,
+                    });
+                  }}
+                >
+                  {items.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.sku} - {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <FieldLabel label={dictionary.orderDate} required />
+                <input type="date" value={orderForm.orderDate} onChange={(event) => setOrderForm({ ...orderForm, orderDate: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.expectedDelivery} />
+                <input type="date" value={orderForm.expectedDeliveryDate} onChange={(event) => setOrderForm({ ...orderForm, expectedDeliveryDate: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.createdBy} />
+                <input value={orderForm.createdBy} onChange={(event) => setOrderForm({ ...orderForm, createdBy: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.quantity} required />
+                <input type="number" min="1" value={orderForm.orderedQuantity} onChange={(event) => setOrderForm({ ...orderForm, orderedQuantity: Number(event.target.value) })} />
+              </label>
+              <label>
+                <FieldLabel label={dictionary.unitCost} required />
+                <input type="number" min="0" step="0.01" value={orderForm.unitCost} onChange={(event) => setOrderForm({ ...orderForm, unitCost: Number(event.target.value) })} />
+              </label>
+              {selectedOrderItem && (
+                <div className="form-summary">
+                  <strong>{selectedOrderItem.name}</strong>
+                  <span>
+                    {dictionary.currentQuantity}: {selectedOrderItem.currentQuantity} {selectedOrderItem.unit}
+                  </span>
+                  <span>
+                    {dictionary.totalAmount}: {(orderForm.orderedQuantity * orderForm.unitCost).toFixed(2)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {action === "removeItem" && (
+            <div className="form-grid">
+              <label>
+                <FieldLabel label={dictionary.selectItemToRemove} required />
+                <select value={removeItemId} onChange={(event) => setRemoveItemId(event.target.value)}>
+                  {items.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.sku} - {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedRemoveItem && (
+                <div className="form-summary form-summary--danger">
+                  <strong>{selectedRemoveItem.name}</strong>
+                  <span>
+                    {dictionary.currentQuantity}: {selectedRemoveItem.currentQuantity} {selectedRemoveItem.unit}
+                  </span>
+                  <span>{dictionary.reorderLevel}: {selectedRemoveItem.reorderQuantity}</span>
+                  <span>{dictionary.deleteItemWarning}</span>
+                  <span>{dictionary.deleteItemImpact}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="action-panel__footer">
+            <button
+              className={action === "removeItem" ? "button-danger" : undefined}
+              onClick={() => void handleSubmit()}
+              disabled={submitDisabled}
+              type="button"
+            >
+              {busy ? `${dictionary.save}...` : action === "removeItem" ? dictionary.removeItem : dictionary.save}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
