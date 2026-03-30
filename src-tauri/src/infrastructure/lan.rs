@@ -1,8 +1,10 @@
-use std::net::{IpAddr, TcpListener as StdTcpListener};
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr, TcpListener as StdTcpListener};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{header, HeaderValue, Request, StatusCode, Uri};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -14,6 +16,7 @@ use mime_guess::from_path;
 use rand::distributions::{Alphanumeric, DistString};
 use serde::Deserialize;
 use serde_json::json;
+use subtle::ConstantTimeEq;
 use tauri::async_runtime::JoinHandle;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -29,10 +32,19 @@ use crate::infrastructure::db::{InventoryDb, LanAccessSettings};
 
 static EMBEDDED_FRONTEND: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../dist");
 
+type FailedAuthAttempts = Arc<Mutex<HashMap<IpAddr, (u32, Instant)>>>;
+
+const MAX_FAILED_AUTH_ATTEMPTS: u32 = 5;
+const FAILED_AUTH_WINDOW: Duration = Duration::from_secs(60);
+const AUTH_LOCKOUT_DURATION: Duration = Duration::from_secs(15 * 60);
+const RATE_LIMIT_MESSAGE: &str =
+    "Too many failed access key attempts from this device. Try again in 15 minutes.";
+
 #[derive(Clone)]
 struct HttpApiState {
     db: InventoryDb,
     access_key: String,
+    failed_attempts: FailedAuthAttempts,
 }
 
 struct RuntimeState {
@@ -58,8 +70,6 @@ struct ApiError {
     status: StatusCode,
     message: String,
 }
-
-impl ApiError {}
 
 impl From<AppError> for ApiError {
     fn from(value: AppError) -> Self {
@@ -127,8 +137,6 @@ impl LanServerController {
         let mut settings = self.db.load_lan_access_settings()?;
         settings.enabled = input.enabled;
         settings.port = input.port;
-        settings.primary_url.clear();
-        self.db.save_lan_access_settings(&settings)?;
         self.apply_settings(&settings)?;
         Ok(self.state_from_settings(&settings))
     }
@@ -136,7 +144,6 @@ impl LanServerController {
     pub fn regenerate_access_key(&self) -> AppResult<LanAccessState> {
         let mut settings = self.db.load_lan_access_settings()?;
         settings.access_key = generate_access_key();
-        self.db.save_lan_access_settings(&settings)?;
         self.apply_settings(&settings)?;
         Ok(self.state_from_settings(&settings))
     }
@@ -145,6 +152,13 @@ impl LanServerController {
         self.stop_server();
 
         if !settings.enabled {
+            let stopped_settings = LanAccessSettings {
+                enabled: false,
+                port: settings.port,
+                access_key: settings.access_key.clone(),
+                primary_url: String::new(),
+            };
+            self.db.save_lan_access_settings(&stopped_settings)?;
             self.db.refresh_qr_assets()?;
             let mut runtime = self
                 .runtime
@@ -165,8 +179,12 @@ impl LanServerController {
                     .cloned()
                     .or_else(|| started.urls.first().cloned())
                     .unwrap_or_default();
-                let mut updated_settings = self.db.load_lan_access_settings()?;
-                updated_settings.primary_url = primary_url;
+                let updated_settings = LanAccessSettings {
+                    enabled: settings.enabled,
+                    port: settings.port,
+                    access_key: settings.access_key.clone(),
+                    primary_url,
+                };
                 self.db.save_lan_access_settings(&updated_settings)?;
                 self.db.refresh_qr_assets()?;
                 let mut runtime = self.runtime.lock().map_err(|_| {
@@ -237,11 +255,14 @@ fn start_server(settings: &LanAccessSettings, db: InventoryDb) -> AppResult<Star
             }
         };
 
-        if let Err(error) = axum::serve(listener, router.into_make_service())
-            .with_graceful_shutdown(async move {
-                let _ = shutdown_rx.await;
-            })
-            .await
+        if let Err(error) = axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            let _ = shutdown_rx.await;
+        })
+        .await
         {
             eprintln!("LAN server stopped unexpectedly: {error}");
         }
@@ -321,7 +342,11 @@ fn interface_priority(name: &str, ip: &str) -> i32 {
 }
 
 fn build_router(db: InventoryDb, access_key: String) -> Router {
-    let state = HttpApiState { db, access_key };
+    let state = HttpApiState {
+        db,
+        access_key,
+        failed_attempts: Arc::new(Mutex::new(HashMap::new())),
+    };
 
     let api = Router::new()
         .route("/health", get(http_health))
@@ -365,24 +390,92 @@ fn build_router(db: InventoryDb, access_key: String) -> Router {
 
 async fn require_access_key(
     State(state): State<HttpApiState>,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
     request: Request<Body>,
     next: Next,
 ) -> Response {
+    let client_ip = connect_info
+        .map(|ConnectInfo(address)| address.ip())
+        .unwrap_or(IpAddr::from([127, 0, 0, 1]));
     let provided = request
         .headers()
         .get("x-inventory-key")
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
 
-    if provided != state.access_key {
-        return ApiError {
-            status: StatusCode::UNAUTHORIZED,
-            message: "Access key required or invalid.".into(),
-        }
-        .into_response();
+    if let Err(error) = authorize_access_key(
+        &state.failed_attempts,
+        client_ip,
+        provided,
+        &state.access_key,
+        Instant::now(),
+    ) {
+        return error.into_response();
     }
 
     next.run(request).await
+}
+
+fn authorize_access_key(
+    failed_attempts: &FailedAuthAttempts,
+    client_ip: IpAddr,
+    provided: &str,
+    expected: &str,
+    now: Instant,
+) -> Result<(), ApiError> {
+    let mut failed_attempts = failed_attempts.lock().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        message: "LAN access rate limit state is unavailable.".into(),
+    })?;
+
+    if let Some((attempt_count, recorded_at)) = failed_attempts.get(&client_ip) {
+        let elapsed = now.saturating_duration_since(*recorded_at);
+        if *attempt_count >= MAX_FAILED_AUTH_ATTEMPTS && elapsed < AUTH_LOCKOUT_DURATION {
+            return Err(ApiError {
+                status: StatusCode::TOO_MANY_REQUESTS,
+                message: RATE_LIMIT_MESSAGE.into(),
+            });
+        }
+
+        if *attempt_count >= MAX_FAILED_AUTH_ATTEMPTS || elapsed >= FAILED_AUTH_WINDOW {
+            failed_attempts.remove(&client_ip);
+        }
+    }
+
+    let is_valid: bool = provided.as_bytes().ct_eq(expected.as_bytes()).into();
+    if is_valid {
+        failed_attempts.remove(&client_ip);
+        return Ok(());
+    }
+
+    let mut rate_limited = false;
+    if let Some((attempt_count, recorded_at)) = failed_attempts.get_mut(&client_ip) {
+        if now.saturating_duration_since(*recorded_at) >= FAILED_AUTH_WINDOW {
+            *attempt_count = 1;
+            *recorded_at = now;
+        } else {
+            *attempt_count += 1;
+            if *attempt_count >= MAX_FAILED_AUTH_ATTEMPTS {
+                *recorded_at = now;
+                rate_limited = true;
+            }
+        }
+    } else {
+        failed_attempts.insert(client_ip, (1, now));
+    }
+
+    Err(ApiError {
+        status: if rate_limited {
+            StatusCode::TOO_MANY_REQUESTS
+        } else {
+            StatusCode::UNAUTHORIZED
+        },
+        message: if rate_limited {
+            RATE_LIMIT_MESSAGE.into()
+        } else {
+            "Access key required or invalid.".into()
+        },
+    })
 }
 
 async fn http_health() -> Json<serde_json::Value> {
@@ -547,11 +640,13 @@ mod tests {
     use axum::http::Request;
     use serde_json::{json, Value};
     use std::fs;
+    use std::net::TcpListener as StdTcpListener;
     use std::path::PathBuf;
     use std::process;
     use tower::util::ServiceExt;
 
     use crate::domain::models::CreateInventoryItemInput;
+    use crate::infrastructure::db::LanAccessSettings;
 
     struct TestDb {
         root_dir: PathBuf,
@@ -691,5 +786,180 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = response_json(response).await;
         assert_eq!(body["item"]["currentQuantity"], 4);
+    }
+
+    #[tokio::test]
+    async fn public_issue_rate_limits_after_five_failed_attempts() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-RATE-LIMIT", 5);
+        let router = build_router(test_db.db.clone(), "expected-key".to_string());
+
+        for attempt in 1..=4 {
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/public/items/{item_id}/issue"))
+                        .method("POST")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .header("x-inventory-key", format!("invalid-key-{attempt}"))
+                        .body(Body::from(
+                            json!({
+                                "itemId": item_id,
+                                "quantity": 1,
+                                "performedBy": "Alex",
+                                "reason": "QR issue"
+                            })
+                            .to_string(),
+                        ))
+                        .expect("build request"),
+                )
+                .await
+                .expect("handle request");
+
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/public/items/{item_id}/issue"))
+                    .method("POST")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-inventory-key", "still-invalid")
+                    .body(Body::from(
+                        json!({
+                            "itemId": item_id,
+                            "quantity": 1,
+                            "performedBy": "Alex",
+                            "reason": "QR issue"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("build request"),
+            )
+            .await
+            .expect("handle request");
+
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let body = response_json(response).await;
+        assert_eq!(body["message"], RATE_LIMIT_MESSAGE);
+    }
+
+    #[tokio::test]
+    async fn successful_auth_clears_failed_attempt_counter() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-AUTH-RESET", 5);
+        let router = build_router(test_db.db.clone(), "expected-key".to_string());
+
+        for attempt in 1..=4 {
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/public/items/{item_id}/issue"))
+                        .method("POST")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .header("x-inventory-key", format!("invalid-key-{attempt}"))
+                        .body(Body::from(
+                            json!({
+                                "itemId": item_id,
+                                "quantity": 1,
+                                "performedBy": "Alex",
+                                "reason": "QR issue"
+                            })
+                            .to_string(),
+                        ))
+                        .expect("build request"),
+                )
+                .await
+                .expect("handle request");
+
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+
+        let success_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/public/items/{item_id}/issue"))
+                    .method("POST")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-inventory-key", "expected-key")
+                    .body(Body::from(
+                        json!({
+                            "itemId": item_id,
+                            "quantity": 1,
+                            "performedBy": "Alex",
+                            "reason": "QR issue"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("build request"),
+            )
+            .await
+            .expect("handle request");
+
+        assert_eq!(success_response.status(), StatusCode::OK);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/public/items/{item_id}/issue"))
+                    .method("POST")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-inventory-key", "bad-key-after-reset")
+                    .body(Body::from(
+                        json!({
+                            "itemId": item_id,
+                            "quantity": 1,
+                            "performedBy": "Alex",
+                            "reason": "QR issue"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("build request"),
+            )
+            .await
+            .expect("handle request");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn failed_lan_start_preserves_saved_primary_url() {
+        let test_db = setup_test_db();
+        let existing_url = "http://192.168.1.20:4123".to_string();
+        let existing_settings = LanAccessSettings {
+            enabled: false,
+            port: 4123,
+            access_key: "persisted-key".to_string(),
+            primary_url: existing_url.clone(),
+        };
+        let controller = LanServerController::new(test_db.db.clone()).expect("create controller");
+        test_db
+            .db
+            .save_lan_access_settings(&existing_settings)
+            .expect("save existing lan settings");
+        let listener = StdTcpListener::bind(("0.0.0.0", 0)).expect("bind occupied port");
+        let occupied_port = listener.local_addr().expect("read occupied port").port();
+
+        let error = match controller.update_settings(UpdateLanAccessInput {
+            enabled: true,
+            port: occupied_port,
+        }) {
+            Ok(_) => panic!("update should fail when port is occupied"),
+            Err(error) => error,
+        };
+
+        assert!(error
+            .to_string()
+            .contains("Unable to start LAN access on port"));
+
+        let saved_settings = test_db
+            .db
+            .load_lan_access_settings()
+            .expect("load saved lan settings");
+        assert_eq!(saved_settings.primary_url, existing_url);
     }
 }
