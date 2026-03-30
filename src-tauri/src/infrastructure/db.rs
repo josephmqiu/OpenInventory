@@ -116,7 +116,10 @@ impl InventoryDb {
                     current_quantity,
                     min_quantity: row.get(8)?,
                     reorder_quantity,
-                    status: parse_stock_status(stock_status_key(current_quantity, reorder_quantity)),
+                    status: parse_stock_status(stock_status_key(
+                        current_quantity,
+                        reorder_quantity,
+                    )),
                     last_updated: row.get(11)?,
                 })
             })
@@ -179,14 +182,22 @@ impl InventoryDb {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| error.to_string())?;
 
-        let target_path = read_setting(&connection, "backup.target_path").map_err(|error| error.to_string())?;
-        let target_type = read_setting(&connection, "backup.target_type").map_err(|error| error.to_string())?;
-        let schedule = read_setting(&connection, "backup.schedule").map_err(|error| error.to_string())?;
-        let retention = read_setting(&connection, "backup.retention").map_err(|error| error.to_string())?;
-        let last_successful_backup = read_setting(&connection, "backup.last_successful").map_err(|error| error.to_string())?;
-        let next_scheduled_backup = read_setting(&connection, "backup.next_scheduled").map_err(|error| error.to_string())?;
-        let backup_status = read_setting(&connection, "backup.status").map_err(|error| error.to_string())?;
-        let language = read_setting(&connection, "app.language").map_err(|error| error.to_string())?;
+        let target_path =
+            read_setting(&connection, "backup.target_path").map_err(|error| error.to_string())?;
+        let target_type =
+            read_setting(&connection, "backup.target_type").map_err(|error| error.to_string())?;
+        let schedule =
+            read_setting(&connection, "backup.schedule").map_err(|error| error.to_string())?;
+        let retention =
+            read_setting(&connection, "backup.retention").map_err(|error| error.to_string())?;
+        let last_successful_backup = read_setting(&connection, "backup.last_successful")
+            .map_err(|error| error.to_string())?;
+        let next_scheduled_backup = read_setting(&connection, "backup.next_scheduled")
+            .map_err(|error| error.to_string())?;
+        let backup_status =
+            read_setting(&connection, "backup.status").map_err(|error| error.to_string())?;
+        let language =
+            read_setting(&connection, "app.language").map_err(|error| error.to_string())?;
 
         Ok(AppSnapshot {
             items,
@@ -214,7 +225,10 @@ impl InventoryDb {
         })
     }
 
-    pub fn create_inventory_item(&self, input: CreateInventoryItemInput) -> Result<MutationResult, String> {
+    pub fn create_inventory_item(
+        &self,
+        input: CreateInventoryItemInput,
+    ) -> Result<MutationResult, String> {
         let requested_sku = input.sku.trim();
         let name = require_text(&input.name, "Item name")?;
         let category = require_text(&input.category, "Category")?;
@@ -227,11 +241,15 @@ impl InventoryDb {
         }
 
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
 
         let sku = resolve_sku(&transaction, requested_sku).map_err(|error| error.to_string())?;
-        let supplier_id = ensure_supplier(&transaction, supplier).map_err(|error| error.to_string())?;
-        let location_id = ensure_location(&transaction, location).map_err(|error| error.to_string())?;
+        let supplier_id =
+            ensure_supplier(&transaction, supplier).map_err(|error| error.to_string())?;
+        let location_id =
+            ensure_location(&transaction, location).map_err(|error| error.to_string())?;
         let item_id = generate_id("item");
         let qr_path = self.qr_code_path(&item_id);
         let qr_path_value = path_to_db_value(&qr_path);
@@ -282,8 +300,13 @@ impl InventoryDb {
             .map_err(|error| error.to_string())?;
         }
 
-        let alert_created = sync_low_stock_alert(&transaction, &item_id, input.reorder_quantity, input.initial_quantity)
-            .map_err(|error| error.to_string())?;
+        let alert_created = sync_low_stock_alert(
+            &transaction,
+            &item_id,
+            input.reorder_quantity,
+            input.initial_quantity,
+        )
+        .map_err(|error| error.to_string())?;
         transaction.commit().map_err(|error| error.to_string())?;
 
         Ok(MutationResult {
@@ -297,7 +320,10 @@ impl InventoryDb {
         })
     }
 
-    pub fn update_inventory_item(&self, input: UpdateInventoryItemInput) -> Result<MutationResult, String> {
+    pub fn update_inventory_item(
+        &self,
+        input: UpdateInventoryItemInput,
+    ) -> Result<MutationResult, String> {
         let name = require_text(&input.name, "Item name")?;
         let category = require_text(&input.category, "Category")?;
         let unit = require_text(&input.unit, "Unit")?;
@@ -309,16 +335,23 @@ impl InventoryDb {
         }
 
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
-        let item = get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        let item =
+            get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
         let sku = resolve_updated_sku(&transaction, &input.item_id, input.sku.trim(), &item.sku)
             .map_err(|error| error.to_string())?;
-        let supplier_id = ensure_supplier(&transaction, supplier).map_err(|error| error.to_string())?;
-        let location_id = ensure_location(&transaction, location).map_err(|error| error.to_string())?;
+        let supplier_id =
+            ensure_supplier(&transaction, supplier).map_err(|error| error.to_string())?;
+        let location_id =
+            ensure_location(&transaction, location).map_err(|error| error.to_string())?;
         let status = stock_status_key(item.current_quantity, input.reorder_quantity);
         let expected_qr_path = self.qr_code_path(&input.item_id);
         let expected_qr_value = path_to_db_value(&expected_qr_path);
-        let qr_needs_refresh = sku != item.sku || item.barcode.as_deref() != Some(expected_qr_value.as_str()) || !expected_qr_path.exists();
+        let qr_needs_refresh = sku != item.sku
+            || item.barcode.as_deref() != Some(expected_qr_value.as_str())
+            || !expected_qr_path.exists();
 
         transaction
             .execute(
@@ -356,8 +389,13 @@ impl InventoryDb {
             write_item_qr_png(&expected_qr_path, &qr_payload)?;
         }
 
-        let alert_created = sync_low_stock_alert(&transaction, &input.item_id, input.reorder_quantity, item.current_quantity)
-            .map_err(|error| error.to_string())?;
+        let alert_created = sync_low_stock_alert(
+            &transaction,
+            &input.item_id,
+            input.reorder_quantity,
+            item.current_quantity,
+        )
+        .map_err(|error| error.to_string())?;
         transaction.commit().map_err(|error| error.to_string())?;
 
         if let Some(previous_path) = item.barcode.clone() {
@@ -384,8 +422,11 @@ impl InventoryDb {
         let performed_by = require_text(&input.performed_by, "Performed by")?;
 
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
-        let item = get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        let item =
+            get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
         let new_quantity = item.current_quantity + input.quantity;
         let status = stock_status_key(new_quantity, item.reorder_quantity);
 
@@ -410,8 +451,9 @@ impl InventoryDb {
         )
         .map_err(|error| error.to_string())?;
 
-        let alert_created = sync_low_stock_alert(&transaction, &item.id, item.reorder_quantity, new_quantity)
-            .map_err(|error| error.to_string())?;
+        let alert_created =
+            sync_low_stock_alert(&transaction, &item.id, item.reorder_quantity, new_quantity)
+                .map_err(|error| error.to_string())?;
         transaction.commit().map_err(|error| error.to_string())?;
 
         Ok(MutationResult {
@@ -432,8 +474,11 @@ impl InventoryDb {
         let performed_by = require_text(&input.performed_by, "Performed by")?;
 
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
-        let item = get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        let item =
+            get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
 
         if input.quantity > item.current_quantity {
             return Err(format!(
@@ -466,8 +511,9 @@ impl InventoryDb {
         )
         .map_err(|error| error.to_string())?;
 
-        let alert_created = sync_low_stock_alert(&transaction, &item.id, item.reorder_quantity, new_quantity)
-            .map_err(|error| error.to_string())?;
+        let alert_created =
+            sync_low_stock_alert(&transaction, &item.id, item.reorder_quantity, new_quantity)
+                .map_err(|error| error.to_string())?;
         transaction.commit().map_err(|error| error.to_string())?;
 
         Ok(MutationResult {
@@ -488,13 +534,22 @@ impl InventoryDb {
         let status = backup_status_key(target_path);
 
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
-
-        write_setting(&transaction, "backup.target_path", target_path).map_err(|error| error.to_string())?;
-        write_setting(&transaction, "backup.target_type", backup_target_type_key(&input.target_type))
+        let transaction = connection
+            .transaction()
             .map_err(|error| error.to_string())?;
-        write_setting(&transaction, "backup.schedule", schedule).map_err(|error| error.to_string())?;
-        write_setting(&transaction, "backup.retention", retention).map_err(|error| error.to_string())?;
+
+        write_setting(&transaction, "backup.target_path", target_path)
+            .map_err(|error| error.to_string())?;
+        write_setting(
+            &transaction,
+            "backup.target_type",
+            backup_target_type_key(&input.target_type),
+        )
+        .map_err(|error| error.to_string())?;
+        write_setting(&transaction, "backup.schedule", schedule)
+            .map_err(|error| error.to_string())?;
+        write_setting(&transaction, "backup.retention", retention)
+            .map_err(|error| error.to_string())?;
         write_setting(&transaction, "backup.status", status).map_err(|error| error.to_string())?;
 
         transaction.commit().map_err(|error| error.to_string())?;
@@ -503,9 +558,12 @@ impl InventoryDb {
 
     pub fn update_language(&self, language: Language) -> Result<(), String> {
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
 
-        write_setting(&transaction, "app.language", language_key(&language)).map_err(|error| error.to_string())?;
+        write_setting(&transaction, "app.language", language_key(&language))
+            .map_err(|error| error.to_string())?;
 
         transaction.commit().map_err(|error| error.to_string())?;
         Ok(())
@@ -513,7 +571,9 @@ impl InventoryDb {
 
     pub fn remove_inventory_item(&self, item_id: String) -> Result<AppSnapshot, String> {
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
         let item = get_item_record(&transaction, &item_id).map_err(|error| error.to_string())?;
 
         if let Some(barcode_path) = item.barcode.as_deref() {
@@ -521,13 +581,22 @@ impl InventoryDb {
         }
 
         transaction
-            .execute("DELETE FROM low_stock_alerts WHERE item_id = ?1", params![item.id.clone()])
+            .execute(
+                "DELETE FROM low_stock_alerts WHERE item_id = ?1",
+                params![item.id.clone()],
+            )
             .map_err(|error| error.to_string())?;
         transaction
-            .execute("DELETE FROM inventory_movements WHERE item_id = ?1", params![item.id.clone()])
+            .execute(
+                "DELETE FROM inventory_movements WHERE item_id = ?1",
+                params![item.id.clone()],
+            )
             .map_err(|error| error.to_string())?;
         transaction
-            .execute("DELETE FROM inventory_items WHERE id = ?1", params![item.id])
+            .execute(
+                "DELETE FROM inventory_items WHERE id = ?1",
+                params![item.id],
+            )
             .map_err(|error| error.to_string())?;
 
         transaction.commit().map_err(|error| error.to_string())?;
@@ -537,7 +606,9 @@ impl InventoryDb {
     pub fn add_personnel(&self, input: AddPersonnelInput) -> Result<AppSnapshot, String> {
         let name = require_text(&input.name, "Personnel name")?;
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
 
         let existing: Option<String> = transaction
             .query_row(
@@ -565,7 +636,9 @@ impl InventoryDb {
 
     pub fn remove_personnel(&self, personnel_id: String) -> Result<AppSnapshot, String> {
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
 
         let deleted = transaction
             .execute("DELETE FROM personnel WHERE id = ?1", params![personnel_id])
@@ -580,10 +653,13 @@ impl InventoryDb {
 
     pub fn load_lan_access_settings(&self) -> Result<LanAccessSettings, String> {
         let connection = self.open_connection()?;
-        let enabled = read_setting(&connection, "lan.enabled").map_err(|error| error.to_string())?;
+        let enabled =
+            read_setting(&connection, "lan.enabled").map_err(|error| error.to_string())?;
         let port = read_setting(&connection, "lan.port").map_err(|error| error.to_string())?;
-        let access_key = read_setting(&connection, "lan.access_key").map_err(|error| error.to_string())?;
-        let primary_url = read_setting(&connection, "lan.primary_url").map_err(|error| error.to_string())?;
+        let access_key =
+            read_setting(&connection, "lan.access_key").map_err(|error| error.to_string())?;
+        let primary_url =
+            read_setting(&connection, "lan.primary_url").map_err(|error| error.to_string())?;
 
         Ok(LanAccessSettings {
             enabled: matches!(enabled.as_deref(), Some("true")),
@@ -599,7 +675,9 @@ impl InventoryDb {
 
     pub fn save_lan_access_settings(&self, settings: &LanAccessSettings) -> Result<(), String> {
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
 
         write_setting(
             &transaction,
@@ -640,7 +718,9 @@ impl InventoryDb {
         fs::create_dir_all(self.qr_code_dir()).map_err(|error| error.to_string())?;
         let desired_signature = self.qr_payload_signature()?;
         let mut connection = self.open_connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
         let current_signature = read_setting(&transaction, "qr.payload_signature")
             .map_err(|error| error.to_string())?
             .unwrap_or_default();
@@ -664,7 +744,8 @@ impl InventoryDb {
         for (item_id, sku, barcode) in items {
             let expected_path = self.qr_code_path(&item_id);
             let expected_value = path_to_db_value(&expected_path);
-            let needs_regeneration = signature_changed || barcode != expected_value || !expected_path.exists();
+            let needs_regeneration =
+                signature_changed || barcode != expected_value || !expected_path.exists();
 
             if needs_regeneration {
                 let qr_payload = self.qr_payload_for_item(&item_id, &sku)?;
@@ -720,7 +801,9 @@ fn resolve_sku(transaction: &Transaction<'_>, requested_sku: &str) -> rusqlite::
             )
             .optional()?;
         if existing.is_some() {
-            return Err(rusqlite::Error::InvalidParameterName("SKU already exists.".into()));
+            return Err(rusqlite::Error::InvalidParameterName(
+                "SKU already exists.".into(),
+            ));
         }
         return Ok(requested_sku.to_string());
     }
@@ -760,7 +843,9 @@ fn resolve_updated_sku(
         )
         .optional()?;
     if existing.is_some() {
-        return Err(rusqlite::Error::InvalidParameterName("SKU already exists.".into()));
+        return Err(rusqlite::Error::InvalidParameterName(
+            "SKU already exists.".into(),
+        ));
     }
 
     Ok(candidate)
@@ -775,7 +860,10 @@ fn generate_sku() -> String {
     format!("SKU-{}-{}", stamp, sequence)
 }
 
-fn ensure_supplier(transaction: &Transaction<'_>, supplier_name: &str) -> rusqlite::Result<Option<String>> {
+fn ensure_supplier(
+    transaction: &Transaction<'_>,
+    supplier_name: &str,
+) -> rusqlite::Result<Option<String>> {
     if supplier_name.is_empty() {
         return Ok(None);
     }
@@ -800,7 +888,10 @@ fn ensure_supplier(transaction: &Transaction<'_>, supplier_name: &str) -> rusqli
     Ok(Some(supplier_id))
 }
 
-fn ensure_location(transaction: &Transaction<'_>, location_name: &str) -> rusqlite::Result<Option<String>> {
+fn ensure_location(
+    transaction: &Transaction<'_>,
+    location_name: &str,
+) -> rusqlite::Result<Option<String>> {
     if location_name.is_empty() {
         return Ok(None);
     }
@@ -901,7 +992,12 @@ fn sync_low_stock_alert(
                     status, triggered_at, channel_summary
                 ) VALUES (?1, ?2, ?3, ?4, 'open', datetime('now', 'localtime'), 'desktop,in_app')
                 "#,
-                params![generate_id("alert"), item_id, reorder_quantity, current_quantity],
+                params![
+                    generate_id("alert"),
+                    item_id,
+                    reorder_quantity,
+                    current_quantity
+                ],
             )?;
             return Ok(true);
         }
@@ -1064,20 +1160,566 @@ fn delete_file_if_exists(path: &Path) -> Result<(), String> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::process;
 
+    use rusqlite::{params, Connection, OptionalExtension};
 
+    struct TestDb {
+        root_dir: PathBuf,
+        db_path: PathBuf,
+        db: InventoryDb,
+    }
 
+    struct MovementRecord {
+        movement_type: String,
+        quantity: i64,
+        previous_quantity: i64,
+        new_quantity: i64,
+        performed_by: Option<String>,
+    }
 
+    struct AlertRecord {
+        id: String,
+        threshold_quantity: i64,
+        quantity_at_trigger: i64,
+        status: String,
+        resolved_at: Option<String>,
+    }
 
+    impl TestDb {
+        fn connection(&self) -> Connection {
+            let connection = Connection::open(&self.db_path).expect("open test connection");
+            connection
+                .execute_batch("PRAGMA foreign_keys = ON;")
+                .expect("enable foreign keys");
+            connection
+        }
+    }
 
+    impl Drop for TestDb {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root_dir);
+        }
+    }
 
+    fn setup_test_db() -> TestDb {
+        let root_dir = std::env::temp_dir().join(format!(
+            "open-inventory-tests-{}-{}",
+            process::id(),
+            generate_id("db")
+        ));
+        fs::create_dir_all(&root_dir).expect("create test directory");
 
+        let db_path = root_dir.join("inventory-monitor.db");
+        let db = InventoryDb::new(db_path.clone());
+        db.initialize().expect("initialize test database");
 
+        TestDb {
+            root_dir,
+            db_path,
+            db,
+        }
+    }
 
+    fn create_item(
+        test_db: &TestDb,
+        sku: &str,
+        name: &str,
+        reorder_quantity: i64,
+        initial_quantity: i64,
+    ) -> String {
+        let result = test_db
+            .db
+            .create_inventory_item(CreateInventoryItemInput {
+                sku: sku.to_string(),
+                name: name.to_string(),
+                category: "Hardware".to_string(),
+                location: "Main Shelf".to_string(),
+                unit: "pcs".to_string(),
+                supplier: "ACME".to_string(),
+                reorder_quantity,
+                initial_quantity,
+            })
+            .expect("create inventory item");
 
+        result
+            .snapshot
+            .items
+            .into_iter()
+            .find(|item| item.sku == sku)
+            .expect("find created item in snapshot")
+            .id
+    }
 
+    fn query_item_quantity_and_status(connection: &Connection, item_id: &str) -> (i64, String) {
+        connection
+            .query_row(
+                "SELECT current_quantity, status FROM inventory_items WHERE id = ?1",
+                params![item_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query item quantity and status")
+    }
 
+    fn query_latest_movement(connection: &Connection, item_id: &str) -> MovementRecord {
+        connection
+            .query_row(
+                r#"
+                SELECT movement_type, quantity, previous_quantity, new_quantity, performed_by
+                FROM inventory_movements
+                WHERE item_id = ?1
+                ORDER BY rowid DESC
+                LIMIT 1
+                "#,
+                params![item_id],
+                |row| {
+                    Ok(MovementRecord {
+                        movement_type: row.get(0)?,
+                        quantity: row.get(1)?,
+                        previous_quantity: row.get(2)?,
+                        new_quantity: row.get(3)?,
+                        performed_by: row.get(4)?,
+                    })
+                },
+            )
+            .expect("query latest movement")
+    }
 
+    fn count_rows(connection: &Connection, table: &str, item_id: &str) -> i64 {
+        let query = format!("SELECT COUNT(*) FROM {table} WHERE item_id = ?1");
+        connection
+            .query_row(&query, params![item_id], |row| row.get(0))
+            .expect("count rows")
+    }
 
+    fn query_latest_alert(connection: &Connection, item_id: &str) -> AlertRecord {
+        connection
+            .query_row(
+                r#"
+                SELECT id, threshold_quantity, quantity_at_trigger, status, resolved_at
+                FROM low_stock_alerts
+                WHERE item_id = ?1
+                ORDER BY rowid DESC
+                LIMIT 1
+                "#,
+                params![item_id],
+                |row| {
+                    Ok(AlertRecord {
+                        id: row.get(0)?,
+                        threshold_quantity: row.get(1)?,
+                        quantity_at_trigger: row.get(2)?,
+                        status: row.get(3)?,
+                        resolved_at: row.get(4)?,
+                    })
+                },
+            )
+            .expect("query latest alert")
+    }
 
+    fn query_optional_alert(connection: &Connection, alert_id: &str) -> Option<AlertRecord> {
+        connection
+            .query_row(
+                r#"
+                SELECT id, threshold_quantity, quantity_at_trigger, status, resolved_at
+                FROM low_stock_alerts
+                WHERE id = ?1
+                "#,
+                params![alert_id],
+                |row| {
+                    Ok(AlertRecord {
+                        id: row.get(0)?,
+                        threshold_quantity: row.get(1)?,
+                        quantity_at_trigger: row.get(2)?,
+                        status: row.get(3)?,
+                        resolved_at: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .expect("query alert by id")
+    }
 
+    fn err_string<T>(result: Result<T, String>) -> String {
+        match result {
+            Ok(_) => panic!("expected operation to fail"),
+            Err(error) => error,
+        }
+    }
+
+    #[test]
+    fn receive_stock_updates_quantity_movement_and_status() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-RECEIVE", "Receive Widget", 0, 0);
+
+        test_db
+            .db
+            .receive_stock(StockMutationInput {
+                item_id: item_id.clone(),
+                quantity: 5,
+                reason: "Restock".to_string(),
+                performed_by: "Casey".to_string(),
+            })
+            .expect("receive stock");
+
+        let connection = test_db.connection();
+        let (quantity, status) = query_item_quantity_and_status(&connection, &item_id);
+        assert_eq!(quantity, 5);
+        assert_eq!(status, "in_stock");
+
+        let movement = query_latest_movement(&connection, &item_id);
+        assert_eq!(movement.movement_type, "receive");
+        assert_eq!(movement.quantity, 5);
+        assert_eq!(movement.previous_quantity, 0);
+        assert_eq!(movement.new_quantity, 5);
+        assert_eq!(movement.performed_by.as_deref(), Some("Casey"));
+    }
+
+    #[test]
+    fn issue_material_updates_quantity_and_creates_movement() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-ISSUE", "Issue Widget", 3, 8);
+
+        test_db
+            .db
+            .issue_material(StockMutationInput {
+                item_id: item_id.clone(),
+                quantity: 3,
+                reason: "Work order".to_string(),
+                performed_by: "Alex".to_string(),
+            })
+            .expect("issue material");
+
+        let connection = test_db.connection();
+        let (quantity, status) = query_item_quantity_and_status(&connection, &item_id);
+        assert_eq!(quantity, 5);
+        assert_eq!(status, "in_stock");
+
+        let movement = query_latest_movement(&connection, &item_id);
+        assert_eq!(movement.movement_type, "issue");
+        assert_eq!(movement.quantity, 3);
+        assert_eq!(movement.previous_quantity, 8);
+        assert_eq!(movement.new_quantity, 5);
+        assert_eq!(movement.performed_by.as_deref(), Some("Alex"));
+    }
+
+    #[test]
+    fn issue_material_rejects_quantity_above_available_stock() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-OVERISSUE", "Limited Widget", 2, 4);
+
+        let error = err_string(test_db.db.issue_material(StockMutationInput {
+            item_id: item_id.clone(),
+            quantity: 5,
+            reason: "Over issue".to_string(),
+            performed_by: "Alex".to_string(),
+        }));
+
+        assert!(error.contains("Cannot issue 5 units"));
+
+        let connection = test_db.connection();
+        let (quantity, _) = query_item_quantity_and_status(&connection, &item_id);
+        assert_eq!(quantity, 4);
+        assert_eq!(count_rows(&connection, "inventory_movements", &item_id), 1);
+    }
+
+    #[test]
+    fn low_stock_alert_triggers_once_when_quantity_reaches_threshold() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-ALERT", "Alert Widget", 10, 12);
+
+        test_db
+            .db
+            .issue_material(StockMutationInput {
+                item_id: item_id.clone(),
+                quantity: 2,
+                reason: "First issue".to_string(),
+                performed_by: "Taylor".to_string(),
+            })
+            .expect("issue to threshold");
+
+        let connection = test_db.connection();
+        let alert = query_latest_alert(&connection, &item_id);
+        assert_eq!(alert.threshold_quantity, 10);
+        assert_eq!(alert.quantity_at_trigger, 10);
+        assert_eq!(alert.status, "open");
+        assert_eq!(count_rows(&connection, "low_stock_alerts", &item_id), 1);
+
+        drop(connection);
+
+        test_db
+            .db
+            .issue_material(StockMutationInput {
+                item_id: item_id.clone(),
+                quantity: 1,
+                reason: "Second issue".to_string(),
+                performed_by: "Taylor".to_string(),
+            })
+            .expect("issue again below threshold");
+
+        let connection = test_db.connection();
+        assert_eq!(count_rows(&connection, "low_stock_alerts", &item_id), 1);
+        let alert = query_latest_alert(&connection, &item_id);
+        assert_eq!(alert.status, "open");
+    }
+
+    #[test]
+    fn receiving_stock_above_threshold_resolves_open_alert() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-RESOLVE", "Resolve Widget", 10, 12);
+
+        test_db
+            .db
+            .issue_material(StockMutationInput {
+                item_id: item_id.clone(),
+                quantity: 2,
+                reason: "Drop to threshold".to_string(),
+                performed_by: "Jordan".to_string(),
+            })
+            .expect("create open alert");
+
+        let connection = test_db.connection();
+        let original_alert = query_latest_alert(&connection, &item_id);
+        drop(connection);
+
+        test_db
+            .db
+            .receive_stock(StockMutationInput {
+                item_id: item_id.clone(),
+                quantity: 5,
+                reason: "Restock above threshold".to_string(),
+                performed_by: "Jordan".to_string(),
+            })
+            .expect("receive stock above threshold");
+
+        let connection = test_db.connection();
+        let resolved_alert = query_optional_alert(&connection, &original_alert.id)
+            .expect("alert should still exist");
+        assert_eq!(resolved_alert.status, "resolved");
+        assert!(resolved_alert.resolved_at.is_some());
+    }
+
+    #[test]
+    fn create_inventory_item_enforces_case_insensitive_unique_sku() {
+        let test_db = setup_test_db();
+        create_item(&test_db, "SKU-UNIQUE", "First Widget", 5, 1);
+
+        let error = err_string(test_db.db.create_inventory_item(CreateInventoryItemInput {
+            sku: "sku-unique".to_string(),
+            name: "Second Widget".to_string(),
+            category: "Hardware".to_string(),
+            location: "Main Shelf".to_string(),
+            unit: "pcs".to_string(),
+            supplier: "ACME".to_string(),
+            reorder_quantity: 5,
+            initial_quantity: 0,
+        }));
+
+        assert!(error.contains("SKU already exists"));
+    }
+
+    #[test]
+    fn create_inventory_item_validates_required_fields() {
+        let test_db = setup_test_db();
+
+        let name_error = err_string(test_db.db.create_inventory_item(CreateInventoryItemInput {
+            sku: "SKU-NAME".to_string(),
+            name: "   ".to_string(),
+            category: "Hardware".to_string(),
+            location: "Main Shelf".to_string(),
+            unit: "pcs".to_string(),
+            supplier: "ACME".to_string(),
+            reorder_quantity: 1,
+            initial_quantity: 0,
+        }));
+        assert!(name_error.contains("Item name is required"));
+
+        let category_error =
+            err_string(test_db.db.create_inventory_item(CreateInventoryItemInput {
+                sku: "SKU-CATEGORY".to_string(),
+                name: "Widget".to_string(),
+                category: "  ".to_string(),
+                location: "Main Shelf".to_string(),
+                unit: "pcs".to_string(),
+                supplier: "ACME".to_string(),
+                reorder_quantity: 1,
+                initial_quantity: 0,
+            }));
+        assert!(category_error.contains("Category is required"));
+
+        let unit_error = err_string(test_db.db.create_inventory_item(CreateInventoryItemInput {
+            sku: "SKU-UNIT".to_string(),
+            name: "Widget".to_string(),
+            category: "Hardware".to_string(),
+            location: "Main Shelf".to_string(),
+            unit: " ".to_string(),
+            supplier: "ACME".to_string(),
+            reorder_quantity: 1,
+            initial_quantity: 0,
+        }));
+        assert!(unit_error.contains("Unit is required"));
+    }
+
+    #[test]
+    fn create_inventory_item_sets_initial_quantity_correctly() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-INITIAL", "Initial Widget", 5, 7);
+
+        let connection = test_db.connection();
+        let (quantity, status) = query_item_quantity_and_status(&connection, &item_id);
+        assert_eq!(quantity, 7);
+        assert_eq!(status, "in_stock");
+
+        let movement = query_latest_movement(&connection, &item_id);
+        assert_eq!(movement.movement_type, "receive");
+        assert_eq!(movement.previous_quantity, 0);
+        assert_eq!(movement.new_quantity, 7);
+    }
+
+    #[test]
+    fn update_inventory_item_changes_fields_without_touching_quantity() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-UPDATE", "Original Widget", 2, 7);
+
+        test_db
+            .db
+            .update_inventory_item(UpdateInventoryItemInput {
+                item_id: item_id.clone(),
+                sku: "SKU-UPDATE".to_string(),
+                name: "Updated Widget".to_string(),
+                category: "Electrical".to_string(),
+                location: "Secondary Shelf".to_string(),
+                unit: "pcs".to_string(),
+                supplier: "Beta Supply".to_string(),
+                reorder_quantity: 4,
+            })
+            .expect("update inventory item");
+
+        let connection = test_db.connection();
+        let (quantity, _) = query_item_quantity_and_status(&connection, &item_id);
+        assert_eq!(quantity, 7);
+
+        let updated = test_db
+            .db
+            .load_snapshot()
+            .expect("load snapshot")
+            .items
+            .into_iter()
+            .find(|item| item.id == item_id)
+            .expect("find updated item");
+        assert_eq!(updated.name, "Updated Widget");
+        assert_eq!(updated.category, "Electrical");
+        assert_eq!(updated.location, "Secondary Shelf");
+        assert_eq!(updated.current_quantity, 7);
+        assert_eq!(updated.reorder_quantity, 4);
+    }
+
+    #[test]
+    fn update_inventory_item_enforces_case_insensitive_unique_sku() {
+        let test_db = setup_test_db();
+        create_item(&test_db, "SKU-PRIMARY", "Primary Widget", 2, 1);
+        let second_item_id = create_item(&test_db, "SKU-SECONDARY", "Secondary Widget", 2, 1);
+
+        let error = err_string(test_db.db.update_inventory_item(UpdateInventoryItemInput {
+            item_id: second_item_id,
+            sku: "sku-primary".to_string(),
+            name: "Secondary Widget".to_string(),
+            category: "Hardware".to_string(),
+            location: "Main Shelf".to_string(),
+            unit: "pcs".to_string(),
+            supplier: "ACME".to_string(),
+            reorder_quantity: 2,
+        }));
+
+        assert!(error.contains("SKU already exists"));
+    }
+
+    #[test]
+    fn remove_inventory_item_deletes_item_and_related_records() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-REMOVE", "Remove Widget", 10, 15);
+
+        test_db
+            .db
+            .issue_material(StockMutationInput {
+                item_id: item_id.clone(),
+                quantity: 10,
+                reason: "Create alert".to_string(),
+                performed_by: "Morgan".to_string(),
+            })
+            .expect("issue material to create movement and alert");
+
+        let connection = test_db.connection();
+        assert_eq!(count_rows(&connection, "inventory_movements", &item_id), 2);
+        assert_eq!(count_rows(&connection, "low_stock_alerts", &item_id), 1);
+        drop(connection);
+
+        test_db
+            .db
+            .remove_inventory_item(item_id.clone())
+            .expect("remove inventory item");
+
+        let connection = test_db.connection();
+        let item_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM inventory_items WHERE id = ?1",
+                params![item_id],
+                |row| row.get(0),
+            )
+            .expect("count items");
+        assert_eq!(item_count, 0);
+        assert_eq!(count_rows(&connection, "inventory_movements", &item_id), 0);
+        assert_eq!(count_rows(&connection, "low_stock_alerts", &item_id), 0);
+    }
+
+    #[test]
+    fn add_personnel_enforces_case_insensitive_name_uniqueness() {
+        let test_db = setup_test_db();
+
+        let snapshot = test_db
+            .db
+            .add_personnel(AddPersonnelInput {
+                name: "Jamie".to_string(),
+            })
+            .expect("add personnel");
+        assert_eq!(snapshot.personnel.len(), 1);
+        assert_eq!(snapshot.personnel[0].name, "Jamie");
+
+        let error = err_string(test_db.db.add_personnel(AddPersonnelInput {
+            name: "jamie".to_string(),
+        }));
+        assert!(error.contains("Personnel name already exists"));
+    }
+
+    #[test]
+    fn remove_personnel_deletes_record() {
+        let test_db = setup_test_db();
+
+        let snapshot = test_db
+            .db
+            .add_personnel(AddPersonnelInput {
+                name: "Robin".to_string(),
+            })
+            .expect("add personnel");
+        let personnel_id = snapshot.personnel[0].id.clone();
+
+        let snapshot = test_db
+            .db
+            .remove_personnel(personnel_id.clone())
+            .expect("remove personnel");
+        assert!(snapshot.personnel.is_empty());
+
+        let connection = test_db.connection();
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM personnel WHERE id = ?1",
+                params![personnel_id],
+                |row| row.get(0),
+            )
+            .expect("count personnel rows");
+        assert_eq!(count, 0);
+    }
+}
