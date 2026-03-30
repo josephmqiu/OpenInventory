@@ -32,11 +32,3 @@ export function readIssueRouteItemId(): string | null {
   const match = /^\/issue\/([^/]+)\/?$/i.exec(window.location.pathname);
   return match ? decodeURIComponent(match[1]) : null;
 }
-
-export function readIssueRouteAccessKey(): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  return new URLSearchParams(window.location.search).get("key")?.trim() ?? "";
-}

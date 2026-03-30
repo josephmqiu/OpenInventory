@@ -1092,10 +1092,9 @@ impl InventoryDb {
         let settings = self.load_lan_access_settings()?;
         if settings.enabled && !settings.primary_url.trim().is_empty() {
             return Ok(format!(
-                "{}/issue/{}?key={}",
+                "{}/issue/{}",
                 settings.primary_url.trim_end_matches('/'),
-                item_id,
-                settings.access_key
+                item_id
             ));
         }
 
@@ -1106,9 +1105,8 @@ impl InventoryDb {
         let settings = self.load_lan_access_settings()?;
         if settings.enabled && !settings.primary_url.trim().is_empty() {
             return Ok(format!(
-                "issue:{}:{}",
-                settings.primary_url.trim_end_matches('/'),
-                settings.access_key
+                "issue:{}",
+                settings.primary_url.trim_end_matches('/')
             ));
         }
 
@@ -1556,6 +1554,62 @@ mod tests {
         assert_eq!(movement.movement_type, "receive");
         assert_eq!(movement.previous_quantity, 0);
         assert_eq!(movement.new_quantity, 7);
+    }
+
+    #[test]
+    fn qr_payload_omits_access_key_when_lan_access_is_enabled() {
+        let test_db = setup_test_db();
+        let settings = LanAccessSettings {
+            enabled: true,
+            port: 4123,
+            access_key: "super-secret-key".to_string(),
+            primary_url: "http://192.168.1.20:4123".to_string(),
+        };
+
+        test_db
+            .db
+            .save_lan_access_settings(&settings)
+            .expect("save lan settings");
+
+        let payload = test_db
+            .db
+            .qr_payload_for_item("item-123", "SKU-123")
+            .expect("build qr payload");
+
+        assert_eq!(payload, "http://192.168.1.20:4123/issue/item-123");
+    }
+
+    #[test]
+    fn qr_payload_signature_does_not_change_when_access_key_rotates() {
+        let test_db = setup_test_db();
+        let mut settings = LanAccessSettings {
+            enabled: true,
+            port: 4123,
+            access_key: "first-key".to_string(),
+            primary_url: "http://192.168.1.20:4123".to_string(),
+        };
+
+        test_db
+            .db
+            .save_lan_access_settings(&settings)
+            .expect("save initial lan settings");
+        let initial_signature = test_db
+            .db
+            .qr_payload_signature()
+            .expect("build initial signature");
+
+        settings.access_key = "rotated-key".to_string();
+        test_db
+            .db
+            .save_lan_access_settings(&settings)
+            .expect("save rotated lan settings");
+        let rotated_signature = test_db
+            .db
+            .qr_payload_signature()
+            .expect("build rotated signature");
+
+        assert_eq!(initial_signature, rotated_signature);
+        assert_eq!(initial_signature, "issue:http://192.168.1.20:4123");
     }
 
     #[test]

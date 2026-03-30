@@ -17,6 +17,7 @@ function createFormState(lanAccess: LanAccessState): UpdateLanAccessInput {
 
 export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: LanAccessPanelProps) {
   const [form, setForm] = useState<UpdateLanAccessInput>(() => createFormState(lanAccess));
+  const [copyFeedback, setCopyFeedback] = useState<{ message: string; tone: "success" | "error" } | null>(null);
 
   useEffect(() => {
     setForm(createFormState(lanAccess));
@@ -26,6 +27,15 @@ export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: Lan
     () => JSON.stringify(form) !== JSON.stringify(createFormState(lanAccess)),
     [form, lanAccess],
   );
+
+  const handleCopyAccessKey = async () => {
+    try {
+      await navigator.clipboard.writeText(lanAccess.accessKey);
+      setCopyFeedback({ message: "Access key copied to clipboard.", tone: "success" });
+    } catch {
+      setCopyFeedback({ message: "Unable to copy the access key on this device.", tone: "error" });
+    }
+  };
 
   return (
     <section className="panel">
@@ -42,6 +52,7 @@ export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: Lan
       <div className="panel-banner panel-banner--info">
         Devices must be on the same local network and use the access key shown below.
       </div>
+      {copyFeedback && <div className={`feedback-banner feedback-banner--${copyFeedback.tone}`}>{copyFeedback.message}</div>}
 
       <div className="form-grid">
         <label>
@@ -66,7 +77,12 @@ export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: Lan
         </label>
         <label>
           <span>Access Key</span>
-          <input readOnly value={lanAccess.accessKey} />
+          <div className="row-actions row-actions--spread">
+            <input readOnly value={lanAccess.accessKey} />
+            <button className="button-secondary button-inline" disabled={busy} onClick={() => void handleCopyAccessKey()} type="button">
+              Copy
+            </button>
+          </div>
         </label>
       </div>
 

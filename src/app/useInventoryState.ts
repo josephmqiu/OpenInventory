@@ -12,7 +12,7 @@ import type {
   UpdateLanAccessInput,
 } from "../domain/models";
 import { dictionaries, type Dictionary } from "./i18n";
-import { detectRuntime, readIssueRouteAccessKey, readIssueRouteItemId, type Runtime } from "./runtime";
+import { detectRuntime, readIssueRouteItemId, type Runtime } from "./runtime";
 import {
   addPersonnel,
   clearLanAccessKey,
@@ -113,7 +113,6 @@ export function useInventoryState(): InventoryState {
   const runtime = detectRuntime();
   const desktopRuntime = runtime === "desktop";
   const issueRouteItemId = readIssueRouteItemId();
-  const issueRouteAccessKey = readIssueRouteAccessKey();
   const [language, setLanguage] = useState<Language>(() => readPersistedLanguage());
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [issueContext, setIssueContext] = useState<PublicIssueContext | null>(null);
@@ -129,11 +128,6 @@ export function useInventoryState(): InventoryState {
 
   useEffect(() => {
     let cancelled = false;
-
-    if (runtime !== "desktop" && issueRouteAccessKey) {
-      persistLanAccessKey(issueRouteAccessKey);
-      setAccessKeyInput(issueRouteAccessKey);
-    }
 
     setLoadError(null);
 
@@ -205,7 +199,7 @@ export function useInventoryState(): InventoryState {
     return () => {
       cancelled = true;
     };
-  }, [desktopRuntime, issueRouteAccessKey, issueRouteItemId, reloadKey, runtime]);
+  }, [desktopRuntime, issueRouteItemId, reloadKey, runtime]);
 
   useEffect(() => {
     if (!desktopRuntime || issueRouteItemId || busy) {
