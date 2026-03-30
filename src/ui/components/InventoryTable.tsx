@@ -1,21 +1,19 @@
-import type { Dictionary } from "../../app/i18n";
-import type { InventoryItem } from "../../domain/models";
+import { localizeCategory, localizeStockStatus, localizeUnit, type Dictionary } from "../../app/i18n";
+import type { InventoryItem, Language } from "../../domain/models";
 
 interface InventoryTableProps {
   busy: boolean;
   dictionary: Dictionary;
+  language: Language;
   items: InventoryItem[];
   onIssueMaterial: () => void;
   onReceiveStock: () => void;
 }
 
-function toLabel(value: string): string {
-  return value.split("_").join(" ");
-}
-
 export function InventoryTable({
   busy,
   dictionary,
+  language,
   items,
   onIssueMaterial,
   onReceiveStock,
@@ -61,13 +59,13 @@ export function InventoryTable({
                     <div className="cell-title">{item.name}</div>
                     <div className="cell-subtitle">{item.supplier}</div>
                   </td>
-                  <td>{item.category}</td>
+                  <td>{localizeCategory(item.category, language)}</td>
                   <td>{item.location}</td>
                   <td className="cell-strong">{item.currentQuantity}</td>
-                  <td>{item.unit}</td>
+                  <td>{localizeUnit(item.unit, language)}</td>
                   <td>{item.reorderQuantity}</td>
                   <td>
-                    <span className={`status-pill status-pill--${item.status}`}>{toLabel(item.status)}</span>
+                    <span className={`status-pill status-pill--${item.status}`}>{localizeStockStatus(item.status, language)}</span>
                   </td>
                   <td>{item.lastUpdated}</td>
                 </tr>

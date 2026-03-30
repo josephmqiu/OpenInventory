@@ -15,8 +15,17 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+axum = "0.7"
+base64 = "0.22"
+include_dir = "0.7"
+local-ip-address = "0.6"
+mime_guess = "2"
+png = "0.17"
+qrcodegen = "1.8"
+rand = "0.8"
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-notification = "2"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync"] }

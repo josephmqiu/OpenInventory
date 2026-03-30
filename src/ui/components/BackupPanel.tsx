@@ -1,21 +1,42 @@
-import type { Dictionary } from "../../app/i18n";
-import type { BackupPlan } from "../../domain/models";
+import { useEffect, useMemo, useState } from "react";
+import { localizeBackupTargetType, type Dictionary } from "../../app/i18n";
+import type { BackupPlan, BackupTargetType, Language, UpdateBackupPlanInput } from "../../domain/models";
 
 interface BackupPanelProps {
+  busy: boolean;
   dictionary: Dictionary;
+  language: Language;
   backupPlan: BackupPlan;
+  onSave: (input: UpdateBackupPlanInput) => Promise<void>;
 }
 
-function toLabel(value: string): string {
-  return value.split("_").join(" ");
-}
+const TARGET_TYPES: BackupTargetType[] = ["local_folder", "lan_share", "cloud_folder"];
 
 function displayValue(value: string, fallback: string): string {
   return value.trim().length > 0 ? value : fallback;
 }
 
-export function BackupPanel({ dictionary, backupPlan }: BackupPanelProps) {
-  const hasTargetPath = backupPlan.targetPath.trim().length > 0;
+function createFormState(backupPlan: BackupPlan): UpdateBackupPlanInput {
+  return {
+    targetPath: backupPlan.targetPath,
+    targetType: backupPlan.targetType,
+    schedule: backupPlan.schedule,
+    retention: backupPlan.retention,
+  };
+}
+
+export function BackupPanel({ busy, dictionary, language, backupPlan, onSave }: BackupPanelProps) {
+  const [form, setForm] = useState<UpdateBackupPlanInput>(() => createFormState(backupPlan));
+
+  useEffect(() => {
+    setForm(createFormState(backupPlan));
+  }, [backupPlan]);
+
+  const hasTargetPath = form.targetPath.trim().length > 0;
+  const hasChanges = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(createFormState(backupPlan)),
+    [backupPlan, form],
+  );
 
   return (
     <section className="panel">
@@ -29,23 +50,43 @@ export function BackupPanel({ dictionary, backupPlan }: BackupPanelProps) {
         </span>
       </div>
       {!hasTargetPath && <div className="panel-banner">{dictionary.backupNotConfigured}</div>}
+      <div className="form-grid">
+        <label>
+          <span>{dictionary.targetPath}</span>
+          <input
+            value={form.targetPath}
+            onChange={(event) => setForm({ ...form, targetPath: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>{dictionary.targetType}</span>
+          <select
+            value={form.targetType}
+            onChange={(event) => setForm({ ...form, targetType: event.target.value as BackupTargetType })}
+          >
+            {TARGET_TYPES.map((value) => (
+              <option key={value} value={value}>
+                {localizeBackupTargetType(value, language)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>{dictionary.schedule}</span>
+          <input
+            value={form.schedule}
+            onChange={(event) => setForm({ ...form, schedule: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>{dictionary.retention}</span>
+          <input
+            value={form.retention}
+            onChange={(event) => setForm({ ...form, retention: event.target.value })}
+          />
+        </label>
+      </div>
       <dl className="backup-grid">
-        <div>
-          <dt>{dictionary.targetPath}</dt>
-          <dd>{displayValue(backupPlan.targetPath, dictionary.notAvailable)}</dd>
-        </div>
-        <div>
-          <dt>{dictionary.targetType}</dt>
-          <dd>{hasTargetPath ? toLabel(backupPlan.targetType) : dictionary.notAvailable}</dd>
-        </div>
-        <div>
-          <dt>{dictionary.schedule}</dt>
-          <dd>{displayValue(backupPlan.schedule, dictionary.notAvailable)}</dd>
-        </div>
-        <div>
-          <dt>{dictionary.retention}</dt>
-          <dd>{displayValue(backupPlan.retention, dictionary.notAvailable)}</dd>
-        </div>
         <div>
           <dt>{dictionary.lastBackup}</dt>
           <dd>{displayValue(backupPlan.lastSuccessfulBackup, dictionary.notAvailable)}</dd>
@@ -55,6 +96,16 @@ export function BackupPanel({ dictionary, backupPlan }: BackupPanelProps) {
           <dd>{displayValue(backupPlan.nextScheduledBackup, dictionary.notAvailable)}</dd>
         </div>
       </dl>
+      <div className="action-panel__footer">
+        <button
+          className="button-secondary"
+          disabled={busy || !hasChanges}
+          onClick={() => void onSave(form)}
+          type="button"
+        >
+          {busy ? `${dictionary.save}...` : dictionary.save}
+        </button>
+      </div>
     </section>
   );
 }

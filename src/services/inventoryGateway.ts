@@ -1,13 +1,18 @@
 import type {
   AddPersonnelInput,
   AppSnapshot,
+  BackupStatus,
   CreateInventoryItemInput,
-  CreateRefillOrderInput,
   InventoryItem,
+  Language,
+  LanAccessState,
   PersonnelMember,
+  PublicIssueContext,
   StockMutationInput,
   StockStatus,
+  UpdateBackupPlanInput,
   UpdateInventoryItemInput,
+  UpdateLanAccessInput,
 } from "../domain/models";
 
 declare global {
@@ -18,13 +23,113 @@ declare global {
   }
 }
 
+const LANGUAGE_STORAGE_KEY = "inventory-monitor.language";
+const LAN_ACCESS_KEY_STORAGE_KEY = "inventory-monitor.lan-access-key";
+
+export class GatewayError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "GatewayError";
+    this.status = status;
+  }
+}
+
+function isLanguage(value: string | null | undefined): value is Language {
+  return value === "en" || value === "zh-CN";
+}
+
+function getTauriInvoke() {
+  return window.__TAURI_INTERNALS__?.invoke;
+}
+
+export function isDesktopRuntime(): boolean {
+  return typeof window !== "undefined" && typeof getTauriInvoke() === "function";
+}
+
+export function isBrowserRuntime(): boolean {
+  return typeof window !== "undefined" && !isDesktopRuntime();
+}
+
+function isHttpRuntime(): boolean {
+  return isBrowserRuntime() && window.location.protocol.startsWith("http");
+}
+
+export function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof GatewayError && error.status === 401;
+}
+
+export function readPersistedLanguage(): Language {
+  if (typeof window === "undefined") {
+    return "en";
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    return isLanguage(storedValue) ? storedValue : "en";
+  } catch {
+    return "en";
+  }
+}
+
+export function readPersistedLanAccessKey(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  try {
+    return window.localStorage.getItem(LAN_ACCESS_KEY_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function persistLanAccessKey(accessKey: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(LAN_ACCESS_KEY_STORAGE_KEY, accessKey);
+  } catch {
+    // Ignore storage errors in browser mode.
+  }
+}
+
+export function clearLanAccessKey(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(LAN_ACCESS_KEY_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors in browser mode.
+  }
+}
+
 let browserSnapshot = emptySnapshot();
+
+function persistLanguageLocally(language: Language): void {
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+    } catch {
+      // Ignore storage write failures and keep the in-memory value instead.
+    }
+  }
+
+  browserSnapshot = {
+    ...browserSnapshot,
+    language,
+  };
+}
 
 function emptySnapshot(): AppSnapshot {
   return {
     items: [],
     alerts: [],
-    refillOrders: [],
     personnel: [],
     backupPlan: {
       targetPath: "",
@@ -35,6 +140,7 @@ function emptySnapshot(): AppSnapshot {
       nextScheduledBackup: "",
       status: "warning",
     },
+    language: readPersistedLanguage(),
   };
 }
 
@@ -63,6 +169,10 @@ function computeStockStatus(currentQuantity: number, reorderQuantity: number): S
     return "low_stock";
   }
   return "in_stock";
+}
+
+function computeBackupStatus(targetPath: string): BackupStatus {
+  return targetPath.trim().length > 0 ? "healthy" : "warning";
 }
 
 function syncAlerts(item: InventoryItem): void {
@@ -112,6 +222,7 @@ function applyCreateInventoryItem(input: CreateInventoryItemInput): AppSnapshot 
   const item: InventoryItem = {
     id: createId("item"),
     sku,
+    qrCodeDataUrl: "",
     name: input.name.trim(),
     category: input.category.trim(),
     location: input.location.trim(),
@@ -151,15 +262,6 @@ function applyUpdateInventoryItem(input: UpdateInventoryItemInput): AppSnapshot 
   item.reorderQuantity = input.reorderQuantity;
   item.status = computeStockStatus(item.currentQuantity, item.reorderQuantity);
   item.lastUpdated = nowStamp();
-
-  browserSnapshot.refillOrders.forEach((order) => {
-    order.lines.forEach((line) => {
-      if (line.sku === previousSku) {
-        line.sku = item.sku;
-        line.itemName = item.name;
-      }
-    });
-  });
 
   browserSnapshot.alerts.forEach((alert) => {
     if (alert.sku === previousSku) {
@@ -208,38 +310,21 @@ function applyIssueMaterial(input: StockMutationInput): AppSnapshot {
   return browserSnapshot;
 }
 
-function applyCreateRefillOrder(input: CreateRefillOrderInput): AppSnapshot {
-  const item = getItemOrThrow(input.itemId);
-  if (browserSnapshot.refillOrders.some((order) => order.orderNumber.toLowerCase() === input.orderNumber.trim().toLowerCase())) {
-    throw new Error("Order number already exists.");
-  }
-
-  const order = {
-    id: createId("order"),
-    orderNumber: input.orderNumber.trim(),
-    supplier: input.supplier.trim(),
-    orderDate: input.orderDate,
-    expectedDeliveryDate: input.expectedDeliveryDate,
-    receivedDate: undefined,
-    status: "ordered" as const,
-    totalAmount: input.orderedQuantity * input.unitCost,
-    createdBy: input.createdBy.trim(),
-    lines: [
-      {
-        id: createId("line"),
-        itemName: item.name,
-        sku: item.sku,
-        orderedQuantity: input.orderedQuantity,
-        receivedQuantity: 0,
-        unitCost: input.unitCost,
-      },
-    ],
-  };
+function applyUpdateBackupPlan(input: UpdateBackupPlanInput): AppSnapshot {
+  const targetPath = input.targetPath.trim();
 
   browserSnapshot = {
     ...browserSnapshot,
-    refillOrders: [order, ...browserSnapshot.refillOrders],
+    backupPlan: {
+      ...browserSnapshot.backupPlan,
+      targetPath,
+      targetType: input.targetType,
+      schedule: input.schedule.trim(),
+      retention: input.retention.trim(),
+      status: computeBackupStatus(targetPath),
+    },
   };
+
   return browserSnapshot;
 }
 
@@ -250,9 +335,6 @@ function applyRemoveInventoryItem(itemId: string): AppSnapshot {
     ...browserSnapshot,
     items: browserSnapshot.items.filter((entry) => entry.id !== itemId),
     alerts: browserSnapshot.alerts.filter((alert) => alert.sku !== item.sku),
-    refillOrders: browserSnapshot.refillOrders.filter(
-      (order) => !order.lines.some((line) => line.sku === item.sku),
-    ),
   };
 
   return browserSnapshot;
@@ -290,52 +372,210 @@ function applyRemovePersonnel(personnelId: string): AppSnapshot {
 }
 
 async function invokeOrFallback<T>(command: string, args: Record<string, unknown>, fallback: () => T): Promise<T> {
-  const tauriInvoke = window.__TAURI_INTERNALS__?.invoke;
+  const tauriInvoke = getTauriInvoke();
   if (!tauriInvoke) {
     return fallback();
   }
   return tauriInvoke<T>(command, args);
 }
 
-export async function loadAppSnapshot(): Promise<AppSnapshot> {
-  const tauriInvoke = window.__TAURI_INTERNALS__?.invoke;
+async function fetchJson<T>(path: string, init?: RequestInit, includeAccessKey = true): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
 
-  if (!tauriInvoke) {
-    return browserSnapshot;
+  if (includeAccessKey) {
+    const accessKey = readPersistedLanAccessKey().trim();
+    if (accessKey) {
+      headers.set("x-inventory-key", accessKey);
+    }
   }
 
-  return tauriInvoke<AppSnapshot>("load_app_snapshot");
+  const response = await fetch(path, {
+    ...init,
+    headers,
+  });
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}.`;
+    try {
+      const errorBody = (await response.json()) as { message?: string };
+      if (typeof errorBody.message === "string" && errorBody.message.trim()) {
+        message = errorBody.message;
+      }
+    } catch {
+      // Ignore JSON parse errors and keep the default message.
+    }
+    throw new GatewayError(message, response.status);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return (await response.json()) as T;
+}
+
+function supportsHttpApi(): boolean {
+  return isHttpRuntime();
+}
+
+export async function loadAppSnapshot(): Promise<AppSnapshot> {
+  const tauriInvoke = getTauriInvoke();
+
+  if (tauriInvoke) {
+    const snapshot = await tauriInvoke<AppSnapshot>("load_app_snapshot");
+    persistLanguageLocally(snapshot.language);
+    return snapshot;
+  }
+
+  if (supportsHttpApi()) {
+    const snapshot = await fetchJson<AppSnapshot>("/api/snapshot", { method: "GET" });
+    persistLanguageLocally(snapshot.language);
+    return snapshot;
+  }
+
+  return {
+    ...browserSnapshot,
+    language: readPersistedLanguage(),
+  };
+}
+
+export async function loadPublicIssueContext(itemId: string): Promise<PublicIssueContext> {
+  if (!supportsHttpApi()) {
+    throw new GatewayError("Public issue pages are only available through LAN browser access.");
+  }
+
+  return fetchJson<PublicIssueContext>(`/public/items/${encodeURIComponent(itemId)}/context`, { method: "GET" }, false);
+}
+
+export async function loadLanAccessState(): Promise<LanAccessState> {
+  const tauriInvoke = getTauriInvoke();
+  if (!tauriInvoke) {
+    throw new GatewayError("LAN access can only be managed from the desktop app.");
+  }
+  return tauriInvoke<LanAccessState>("load_lan_access_state");
+}
+
+export async function updateLanAccess(input: UpdateLanAccessInput): Promise<LanAccessState> {
+  const tauriInvoke = getTauriInvoke();
+  if (!tauriInvoke) {
+    throw new GatewayError("LAN access can only be managed from the desktop app.");
+  }
+  return tauriInvoke<LanAccessState>("update_lan_access", { input });
+}
+
+export async function regenerateLanAccessKey(): Promise<LanAccessState> {
+  const tauriInvoke = getTauriInvoke();
+  if (!tauriInvoke) {
+    throw new GatewayError("LAN access can only be managed from the desktop app.");
+  }
+  return tauriInvoke<LanAccessState>("regenerate_lan_access_key");
 }
 
 export async function createInventoryItem(input: CreateInventoryItemInput): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>("/api/items", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
   return invokeOrFallback("create_inventory_item", { input }, () => applyCreateInventoryItem(input));
 }
 
 export async function updateInventoryItem(input: UpdateInventoryItemInput): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>(`/api/items/${encodeURIComponent(input.itemId)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  }
   return invokeOrFallback("update_inventory_item", { input }, () => applyUpdateInventoryItem(input));
 }
 
 export async function receiveStock(input: StockMutationInput): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>(`/api/items/${encodeURIComponent(input.itemId)}/receive`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
   return invokeOrFallback("receive_stock", { input }, () => applyReceiveStock(input));
 }
 
 export async function issueMaterial(input: StockMutationInput): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>(`/api/items/${encodeURIComponent(input.itemId)}/issue`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
   return invokeOrFallback("issue_material", { input }, () => applyIssueMaterial(input));
 }
 
-export async function createRefillOrder(input: CreateRefillOrderInput): Promise<AppSnapshot> {
-  return invokeOrFallback("create_refill_order", { input }, () => applyCreateRefillOrder(input));
+export async function issueMaterialPublic(input: StockMutationInput): Promise<PublicIssueContext> {
+  if (!supportsHttpApi()) {
+    throw new GatewayError("Public issue pages are only available through LAN browser access.");
+  }
+
+  return fetchJson<PublicIssueContext>(`/public/items/${encodeURIComponent(input.itemId)}/issue`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, false);
+}
+
+export async function updateBackupPlan(input: UpdateBackupPlanInput): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>("/api/backup-plan", {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  }
+  return invokeOrFallback("update_backup_plan", { input }, () => applyUpdateBackupPlan(input));
 }
 
 export async function removeInventoryItem(itemId: string): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>(`/api/items/${encodeURIComponent(itemId)}`, {
+      method: "DELETE",
+    });
+  }
   return invokeOrFallback("remove_inventory_item", { itemId }, () => applyRemoveInventoryItem(itemId));
 }
 
 export async function addPersonnel(input: AddPersonnelInput): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>("/api/personnel", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
   return invokeOrFallback("add_personnel", { input }, () => applyAddPersonnel(input));
 }
 
 export async function removePersonnel(personnelId: string): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>(`/api/personnel/${encodeURIComponent(personnelId)}`, {
+      method: "DELETE",
+    });
+  }
   return invokeOrFallback("remove_personnel", { personnelId }, () => applyRemovePersonnel(personnelId));
 }
+
+export async function updateAppLanguage(language: Language): Promise<void> {
+  persistLanguageLocally(language);
+
+  const tauriInvoke = getTauriInvoke();
+  if (tauriInvoke) {
+    await tauriInvoke<void>("update_app_language", { language });
+    return;
+  }
+
+  if (supportsHttpApi()) {
+    await fetchJson<void>("/api/language", {
+      method: "PUT",
+      body: JSON.stringify({ language }),
+    });
+  }
+}
+
 

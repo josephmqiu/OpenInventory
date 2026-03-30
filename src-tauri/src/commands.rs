@@ -4,15 +4,16 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::application::inventory_service;
 use crate::domain::models::{
-    AddPersonnelInput, AppSnapshot, CreateInventoryItemInput, CreateRefillOrderInput,
-    StockMutationInput, UpdateInventoryItemInput,
+    AddPersonnelInput, AppSnapshot, CreateInventoryItemInput, LanAccessState, Language,
+    StockMutationInput, UpdateBackupPlanInput, UpdateInventoryItemInput, UpdateLanAccessInput,
 };
 use crate::infrastructure::db::{InventoryDb, LowStockNotification};
+use crate::infrastructure::lan::LanServerController;
 
 #[derive(Serialize)]
 pub struct AppHealth {
-    status: &'static str,
-    storage: &'static str,
+    pub status: &'static str,
+    pub storage: &'static str,
 }
 
 #[tauri::command]
@@ -26,6 +27,26 @@ pub fn app_health() -> AppHealth {
 #[tauri::command]
 pub fn load_app_snapshot(db: State<'_, InventoryDb>) -> Result<AppSnapshot, String> {
     inventory_service::load_snapshot(db.inner())
+}
+
+#[tauri::command]
+pub fn load_lan_access_state(lan: State<'_, LanServerController>) -> Result<LanAccessState, String> {
+    lan.load_state()
+}
+
+#[tauri::command]
+pub fn update_lan_access(
+    input: UpdateLanAccessInput,
+    lan: State<'_, LanServerController>,
+) -> Result<LanAccessState, String> {
+    lan.update_settings(input)
+}
+
+#[tauri::command]
+pub fn regenerate_lan_access_key(
+    lan: State<'_, LanServerController>,
+) -> Result<LanAccessState, String> {
+    lan.regenerate_access_key()
 }
 
 #[tauri::command]
@@ -73,11 +94,16 @@ pub fn issue_material(
 }
 
 #[tauri::command]
-pub fn create_refill_order(
-    input: CreateRefillOrderInput,
+pub fn update_backup_plan(
+    input: UpdateBackupPlanInput,
     db: State<'_, InventoryDb>,
 ) -> Result<AppSnapshot, String> {
-    inventory_service::create_refill_order(db.inner(), input)
+    inventory_service::update_backup_plan(db.inner(), input)
+}
+
+#[tauri::command]
+pub fn update_app_language(language: Language, db: State<'_, InventoryDb>) -> Result<(), String> {
+    inventory_service::update_language(db.inner(), language)
 }
 
 #[tauri::command]

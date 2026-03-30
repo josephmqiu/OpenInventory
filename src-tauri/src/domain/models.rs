@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Serialize, Deserialize)]
+pub enum Language {
+    #[serde(rename = "en")]
+    En,
+    #[serde(rename = "zh-CN")]
+    ZhCn,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StockStatus {
@@ -17,20 +25,11 @@ pub enum AlertStatus {
 }
 
 #[derive(Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RefillOrderStatus {
-    Draft,
-    Ordered,
-    PartiallyReceived,
-    Received,
-    Cancelled,
-}
-
-#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InventoryItem {
     pub id: String,
     pub sku: String,
+    pub qr_code_data_url: String,
     pub name: String,
     pub category: String,
     pub location: String,
@@ -57,38 +56,12 @@ pub struct InventoryAlert {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RefillOrderLine {
-    pub id: String,
-    pub item_name: String,
-    pub sku: String,
-    pub ordered_quantity: i64,
-    pub received_quantity: i64,
-    pub unit_cost: f64,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RefillOrder {
-    pub id: String,
-    pub order_number: String,
-    pub supplier: String,
-    pub order_date: String,
-    pub expected_delivery_date: String,
-    pub received_date: Option<String>,
-    pub status: RefillOrderStatus,
-    pub total_amount: f64,
-    pub created_by: String,
-    pub lines: Vec<RefillOrderLine>,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PersonnelMember {
     pub id: String,
     pub name: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BackupTargetType {
     LocalFolder,
@@ -120,9 +93,45 @@ pub struct BackupPlan {
 pub struct AppSnapshot {
     pub items: Vec<InventoryItem>,
     pub alerts: Vec<InventoryAlert>,
-    pub refill_orders: Vec<RefillOrder>,
     pub personnel: Vec<PersonnelMember>,
     pub backup_plan: BackupPlan,
+    pub language: Language,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicIssueContext {
+    pub item: InventoryItem,
+    pub personnel: Vec<PersonnelMember>,
+    pub language: Language,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LanAccessStatus {
+    Running,
+    Stopped,
+    Error,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanAccessState {
+    pub enabled: bool,
+    pub port: u16,
+    pub access_key: String,
+    pub urls: Vec<String>,
+    pub status: LanAccessStatus,
+    pub status_message: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateBackupPlanInput {
+    pub target_path: String,
+    pub target_type: BackupTargetType,
+    pub schedule: String,
+    pub retention: String,
 }
 
 #[derive(Deserialize)]
@@ -162,19 +171,14 @@ pub struct StockMutationInput {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateRefillOrderInput {
-    pub order_number: String,
-    pub supplier: String,
-    pub item_id: String,
-    pub order_date: String,
-    pub expected_delivery_date: String,
-    pub created_by: String,
-    pub ordered_quantity: i64,
-    pub unit_cost: f64,
+pub struct AddPersonnelInput {
+    pub name: String,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AddPersonnelInput {
-    pub name: String,
+pub struct UpdateLanAccessInput {
+    pub enabled: bool,
+    pub port: u16,
 }
+

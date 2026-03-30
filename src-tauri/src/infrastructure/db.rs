@@ -1,6 +1,5 @@
-use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -8,14 +7,14 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
 use crate::domain::models::{
     AddPersonnelInput, AlertStatus, AppSnapshot, BackupPlan, BackupStatus, BackupTargetType,
-    CreateInventoryItemInput, CreateRefillOrderInput, InventoryAlert, InventoryItem, PersonnelMember,
-    RefillOrder, RefillOrderLine, RefillOrderStatus, StockMutationInput, StockStatus,
-    UpdateInventoryItemInput,
+    CreateInventoryItemInput, InventoryAlert, InventoryItem, Language, PersonnelMember,
+    StockMutationInput, StockStatus, UpdateBackupPlanInput, UpdateInventoryItemInput,
 };
-use crate::infrastructure::schema;
+use crate::infrastructure::{qr, schema};
 
 static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Clone)]
 pub struct InventoryDb {
     path: PathBuf,
 }
@@ -31,11 +30,18 @@ pub struct MutationResult {
     pub snapshot: AppSnapshot,
     pub low_stock_notification: Option<LowStockNotification>,
 }
+pub struct LanAccessSettings {
+    pub enabled: bool,
+    pub port: u16,
+    pub access_key: String,
+    pub primary_url: String,
+}
 
 struct ItemRecord {
     id: String,
     sku: String,
     name: String,
+    barcode: Option<String>,
     current_quantity: i64,
     reorder_quantity: i64,
 }
@@ -50,15 +56,22 @@ impl InventoryDb {
             fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
 
+        fs::create_dir_all(self.qr_code_dir()).map_err(|error| error.to_string())?;
+
         let connection = self.open_connection()?;
         connection
             .execute_batch(schema::schema_sql())
             .map_err(|error| error.to_string())?;
 
-        Ok(())
+        self.ensure_qr_assets()
+    }
+
+    pub fn refresh_qr_assets(&self) -> Result<(), String> {
+        self.ensure_qr_assets()
     }
 
     pub fn load_snapshot(&self) -> Result<AppSnapshot, String> {
+        self.ensure_qr_assets()?;
         let connection = self.open_connection()?;
 
         let mut items_statement = connection
@@ -76,7 +89,8 @@ impl InventoryDb {
                     i.min_quantity,
                     i.reorder_quantity,
                     i.status,
-                    i.updated_at
+                    i.updated_at,
+                    COALESCE(i.barcode, '')
                 FROM inventory_items i
                 LEFT JOIN locations l ON l.id = i.location_id
                 LEFT JOIN suppliers s ON s.id = i.supplier_id
@@ -89,9 +103,11 @@ impl InventoryDb {
             .query_map([], |row| {
                 let current_quantity: i64 = row.get(7)?;
                 let reorder_quantity: i64 = row.get(9)?;
+                let barcode_path: String = row.get(12)?;
                 Ok(InventoryItem {
                     id: row.get(0)?,
                     sku: row.get(1)?,
+                    qr_code_data_url: barcode_path_to_data_url(&barcode_path).unwrap_or_default(),
                     name: row.get(2)?,
                     category: row.get(3)?,
                     location: row.get(4)?,
@@ -142,88 +158,6 @@ impl InventoryDb {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| error.to_string())?;
 
-        let mut lines_statement = connection
-            .prepare(
-                r#"
-                SELECT
-                    rol.id,
-                    rol.refill_order_id,
-                    i.name,
-                    i.sku,
-                    rol.ordered_quantity,
-                    rol.received_quantity,
-                    rol.unit_cost
-                FROM refill_order_lines rol
-                INNER JOIN inventory_items i ON i.id = rol.item_id
-                ORDER BY rol.refill_order_id, rol.id
-                "#,
-            )
-            .map_err(|error| error.to_string())?;
-
-        let line_rows = lines_statement
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(1)?,
-                    RefillOrderLine {
-                        id: row.get(0)?,
-                        item_name: row.get(2)?,
-                        sku: row.get(3)?,
-                        ordered_quantity: row.get(4)?,
-                        received_quantity: row.get(5)?,
-                        unit_cost: row.get(6)?,
-                    },
-                ))
-            })
-            .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
-
-        let mut lines_by_order: HashMap<String, Vec<RefillOrderLine>> = HashMap::new();
-        for (order_id, line) in line_rows {
-            lines_by_order.entry(order_id).or_default().push(line);
-        }
-
-        let mut orders_statement = connection
-            .prepare(
-                r#"
-                SELECT
-                    ro.id,
-                    ro.order_no,
-                    s.name,
-                    ro.order_date,
-                    COALESCE(ro.expected_delivery_date, ''),
-                    ro.received_date,
-                    ro.status,
-                    ro.total_amount,
-                    COALESCE(ro.created_by, '')
-                FROM refill_orders ro
-                INNER JOIN suppliers s ON s.id = ro.supplier_id
-                ORDER BY ro.order_date DESC, ro.order_no DESC
-                "#,
-            )
-            .map_err(|error| error.to_string())?;
-
-        let refill_orders = orders_statement
-            .query_map([], |row| {
-                let id: String = row.get(0)?;
-                let lines = lines_by_order.remove(&id).unwrap_or_default();
-                Ok(RefillOrder {
-                    id,
-                    order_number: row.get(1)?,
-                    supplier: row.get(2)?,
-                    order_date: row.get(3)?,
-                    expected_delivery_date: row.get(4)?,
-                    received_date: row.get(5)?,
-                    status: parse_refill_order_status(&row.get::<_, String>(6)?),
-                    total_amount: row.get(7)?,
-                    created_by: row.get(8)?,
-                    lines,
-                })
-            })
-            .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
-
         let mut personnel_statement = connection
             .prepare(
                 r#"
@@ -252,11 +186,11 @@ impl InventoryDb {
         let last_successful_backup = read_setting(&connection, "backup.last_successful").map_err(|error| error.to_string())?;
         let next_scheduled_backup = read_setting(&connection, "backup.next_scheduled").map_err(|error| error.to_string())?;
         let backup_status = read_setting(&connection, "backup.status").map_err(|error| error.to_string())?;
+        let language = read_setting(&connection, "app.language").map_err(|error| error.to_string())?;
 
         Ok(AppSnapshot {
             items,
             alerts,
-            refill_orders,
             personnel,
             backup_plan: BackupPlan {
                 target_path: target_path.unwrap_or_default(),
@@ -273,6 +207,10 @@ impl InventoryDb {
                     .map(parse_backup_status)
                     .unwrap_or(BackupStatus::Warning),
             },
+            language: language
+                .as_deref()
+                .map(parse_language)
+                .unwrap_or(Language::En),
         })
     }
 
@@ -295,20 +233,23 @@ impl InventoryDb {
         let supplier_id = ensure_supplier(&transaction, supplier).map_err(|error| error.to_string())?;
         let location_id = ensure_location(&transaction, location).map_err(|error| error.to_string())?;
         let item_id = generate_id("item");
+        let qr_path = self.qr_code_path(&item_id);
+        let qr_path_value = path_to_db_value(&qr_path);
         let status = stock_status_key(input.initial_quantity, input.reorder_quantity);
 
         transaction
             .execute(
                 r#"
                 INSERT INTO inventory_items (
-                    id, sku, name, category, location_id, supplier_id,
+                    id, sku, barcode, name, category, location_id, supplier_id,
                     unit_of_measure, min_quantity, reorder_quantity,
                     current_quantity, status, created_at, updated_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, datetime('now', 'localtime'), datetime('now', 'localtime'))
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, datetime('now', 'localtime'), datetime('now', 'localtime'))
                 "#,
                 params![
                     item_id,
                     sku,
+                    qr_path_value,
                     name,
                     category,
                     location_id,
@@ -321,6 +262,9 @@ impl InventoryDb {
                 ],
             )
             .map_err(|error| error.to_string())?;
+
+        let qr_payload = self.qr_payload_for_item(&item_id, &sku)?;
+        write_item_qr_png(&qr_path, &qr_payload)?;
 
         if input.initial_quantity > 0 {
             insert_movement(
@@ -372,24 +316,29 @@ impl InventoryDb {
         let supplier_id = ensure_supplier(&transaction, supplier).map_err(|error| error.to_string())?;
         let location_id = ensure_location(&transaction, location).map_err(|error| error.to_string())?;
         let status = stock_status_key(item.current_quantity, input.reorder_quantity);
+        let expected_qr_path = self.qr_code_path(&input.item_id);
+        let expected_qr_value = path_to_db_value(&expected_qr_path);
+        let qr_needs_refresh = sku != item.sku || item.barcode.as_deref() != Some(expected_qr_value.as_str()) || !expected_qr_path.exists();
 
         transaction
             .execute(
                 r#"
                 UPDATE inventory_items
                 SET sku = ?1,
-                    name = ?2,
-                    category = ?3,
-                    location_id = ?4,
-                    supplier_id = ?5,
-                    unit_of_measure = ?6,
-                    reorder_quantity = ?7,
-                    status = ?8,
+                    barcode = ?2,
+                    name = ?3,
+                    category = ?4,
+                    location_id = ?5,
+                    supplier_id = ?6,
+                    unit_of_measure = ?7,
+                    reorder_quantity = ?8,
+                    status = ?9,
                     updated_at = datetime('now', 'localtime')
-                WHERE id = ?9
+                WHERE id = ?10
                 "#,
                 params![
                     sku,
+                    expected_qr_value,
                     name,
                     category,
                     location_id,
@@ -402,9 +351,20 @@ impl InventoryDb {
             )
             .map_err(|error| error.to_string())?;
 
+        if qr_needs_refresh {
+            let qr_payload = self.qr_payload_for_item(&input.item_id, &sku)?;
+            write_item_qr_png(&expected_qr_path, &qr_payload)?;
+        }
+
         let alert_created = sync_low_stock_alert(&transaction, &input.item_id, input.reorder_quantity, item.current_quantity)
             .map_err(|error| error.to_string())?;
         transaction.commit().map_err(|error| error.to_string())?;
+
+        if let Some(previous_path) = item.barcode.clone() {
+            if previous_path != expected_qr_value {
+                delete_file_if_exists(Path::new(&previous_path))?;
+            }
+        }
 
         Ok(MutationResult {
             snapshot: self.load_snapshot()?,
@@ -521,66 +481,34 @@ impl InventoryDb {
         })
     }
 
-    pub fn create_refill_order(&self, input: CreateRefillOrderInput) -> Result<AppSnapshot, String> {
-        let order_number = require_text(&input.order_number, "Order number")?;
-        let supplier_name = require_text(&input.supplier, "Supplier")?;
-        let order_date = require_text(&input.order_date, "Order date")?;
-        if input.ordered_quantity <= 0 {
-            return Err("Ordered quantity must be greater than zero.".into());
-        }
-        if input.unit_cost < 0.0 {
-            return Err("Unit cost must be zero or greater.".into());
-        }
+    pub fn update_backup_plan(&self, input: UpdateBackupPlanInput) -> Result<AppSnapshot, String> {
+        let target_path = input.target_path.trim();
+        let schedule = input.schedule.trim();
+        let retention = input.retention.trim();
+        let status = backup_status_key(target_path);
 
         let mut connection = self.open_connection()?;
         let transaction = connection.transaction().map_err(|error| error.to_string())?;
-        let item = get_item_record(&transaction, &input.item_id).map_err(|error| error.to_string())?;
 
-        let existing: Option<String> = transaction
-            .query_row(
-                "SELECT id FROM refill_orders WHERE lower(order_no) = lower(?1)",
-                params![order_number],
-                |row| row.get(0),
-            )
-            .optional()
+        write_setting(&transaction, "backup.target_path", target_path).map_err(|error| error.to_string())?;
+        write_setting(&transaction, "backup.target_type", backup_target_type_key(&input.target_type))
             .map_err(|error| error.to_string())?;
-        if existing.is_some() {
-            return Err("Order number already exists.".into());
-        }
-
-        let supplier_id = ensure_supplier(&transaction, supplier_name).map_err(|error| error.to_string())?;
-        let order_id = generate_id("order");
-        let line_id = generate_id("line");
-        let total_amount = input.ordered_quantity as f64 * input.unit_cost;
-        let expected_delivery = optional_text(&input.expected_delivery_date);
-        let created_by = optional_text(&input.created_by);
-
-        transaction
-            .execute(
-                r#"
-                INSERT INTO refill_orders (
-                    id, order_no, supplier_id, order_date, expected_delivery_date,
-                    status, total_amount, created_by, created_at, updated_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, 'ordered', ?6, ?7, datetime('now', 'localtime'), datetime('now', 'localtime'))
-                "#,
-                params![order_id, order_number, supplier_id, order_date, expected_delivery, total_amount, created_by],
-            )
-            .map_err(|error| error.to_string())?;
-
-        transaction
-            .execute(
-                r#"
-                INSERT INTO refill_order_lines (
-                    id, refill_order_id, item_id, ordered_quantity,
-                    received_quantity, unit_cost, line_total
-                ) VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6)
-                "#,
-                params![line_id, order_id, item.id, input.ordered_quantity, input.unit_cost, total_amount],
-            )
-            .map_err(|error| error.to_string())?;
+        write_setting(&transaction, "backup.schedule", schedule).map_err(|error| error.to_string())?;
+        write_setting(&transaction, "backup.retention", retention).map_err(|error| error.to_string())?;
+        write_setting(&transaction, "backup.status", status).map_err(|error| error.to_string())?;
 
         transaction.commit().map_err(|error| error.to_string())?;
         self.load_snapshot()
+    }
+
+    pub fn update_language(&self, language: Language) -> Result<(), String> {
+        let mut connection = self.open_connection()?;
+        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+
+        write_setting(&transaction, "app.language", language_key(&language)).map_err(|error| error.to_string())?;
+
+        transaction.commit().map_err(|error| error.to_string())?;
+        Ok(())
     }
 
     pub fn remove_inventory_item(&self, item_id: String) -> Result<AppSnapshot, String> {
@@ -588,15 +516,9 @@ impl InventoryDb {
         let transaction = connection.transaction().map_err(|error| error.to_string())?;
         let item = get_item_record(&transaction, &item_id).map_err(|error| error.to_string())?;
 
-        let mut orders_statement = transaction
-            .prepare("SELECT DISTINCT refill_order_id FROM refill_order_lines WHERE item_id = ?1")
-            .map_err(|error| error.to_string())?;
-        let affected_orders = orders_statement
-            .query_map(params![item.id.clone()], |row| row.get::<_, String>(0))
-            .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
-        drop(orders_statement);
+        if let Some(barcode_path) = item.barcode.as_deref() {
+            delete_file_if_exists(Path::new(barcode_path))?;
+        }
 
         transaction
             .execute("DELETE FROM low_stock_alerts WHERE item_id = ?1", params![item.id.clone()])
@@ -604,26 +526,6 @@ impl InventoryDb {
         transaction
             .execute("DELETE FROM inventory_movements WHERE item_id = ?1", params![item.id.clone()])
             .map_err(|error| error.to_string())?;
-        transaction
-            .execute("DELETE FROM refill_order_lines WHERE item_id = ?1", params![item.id.clone()])
-            .map_err(|error| error.to_string())?;
-
-        for order_id in affected_orders {
-            let remaining_lines: i64 = transaction
-                .query_row(
-                    "SELECT COUNT(*) FROM refill_order_lines WHERE refill_order_id = ?1",
-                    params![order_id.clone()],
-                    |row| row.get(0),
-                )
-                .map_err(|error| error.to_string())?;
-
-            if remaining_lines == 0 {
-                transaction
-                    .execute("DELETE FROM refill_orders WHERE id = ?1", params![order_id])
-                    .map_err(|error| error.to_string())?;
-            }
-        }
-
         transaction
             .execute("DELETE FROM inventory_items WHERE id = ?1", params![item.id])
             .map_err(|error| error.to_string())?;
@@ -676,12 +578,113 @@ impl InventoryDb {
         self.load_snapshot()
     }
 
+    pub fn load_lan_access_settings(&self) -> Result<LanAccessSettings, String> {
+        let connection = self.open_connection()?;
+        let enabled = read_setting(&connection, "lan.enabled").map_err(|error| error.to_string())?;
+        let port = read_setting(&connection, "lan.port").map_err(|error| error.to_string())?;
+        let access_key = read_setting(&connection, "lan.access_key").map_err(|error| error.to_string())?;
+        let primary_url = read_setting(&connection, "lan.primary_url").map_err(|error| error.to_string())?;
+
+        Ok(LanAccessSettings {
+            enabled: matches!(enabled.as_deref(), Some("true")),
+            port: port
+                .as_deref()
+                .and_then(|value| value.parse::<u16>().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(4123),
+            access_key: access_key.unwrap_or_default(),
+            primary_url: primary_url.unwrap_or_default(),
+        })
+    }
+
+    pub fn save_lan_access_settings(&self, settings: &LanAccessSettings) -> Result<(), String> {
+        let mut connection = self.open_connection()?;
+        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+
+        write_setting(
+            &transaction,
+            "lan.enabled",
+            if settings.enabled { "true" } else { "false" },
+        )
+        .map_err(|error| error.to_string())?;
+        write_setting(&transaction, "lan.port", &settings.port.to_string())
+            .map_err(|error| error.to_string())?;
+        write_setting(&transaction, "lan.access_key", &settings.access_key)
+            .map_err(|error| error.to_string())?;
+        write_setting(&transaction, "lan.primary_url", &settings.primary_url)
+            .map_err(|error| error.to_string())?;
+
+        transaction.commit().map_err(|error| error.to_string())?;
+        Ok(())
+    }
     fn open_connection(&self) -> Result<Connection, String> {
         let connection = Connection::open(&self.path).map_err(|error| error.to_string())?;
         connection
             .execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(|error| error.to_string())?;
         Ok(connection)
+    }
+
+    fn qr_code_dir(&self) -> PathBuf {
+        self.path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("qr-codes")
+    }
+
+    fn qr_code_path(&self, item_id: &str) -> PathBuf {
+        self.qr_code_dir().join(format!("{}.png", item_id))
+    }
+
+    fn ensure_qr_assets(&self) -> Result<(), String> {
+        fs::create_dir_all(self.qr_code_dir()).map_err(|error| error.to_string())?;
+        let desired_signature = self.qr_payload_signature()?;
+        let mut connection = self.open_connection()?;
+        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let current_signature = read_setting(&transaction, "qr.payload_signature")
+            .map_err(|error| error.to_string())?
+            .unwrap_or_default();
+        let signature_changed = current_signature != desired_signature;
+        let mut statement = transaction
+            .prepare("SELECT id, sku, COALESCE(barcode, '') FROM inventory_items ORDER BY id")
+            .map_err(|error| error.to_string())?;
+        let items = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        drop(statement);
+
+        for (item_id, sku, barcode) in items {
+            let expected_path = self.qr_code_path(&item_id);
+            let expected_value = path_to_db_value(&expected_path);
+            let needs_regeneration = signature_changed || barcode != expected_value || !expected_path.exists();
+
+            if needs_regeneration {
+                let qr_payload = self.qr_payload_for_item(&item_id, &sku)?;
+                write_item_qr_png(&expected_path, &qr_payload)?;
+                transaction
+                    .execute(
+                        "UPDATE inventory_items SET barcode = ?1 WHERE id = ?2",
+                        params![expected_value, item_id],
+                    )
+                    .map_err(|error| error.to_string())?;
+                if !barcode.is_empty() && barcode != expected_value {
+                    delete_file_if_exists(Path::new(&barcode))?;
+                }
+            }
+        }
+
+        write_setting(&transaction, "qr.payload_signature", &desired_signature)
+            .map_err(|error| error.to_string())?;
+        transaction.commit().map_err(|error| error.to_string())?;
+        Ok(())
     }
 }
 
@@ -693,6 +696,18 @@ fn read_setting(connection: &Connection, key: &str) -> rusqlite::Result<Option<S
             |row| row.get::<_, String>(0),
         )
         .optional()
+}
+
+fn write_setting(transaction: &Transaction<'_>, key: &str, value: &str) -> rusqlite::Result<()> {
+    transaction.execute(
+        r#"
+        INSERT INTO app_settings (key, value)
+        VALUES (?1, ?2)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        "#,
+        params![key, value],
+    )?;
+    Ok(())
 }
 
 fn resolve_sku(transaction: &Transaction<'_>, requested_sku: &str) -> rusqlite::Result<String> {
@@ -813,15 +828,16 @@ fn ensure_location(transaction: &Transaction<'_>, location_name: &str) -> rusqli
 
 fn get_item_record(transaction: &Transaction<'_>, item_id: &str) -> rusqlite::Result<ItemRecord> {
     transaction.query_row(
-        "SELECT id, sku, name, current_quantity, reorder_quantity FROM inventory_items WHERE id = ?1",
+        "SELECT id, sku, name, barcode, current_quantity, reorder_quantity FROM inventory_items WHERE id = ?1",
         params![item_id],
         |row| {
             Ok(ItemRecord {
                 id: row.get(0)?,
                 sku: row.get(1)?,
                 name: row.get(2)?,
-                current_quantity: row.get(3)?,
-                reorder_quantity: row.get(4)?,
+                barcode: row.get(3)?,
+                current_quantity: row.get(4)?,
+                reorder_quantity: row.get(5)?,
             })
         },
     )
@@ -942,13 +958,19 @@ fn parse_alert_status(value: &str) -> AlertStatus {
     }
 }
 
-fn parse_refill_order_status(value: &str) -> RefillOrderStatus {
+fn backup_target_type_key(value: &BackupTargetType) -> &'static str {
     match value {
-        "draft" => RefillOrderStatus::Draft,
-        "partially_received" => RefillOrderStatus::PartiallyReceived,
-        "received" => RefillOrderStatus::Received,
-        "cancelled" => RefillOrderStatus::Cancelled,
-        _ => RefillOrderStatus::Ordered,
+        BackupTargetType::LocalFolder => "local_folder",
+        BackupTargetType::LanShare => "lan_share",
+        BackupTargetType::CloudFolder => "cloud_folder",
+    }
+}
+
+fn backup_status_key(target_path: &str) -> &'static str {
+    if target_path.trim().is_empty() {
+        "warning"
+    } else {
+        "healthy"
     }
 }
 
@@ -967,6 +989,20 @@ fn parse_backup_status(value: &str) -> BackupStatus {
     }
 }
 
+fn language_key(value: &Language) -> &'static str {
+    match value {
+        Language::En => "en",
+        Language::ZhCn => "zh-CN",
+    }
+}
+
+fn parse_language(value: &str) -> Language {
+    match value {
+        "zh-CN" => Language::ZhCn,
+        _ => Language::En,
+    }
+}
+
 fn generate_id(prefix: &str) -> String {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -975,6 +1011,71 @@ fn generate_id(prefix: &str) -> String {
     let sequence = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("{}-{}-{}", prefix, stamp, sequence)
 }
+
+impl InventoryDb {
+    fn qr_payload_for_item(&self, item_id: &str, sku: &str) -> Result<String, String> {
+        let settings = self.load_lan_access_settings()?;
+        if settings.enabled && !settings.primary_url.trim().is_empty() {
+            return Ok(format!(
+                "{}/issue/{}?key={}",
+                settings.primary_url.trim_end_matches('/'),
+                item_id,
+                settings.access_key
+            ));
+        }
+
+        Ok(sku.to_string())
+    }
+
+    fn qr_payload_signature(&self) -> Result<String, String> {
+        let settings = self.load_lan_access_settings()?;
+        if settings.enabled && !settings.primary_url.trim().is_empty() {
+            return Ok(format!(
+                "issue:{}:{}",
+                settings.primary_url.trim_end_matches('/'),
+                settings.access_key
+            ));
+        }
+
+        Ok("sku".to_string())
+    }
+}
+
+fn barcode_path_to_data_url(value: &str) -> Result<String, String> {
+    if value.trim().is_empty() {
+        return Ok(String::new());
+    }
+    qr::png_file_to_data_url(Path::new(value))
+}
+
+fn path_to_db_value(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+fn write_item_qr_png(path: &Path, sku: &str) -> Result<(), String> {
+    qr::write_qr_png(path, sku)
+}
+
+fn delete_file_if_exists(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

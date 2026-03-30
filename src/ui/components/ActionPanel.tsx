@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Dictionary } from "../../app/i18n";
+import {
+  DEFAULT_CATEGORIES,
+  UNIT_OPTIONS,
+  localizeCategory,
+  localizeUnit,
+  type Dictionary,
+} from "../../app/i18n";
 import type {
   ActionKind,
   CreateInventoryItemInput,
-  CreateRefillOrderInput,
   InventoryItem,
+  Language,
   PersonnelMember,
   StockMutationInput,
   UpdateInventoryItemInput,
@@ -15,6 +21,7 @@ interface ActionPanelProps {
   activeItemId: string;
   busy: boolean;
   dictionary: Dictionary;
+  language: Language;
   items: InventoryItem[];
   personnel: PersonnelMember[];
   onClose: () => void;
@@ -22,23 +29,11 @@ interface ActionPanelProps {
   onUpdateItem: (input: UpdateInventoryItemInput) => Promise<void>;
   onReceiveStock: (input: StockMutationInput) => Promise<void>;
   onIssueMaterial: (input: StockMutationInput) => Promise<void>;
-  onCreateRefillOrder: (input: CreateRefillOrderInput) => Promise<void>;
   onRemoveItem: (itemId: string) => Promise<void>;
   onError: (message: string) => void;
 }
 
-const DEFAULT_CATEGORIES = [
-  "Raw Material",
-  "Parts",
-  "Chemical",
-  "Packaging",
-  "Consumable",
-  "Finished Goods",
-];
-
-const UNIT_OPTIONS = ["pcs", "kg", "g", "liters", "meters", "boxes", "packs", "rolls", "sheets"];
 const NEW_CATEGORY_VALUE = "__new__";
-const today = () => new Date().toISOString().slice(0, 10);
 
 function toErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -59,6 +54,7 @@ export function ActionPanel({
   activeItemId,
   busy,
   dictionary,
+  language,
   items,
   personnel,
   onClose,
@@ -66,7 +62,6 @@ export function ActionPanel({
   onUpdateItem,
   onReceiveStock,
   onIssueMaterial,
-  onCreateRefillOrder,
   onRemoveItem,
   onError,
 }: ActionPanelProps) {
@@ -88,16 +83,6 @@ export function ActionPanel({
     reason: "",
     performedBy: "",
   });
-  const [orderForm, setOrderForm] = useState<CreateRefillOrderInput>({
-    orderNumber: "",
-    supplier: "",
-    itemId: "",
-    orderDate: today(),
-    expectedDeliveryDate: "",
-    createdBy: "",
-    orderedQuantity: 0,
-    unitCost: 0,
-  });
   const [removeItemId, setRemoveItemId] = useState("");
 
   const categoryOptions = useMemo(() => {
@@ -112,10 +97,6 @@ export function ActionPanel({
   const selectedStockItem = useMemo(
     () => items.find((item) => item.id === stockForm.itemId) ?? null,
     [items, stockForm.itemId],
-  );
-  const selectedOrderItem = useMemo(
-    () => items.find((item) => item.id === orderForm.itemId) ?? null,
-    [items, orderForm.itemId],
   );
   const selectedRemoveItem = useMemo(
     () => items.find((item) => item.id === removeItemId) ?? null,
@@ -133,16 +114,6 @@ export function ActionPanel({
     setCategoryMode(nextCategoryMode);
     setNewCategoryName(nextCategoryMode === NEW_CATEGORY_VALUE ? initialCategory : "");
     setStockForm({ itemId: preferredItemId, quantity: 0, reason: "", performedBy: preferredPersonnel });
-    setOrderForm({
-      orderNumber: "",
-      supplier: items.find((item) => item.id === preferredItemId)?.supplier ?? items[0]?.supplier ?? "",
-      itemId: preferredItemId,
-      orderDate: today(),
-      expectedDeliveryDate: "",
-      createdBy: "",
-      orderedQuantity: 0,
-      unitCost: 0,
-    });
     setRemoveItemId(preferredItemId);
     setItemForm(
       managedItem
@@ -173,8 +144,7 @@ export function ActionPanel({
     return null;
   }
 
-  const requiresExistingItems =
-    action === "modifyItem" || action === "receiveStock" || action === "issueMaterial" || action === "createRefillOrder" || action === "removeItem";
+  const requiresExistingItems = action === "modifyItem" || action === "receiveStock" || action === "issueMaterial" || action === "removeItem";
   const requiresPersonnel = action === "receiveStock" || action === "issueMaterial";
   const hasItems = items.length > 0;
   const hasPersonnel = personnel.length > 0;
@@ -253,14 +223,6 @@ export function ActionPanel({
         return;
       }
 
-      if (action === "createRefillOrder") {
-        if (!orderForm.itemId || !orderForm.orderNumber.trim() || !orderForm.supplier.trim() || !orderForm.orderDate || orderForm.orderedQuantity <= 0 || orderForm.unitCost < 0) {
-          throw new Error(dictionary.formValidationError);
-        }
-        await onCreateRefillOrder(orderForm);
-        return;
-      }
-
       if (!removeItemId) {
         throw new Error(dictionary.formValidationError);
       }
@@ -307,7 +269,7 @@ export function ActionPanel({
                 <select required value={categoryMode} onChange={(event) => handleCategoryChange(event.target.value)}>
                   {categoryOptions.map((category) => (
                     <option key={category} value={category}>
-                      {category}
+                      {localizeCategory(category, language)}
                     </option>
                   ))}
                   <option value={NEW_CATEGORY_VALUE}>{dictionary.addNewCategory}</option>
@@ -328,7 +290,7 @@ export function ActionPanel({
                 <select required value={itemForm.unit} onChange={(event) => setItemForm({ ...itemForm, unit: event.target.value })}>
                   {UNIT_OPTIONS.map((unit) => (
                     <option key={unit} value={unit}>
-                      {unit}
+                      {localizeUnit(unit, language)}
                     </option>
                   ))}
                 </select>
@@ -350,7 +312,7 @@ export function ActionPanel({
                 <div className="form-summary">
                   <strong>{selectedManagedItem.name}</strong>
                   <span>
-                    {dictionary.currentQuantity}: {selectedManagedItem.currentQuantity} {selectedManagedItem.unit}
+                    {dictionary.currentQuantity}: {selectedManagedItem.currentQuantity} {localizeUnit(selectedManagedItem.unit, language)}
                   </span>
                   <span>{dictionary.currentQuantityManagedHint}</span>
                 </div>
@@ -402,73 +364,9 @@ export function ActionPanel({
                 <div className="form-summary">
                   <strong>{selectedStockItem.name}</strong>
                   <span>
-                    {dictionary.currentQuantity}: {selectedStockItem.currentQuantity} {selectedStockItem.unit}
+                    {dictionary.currentQuantity}: {selectedStockItem.currentQuantity} {localizeUnit(selectedStockItem.unit, language)}
                   </span>
                   <span>{dictionary.reorderLevel}: {selectedStockItem.reorderQuantity}</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {action === "createRefillOrder" && (
-            <div className="form-grid">
-              <label>
-                <FieldLabel label={dictionary.orderNumber} required />
-                <input value={orderForm.orderNumber} onChange={(event) => setOrderForm({ ...orderForm, orderNumber: event.target.value })} />
-              </label>
-              <label>
-                <FieldLabel label={dictionary.supplier} required />
-                <input value={orderForm.supplier} onChange={(event) => setOrderForm({ ...orderForm, supplier: event.target.value })} />
-              </label>
-              <label>
-                <FieldLabel label={dictionary.selectItem} required />
-                <select
-                  value={orderForm.itemId}
-                  onChange={(event) => {
-                    const nextItem = items.find((item) => item.id === event.target.value);
-                    setOrderForm({
-                      ...orderForm,
-                      itemId: event.target.value,
-                      supplier: nextItem?.supplier || orderForm.supplier,
-                    });
-                  }}
-                >
-                  {items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.sku} - {item.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <FieldLabel label={dictionary.orderDate} required />
-                <input type="date" value={orderForm.orderDate} onChange={(event) => setOrderForm({ ...orderForm, orderDate: event.target.value })} />
-              </label>
-              <label>
-                <FieldLabel label={dictionary.expectedDelivery} />
-                <input type="date" value={orderForm.expectedDeliveryDate} onChange={(event) => setOrderForm({ ...orderForm, expectedDeliveryDate: event.target.value })} />
-              </label>
-              <label>
-                <FieldLabel label={dictionary.createdBy} />
-                <input value={orderForm.createdBy} onChange={(event) => setOrderForm({ ...orderForm, createdBy: event.target.value })} />
-              </label>
-              <label>
-                <FieldLabel label={dictionary.quantity} required />
-                <input type="number" min="1" value={orderForm.orderedQuantity} onChange={(event) => setOrderForm({ ...orderForm, orderedQuantity: Number(event.target.value) })} />
-              </label>
-              <label>
-                <FieldLabel label={dictionary.unitCost} required />
-                <input type="number" min="0" step="0.01" value={orderForm.unitCost} onChange={(event) => setOrderForm({ ...orderForm, unitCost: Number(event.target.value) })} />
-              </label>
-              {selectedOrderItem && (
-                <div className="form-summary">
-                  <strong>{selectedOrderItem.name}</strong>
-                  <span>
-                    {dictionary.currentQuantity}: {selectedOrderItem.currentQuantity} {selectedOrderItem.unit}
-                  </span>
-                  <span>
-                    {dictionary.totalAmount}: {(orderForm.orderedQuantity * orderForm.unitCost).toFixed(2)}
-                  </span>
                 </div>
               )}
             </div>
@@ -490,7 +388,7 @@ export function ActionPanel({
                 <div className="form-summary form-summary--danger">
                   <strong>{selectedRemoveItem.name}</strong>
                   <span>
-                    {dictionary.currentQuantity}: {selectedRemoveItem.currentQuantity} {selectedRemoveItem.unit}
+                    {dictionary.currentQuantity}: {selectedRemoveItem.currentQuantity} {localizeUnit(selectedRemoveItem.unit, language)}
                   </span>
                   <span>{dictionary.reorderLevel}: {selectedRemoveItem.reorderQuantity}</span>
                   <span>{dictionary.deleteItemWarning}</span>

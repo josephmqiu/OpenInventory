@@ -1,9 +1,8 @@
-import type { DashboardMetrics, InventoryAlert, InventoryItem, RefillOrder } from "./models";
+import type { DashboardMetrics, InventoryAlert, InventoryItem } from "./models";
 
 export function buildDashboardMetrics(
   items: InventoryItem[],
   alerts: InventoryAlert[],
-  refillOrders: RefillOrder[],
 ): DashboardMetrics {
   return {
     totalItems: items.length,
@@ -11,7 +10,6 @@ export function buildDashboardMetrics(
     lowStockCount: items.filter((item) => item.status === "low_stock").length,
     outOfStockCount: items.filter((item) => item.status === "out_of_stock").length,
     openAlertCount: alerts.filter((alert) => alert.status === "open").length,
-    pendingRefillOrderCount: refillOrders.filter((order) => order.status !== "received" && order.status !== "cancelled").length,
   };
 }
 
@@ -22,4 +20,3 @@ export function formatCurrency(amount: number): string {
     maximumFractionDigits: 2,
   }).format(amount);
 }
-

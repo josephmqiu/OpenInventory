@@ -2,11 +2,14 @@ export type Language = "en" | "zh-CN";
 
 export type StockStatus = "in_stock" | "low_stock" | "out_of_stock";
 export type AlertStatus = "open" | "acknowledged" | "resolved";
-export type RefillOrderStatus = "draft" | "ordered" | "partially_received" | "received" | "cancelled";
+export type BackupTargetType = "local_folder" | "lan_share" | "cloud_folder";
+export type BackupStatus = "healthy" | "warning";
+export type LanAccessStatus = "running" | "stopped" | "error";
 
 export interface InventoryItem {
   id: string;
   sku: string;
+  qrCodeDataUrl: string;
   name: string;
   category: string;
   location: string;
@@ -28,28 +31,6 @@ export interface InventoryAlert {
   triggeredAt: string;
 }
 
-export interface RefillOrderLine {
-  id: string;
-  itemName: string;
-  sku: string;
-  orderedQuantity: number;
-  receivedQuantity: number;
-  unitCost: number;
-}
-
-export interface RefillOrder {
-  id: string;
-  orderNumber: string;
-  supplier: string;
-  orderDate: string;
-  expectedDeliveryDate: string;
-  receivedDate?: string;
-  status: RefillOrderStatus;
-  totalAmount: number;
-  createdBy: string;
-  lines: RefillOrderLine[];
-}
-
 export interface PersonnelMember {
   id: string;
   name: string;
@@ -57,12 +38,39 @@ export interface PersonnelMember {
 
 export interface BackupPlan {
   targetPath: string;
-  targetType: "local_folder" | "lan_share" | "cloud_folder";
+  targetType: BackupTargetType;
   schedule: string;
   retention: string;
   lastSuccessfulBackup: string;
   nextScheduledBackup: string;
-  status: "healthy" | "warning";
+  status: BackupStatus;
+}
+
+export interface LanAccessState {
+  enabled: boolean;
+  port: number;
+  accessKey: string;
+  urls: string[];
+  status: LanAccessStatus;
+  statusMessage: string;
+}
+
+export interface PublicIssueContext {
+  item: InventoryItem;
+  personnel: PersonnelMember[];
+  language: Language;
+}
+
+export interface UpdateBackupPlanInput {
+  targetPath: string;
+  targetType: BackupTargetType;
+  schedule: string;
+  retention: string;
+}
+
+export interface UpdateLanAccessInput {
+  enabled: boolean;
+  port: number;
 }
 
 export interface DashboardMetrics {
@@ -71,15 +79,14 @@ export interface DashboardMetrics {
   lowStockCount: number;
   outOfStockCount: number;
   openAlertCount: number;
-  pendingRefillOrderCount: number;
 }
 
 export interface AppSnapshot {
   items: InventoryItem[];
   alerts: InventoryAlert[];
-  refillOrders: RefillOrder[];
   personnel: PersonnelMember[];
   backupPlan: BackupPlan;
+  language: Language;
 }
 
 export interface CreateInventoryItemInput {
@@ -111,17 +118,6 @@ export interface StockMutationInput {
   performedBy: string;
 }
 
-export interface CreateRefillOrderInput {
-  orderNumber: string;
-  supplier: string;
-  itemId: string;
-  orderDate: string;
-  expectedDeliveryDate: string;
-  createdBy: string;
-  orderedQuantity: number;
-  unitCost: number;
-}
-
 export interface AddPersonnelInput {
   name: string;
 }
@@ -131,5 +127,5 @@ export type ActionKind =
   | "modifyItem"
   | "receiveStock"
   | "issueMaterial"
-  | "createRefillOrder"
   | "removeItem";
+
