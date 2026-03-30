@@ -9,13 +9,11 @@ import type {
   LanAccessState,
   PublicIssueContext,
   StockMutationInput,
-  UpdateBackupPlanInput,
   UpdateInventoryItemInput,
   UpdateLanAccessInput,
 } from "../domain/models";
 import { dictionaries, localizeLanguageName, localizeUnit } from "./i18n";
 import { AlertsPanel } from "../ui/components/AlertsPanel";
-import { BackupPanel } from "../ui/components/BackupPanel";
 import { InventoryTable } from "../ui/components/InventoryTable";
 import { ItemManagementTable } from "../ui/components/ItemManagementTable";
 import { MetricCard } from "../ui/components/MetricCard";
@@ -43,7 +41,6 @@ import {
   removeInventoryItem,
   removePersonnel,
   updateAppLanguage,
-  updateBackupPlan,
   updateInventoryItem,
   updateLanAccess,
 } from "../services/inventoryGateway";
@@ -319,9 +316,6 @@ export function App() {
     }
   };
 
-  const handleUpdateBackupPlan = async (input: UpdateBackupPlanInput) =>
-    runMutation(() => updateBackupPlan(input), dictionary.successUpdateBackupPlan);
-
   const handleRemoveItem = async (itemId: string) =>
     runMutation(() => removeInventoryItem(itemId), dictionary.successRemoveItem);
 
@@ -594,13 +588,6 @@ export function App() {
                 )}
                 {section === "settings" && (
                   <>
-                    <BackupPanel
-                      busy={busy}
-                      dictionary={dictionary}
-                      language={language}
-                      backupPlan={snapshot.backupPlan}
-                      onSave={handleUpdateBackupPlan}
-                    />
                     {desktopRuntime && lanAccess && (
                       <LanAccessPanel
                         busy={busy}
@@ -619,5 +606,4 @@ export function App() {
     </div>
   );
 }
-
 
