@@ -161,7 +161,7 @@ textarea {
   display: grid;
   gap: 2px;
   padding: 12px 8px;
-  flex: 1;
+  align-content: start;
 }
 
 .nav-item {
