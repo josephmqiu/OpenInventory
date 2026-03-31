@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_CATEGORIES,
   UNIT_OPTIONS,
@@ -105,13 +105,25 @@ export function ActionPanel({
     [items, removeItemId],
   );
 
+  // Keep refs to polling-refreshed data so the form-reset effect can read
+  // the latest values without re-triggering on every background snapshot refresh.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const personnelRef = useRef(personnel);
+  personnelRef.current = personnel;
+  const categoryOptionsRef = useRef(categoryOptions);
+  categoryOptionsRef.current = categoryOptions;
+
   useEffect(() => {
-    const firstCategory = categoryOptions[0] ?? DEFAULT_CATEGORIES[0];
-    const preferredItemId = preSelectedItemId || activeItemId || items[0]?.id || "";
-    const preferredPersonnel = personnel[0]?.name ?? "";
-    const managedItem = items.find((item) => item.id === activeItemId) ?? null;
+    const currentItems = itemsRef.current;
+    const currentPersonnel = personnelRef.current;
+    const currentCategoryOptions = categoryOptionsRef.current;
+    const firstCategory = currentCategoryOptions[0] ?? DEFAULT_CATEGORIES[0];
+    const preferredItemId = preSelectedItemId || activeItemId || currentItems[0]?.id || "";
+    const preferredPersonnel = currentPersonnel[0]?.name ?? "";
+    const managedItem = currentItems.find((item) => item.id === activeItemId) ?? null;
     const initialCategory = managedItem?.category ?? firstCategory;
-    const nextCategoryMode = categoryOptions.includes(initialCategory) ? initialCategory : NEW_CATEGORY_VALUE;
+    const nextCategoryMode = currentCategoryOptions.includes(initialCategory) ? initialCategory : NEW_CATEGORY_VALUE;
 
     setCategoryMode(nextCategoryMode);
     setNewCategoryName(nextCategoryMode === NEW_CATEGORY_VALUE ? initialCategory : "");
@@ -140,7 +152,7 @@ export function ActionPanel({
             initialQuantity: 0,
           },
     );
-  }, [action, activeItemId, categoryOptions, items, personnel, preSelectedItemId]);
+  }, [action, activeItemId, preSelectedItemId]);
 
   if (!action) {
     return null;
