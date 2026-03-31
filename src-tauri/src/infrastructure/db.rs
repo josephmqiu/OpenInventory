@@ -1589,7 +1589,7 @@ mod tests {
         let item_id_2 = create_item(&test_db, "SKU-BATCH-2", "Batch Widget Two", 2, 8);
         let item_id_3 = create_item(&test_db, "SKU-BATCH-3", "Batch Widget Three", 1, 2);
 
-        let snapshot = test_db
+        let result = test_db
             .db
             .batch_issue_material(BatchIssueMaterialInput {
                 items: vec![
@@ -1610,6 +1610,7 @@ mod tests {
                 reason: "WO-42".to_string(),
             })
             .expect("batch issue materials");
+        let snapshot = result.snapshot;
 
         let item_1 = snapshot
             .items
