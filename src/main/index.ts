@@ -72,9 +72,11 @@ app.whenReady().then(async () => {
   // QR code generator: returns the public LAN URL for each item, or "" when
   // the LAN server is off. The field is named qrCodeDataUrl for historical
   // reasons but now contains a plain URL (rendered to a QR image on the frontend).
+  // QR codes link to the SPA issue route, not the API endpoint.
+  // The frontend reads /issue/:itemId from the URL and renders QuickIssuePage.
   const qrCodeGenerator = (itemId: string, _sku: string): string =>
     lanState.primaryUrl
-      ? `${lanState.primaryUrl}/public/items/${itemId}/context`
+      ? `${lanState.primaryUrl}/issue/${itemId}`
       : "";
 
   const AppLayer = Layer.merge(
@@ -91,7 +93,13 @@ app.whenReady().then(async () => {
     Effect.map(DatabaseService, (s) => s),
   );
 
-  const rendererDir = is.dev ? "" : join(__dirname, "../renderer");
+  // In production, renderer assets are unpacked from the asar so the LAN
+  // server can serve them via fs.readFileSync to external HTTP clients.
+  // In dev, use the build output directory (electron-vite builds to out/).
+  const rendererDir = is.dev
+    ? join(__dirname, "../renderer")
+    : join(__dirname, "../renderer").replace("app.asar", "app.asar.unpacked");
+  console.log(`[LAN] rendererDir=${rendererDir}, exists=${fs.existsSync(rendererDir)}`);
   const lanService: LanServerServiceApi = makeLanServerService(dbServiceApi, rendererDir);
 
   // Auto-start LAN server if previously enabled; populate lanState.

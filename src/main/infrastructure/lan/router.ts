@@ -268,6 +268,7 @@ function serveStaticFile(pathname: string, res: http.ServerResponse, rendererDir
   }
 
   if (!fs.existsSync(filePath)) {
+    console.error(`[LAN] Static file not found: rendererDir=${rendererDir}, pathname=${pathname}`);
     res.writeHead(404);
     res.end("Not found");
     return;
@@ -288,7 +289,14 @@ function serveStaticFile(pathname: string, res: http.ServerResponse, rendererDir
   };
 
   const contentType = mimeTypes[ext] ?? "application/octet-stream";
-  const content = fs.readFileSync(filePath);
+  let content: Buffer | string = fs.readFileSync(filePath);
+
+  // Electron-vite builds with base="./" for file:// protocol. Rewrite to
+  // absolute paths so the SPA works when served over HTTP on sub-routes.
+  if (ext === ".html") {
+    content = content.toString("utf-8").replace(/\.\//g, "/");
+  }
+
   res.writeHead(200, { "Content-Type": contentType });
   res.end(content);
 }

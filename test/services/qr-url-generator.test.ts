@@ -14,7 +14,7 @@ interface LanState {
 function makeQrCodeGenerator(lanState: LanState): (itemId: string, sku: string) => string {
   return (itemId: string, _sku: string): string =>
     lanState.primaryUrl
-      ? `${lanState.primaryUrl}/public/items/${itemId}/context`
+      ? `${lanState.primaryUrl}/issue/${itemId}`
       : "";
 }
 
@@ -29,7 +29,7 @@ describe("QR URL generator", () => {
     const lanState: LanState = { primaryUrl: "http://192.168.1.5:4123" };
     const generate = makeQrCodeGenerator(lanState);
     expect(generate("item-123", "SKU-001")).toBe(
-      "http://192.168.1.5:4123/public/items/item-123/context",
+      "http://192.168.1.5:4123/issue/item-123",
     );
   });
 
@@ -42,7 +42,7 @@ describe("QR URL generator", () => {
     // Simulate LAN server starting
     lanState.primaryUrl = "http://10.0.0.2:8080";
     expect(generate("item-1", "SKU")).toBe(
-      "http://10.0.0.2:8080/public/items/item-1/context",
+      "http://10.0.0.2:8080/issue/item-1",
     );
 
     // Simulate LAN server stopping
@@ -62,7 +62,7 @@ describe("QR URL generator", () => {
     const lanState: LanState = { primaryUrl: "http://172.16.0.1:9999" };
     const generate = makeQrCodeGenerator(lanState);
     expect(generate("x", "y")).toBe(
-      "http://172.16.0.1:9999/public/items/x/context",
+      "http://172.16.0.1:9999/issue/x",
     );
   });
 });

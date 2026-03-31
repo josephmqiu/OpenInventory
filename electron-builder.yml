@@ -12,6 +12,7 @@ files:
   - "!{test,e2e,scripts}"
 asarUnpack:
   - "**/*.node"
+  - "out/renderer/**/*"
 mac:
   artifactName: "${productName}-${version}-${arch}.${ext}"
   identity: null

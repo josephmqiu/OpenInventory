@@ -93,7 +93,7 @@ describe("LAN IPC handler delegation", () => {
   it("lanState.primaryUrl drives QR code generation", async () => {
     const qrGenerator = (itemId: string, _sku: string) =>
       lanState.primaryUrl
-        ? `${lanState.primaryUrl}/public/items/${itemId}/context`
+        ? `${lanState.primaryUrl}/issue/${itemId}`
         : "";
 
     // Before enabling LAN
@@ -104,7 +104,7 @@ describe("LAN IPC handler delegation", () => {
     updateLanState(state);
 
     const qrUrl = qrGenerator("item-1", "SKU");
-    expect(qrUrl).toMatch(/\/public\/items\/item-1\/context$/);
+    expect(qrUrl).toMatch(/\/issue\/item-1$/);
     expect(qrUrl).toContain(lanState.primaryUrl);
 
     // Disable LAN
