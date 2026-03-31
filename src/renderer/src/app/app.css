@@ -584,7 +584,7 @@ button {
   font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 500;
-  padding: 7px 14px;
+  padding: 8px 14px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   background: var(--accent);
@@ -625,7 +625,7 @@ button.button-danger:hover {
 }
 
 button.button-inline {
-  padding: 5px 10px;
+  padding: 6px 10px;
   font-size: 12px;
 }
 
