@@ -219,6 +219,7 @@ textarea {
   display: flex;
   gap: 8px;
   align-items: end;
+  flex-shrink: 0;
 }
 
 .language-switch {
