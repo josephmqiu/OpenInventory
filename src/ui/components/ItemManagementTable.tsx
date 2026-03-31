@@ -10,6 +10,7 @@ interface ItemManagementTableProps {
   language: Language;
   items: InventoryItem[];
   onCreateItem: () => void;
+  onError: (message: string) => void;
   onModifyItem: (itemId: string) => void;
   onRemoveItem: (itemId: string) => void;
 }
@@ -20,6 +21,7 @@ export function ItemManagementTable({
   language,
   items,
   onCreateItem,
+  onError,
   onModifyItem,
   onRemoveItem,
 }: ItemManagementTableProps) {
@@ -55,7 +57,11 @@ export function ItemManagementTable({
   };
 
   const handlePrint = (itemsToPrint: InventoryItem[]) => {
-    printQrLabels(itemsToPrint, dictionary);
+    try {
+      printQrLabels(itemsToPrint, dictionary);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Unable to complete the requested action.");
+    }
   };
 
   return (

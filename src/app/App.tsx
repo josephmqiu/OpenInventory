@@ -316,6 +316,7 @@ export function App() {
                     language={language}
                     items={snapshot.items}
                     onCreateItem={() => openAction("createItem")}
+                    onError={reportActionError}
                     onModifyItem={(itemId) => openAction("modifyItem", itemId)}
                     onRemoveItem={(itemId) => openAction("removeItem", itemId)}
                   />
