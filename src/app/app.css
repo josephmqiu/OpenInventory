@@ -283,30 +283,24 @@ th {
 }
 
 .status-pill--in_stock,
-.status-pill--backup-healthy,
-.status-pill--order-received {
+.status-pill--backup-healthy {
   background: #e4f6e9;
   color: #14643a;
 }
 
 .status-pill--low_stock,
-.status-pill--alert-open,
-.status-pill--order-ordered,
-.status-pill--order-partially_received {
+.status-pill--alert-open {
   background: #fff0cf;
   color: #8a5a00;
 }
 
 .status-pill--out_of_stock,
-.status-pill--alert-acknowledged,
-.status-pill--backup-warning,
-.status-pill--order-cancelled {
+.status-pill--backup-warning {
   background: #ffe2de;
   color: #9e3027;
 }
 
-.status-pill--alert-resolved,
-.status-pill--order-draft {
+.status-pill--alert-resolved {
   background: #dfe8f7;
   color: #37577d;
 }

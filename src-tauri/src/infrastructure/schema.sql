@@ -3,9 +3,6 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS suppliers (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    contact_name TEXT,
-    phone TEXT,
-    email TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -23,15 +20,12 @@ CREATE TABLE IF NOT EXISTS inventory_items (
     sku TEXT NOT NULL UNIQUE,
     barcode TEXT,
     name TEXT NOT NULL,
-    description TEXT,
     category TEXT NOT NULL,
     location_id TEXT,
     supplier_id TEXT,
     unit_of_measure TEXT NOT NULL,
-    min_quantity INTEGER NOT NULL,
     reorder_quantity INTEGER NOT NULL,
     current_quantity INTEGER NOT NULL,
-    cost_per_unit REAL,
     status TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -61,8 +55,6 @@ CREATE TABLE IF NOT EXISTS low_stock_alerts (
     quantity_at_trigger INTEGER NOT NULL,
     status TEXT NOT NULL,
     triggered_at TEXT NOT NULL,
-    acknowledged_by TEXT,
-    acknowledged_at TEXT,
     resolved_at TEXT,
     channel_summary TEXT,
     FOREIGN KEY(item_id) REFERENCES inventory_items(id)
@@ -80,19 +72,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id TEXT PRIMARY KEY,
-    actor TEXT,
-    action TEXT NOT NULL,
-    target_type TEXT NOT NULL,
-    target_id TEXT NOT NULL,
-    payload_json TEXT,
-    created_at TEXT NOT NULL
-);
-
 CREATE INDEX IF NOT EXISTS idx_inventory_items_name ON inventory_items(name);
 CREATE INDEX IF NOT EXISTS idx_inventory_items_current_quantity ON inventory_items(current_quantity);
 CREATE INDEX IF NOT EXISTS idx_inventory_movements_item_date ON inventory_movements(item_id, performed_at);
 CREATE INDEX IF NOT EXISTS idx_low_stock_alerts_item_status ON low_stock_alerts(item_id, status);
 CREATE INDEX IF NOT EXISTS idx_personnel_name ON personnel(name);
-

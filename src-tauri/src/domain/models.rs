@@ -20,7 +20,6 @@ pub enum StockStatus {
 #[serde(rename_all = "snake_case")]
 pub enum AlertStatus {
     Open,
-    Acknowledged,
     Resolved,
 }
 
@@ -36,7 +35,6 @@ pub struct InventoryItem {
     pub unit: String,
     pub supplier: String,
     pub current_quantity: i64,
-    pub min_quantity: i64,
     pub reorder_quantity: i64,
     pub status: StockStatus,
     pub last_updated: String,

@@ -91,7 +91,6 @@ impl InventoryDb {
                     i.unit_of_measure,
                     COALESCE(s.name, '') AS supplier,
                     i.current_quantity,
-                    i.min_quantity,
                     i.reorder_quantity,
                     i.status,
                     i.updated_at,
@@ -107,8 +106,8 @@ impl InventoryDb {
         let items = items_statement
             .query_map([], |row| {
                 let current_quantity: i64 = row.get(7)?;
-                let reorder_quantity: i64 = row.get(9)?;
-                let barcode_path: String = row.get(12)?;
+                let reorder_quantity: i64 = row.get(8)?;
+                let barcode_path: String = row.get(11)?;
                 Ok(InventoryItem {
                     id: row.get(0)?,
                     sku: row.get(1)?,
@@ -119,13 +118,12 @@ impl InventoryDb {
                     unit: row.get(5)?,
                     supplier: row.get(6)?,
                     current_quantity,
-                    min_quantity: row.get(8)?,
                     reorder_quantity,
                     status: parse_stock_status(stock_status_key(
                         current_quantity,
                         reorder_quantity,
                     )),
-                    last_updated: row.get(11)?,
+                    last_updated: row.get(10)?,
                 })
             })
             .map_err(database_error)?
@@ -259,9 +257,9 @@ impl InventoryDb {
                 r#"
                 INSERT INTO inventory_items (
                     id, sku, barcode, name, category, location_id, supplier_id,
-                    unit_of_measure, min_quantity, reorder_quantity,
+                    unit_of_measure, reorder_quantity,
                     current_quantity, status, created_at, updated_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, datetime('now', 'localtime'), datetime('now', 'localtime'))
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, datetime('now', 'localtime'), datetime('now', 'localtime'))
                 "#,
                 params![
                     item_id,
@@ -272,7 +270,6 @@ impl InventoryDb {
                     location_id,
                     supplier_id,
                     unit,
-                    0,
                     input.reorder_quantity,
                     input.initial_quantity,
                     status,
@@ -956,7 +953,7 @@ fn sync_low_stock_alert(
 ) -> rusqlite::Result<bool> {
     let existing: Option<String> = transaction
         .query_row(
-            "SELECT id FROM low_stock_alerts WHERE item_id = ?1 AND status IN ('open', 'acknowledged') ORDER BY triggered_at DESC LIMIT 1",
+            "SELECT id FROM low_stock_alerts WHERE item_id = ?1 AND status = 'open' ORDER BY triggered_at DESC LIMIT 1",
             params![item_id],
             |row| row.get(0),
         )
@@ -1027,7 +1024,6 @@ fn parse_stock_status(value: &str) -> StockStatus {
 
 fn parse_alert_status(value: &str) -> AlertStatus {
     match value {
-        "acknowledged" => AlertStatus::Acknowledged,
         "resolved" => AlertStatus::Resolved,
         _ => AlertStatus::Open,
     }
@@ -1648,6 +1644,23 @@ mod tests {
         assert_eq!(updated.location, "Secondary Shelf");
         assert_eq!(updated.current_quantity, 7);
         assert_eq!(updated.reorder_quantity, 4);
+    }
+
+    #[test]
+    fn load_snapshot_still_returns_inventory_items_with_expected_quantities() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-SNAPSHOT", "Snapshot Widget", 3, 7);
+
+        let snapshot = test_db.db.load_snapshot().expect("load snapshot");
+        let item = snapshot
+            .items
+            .into_iter()
+            .find(|item| item.id == item_id)
+            .expect("find snapshot item");
+
+        assert_eq!(item.sku, "SKU-SNAPSHOT");
+        assert_eq!(item.reorder_quantity, 3);
+        assert_eq!(item.current_quantity, 7);
     }
 
     #[test]

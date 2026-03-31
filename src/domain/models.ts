@@ -1,7 +1,7 @@
 export type Language = "en" | "zh-CN";
 
 export type StockStatus = "in_stock" | "low_stock" | "out_of_stock";
-export type AlertStatus = "open" | "acknowledged" | "resolved";
+export type AlertStatus = "open" | "resolved";
 export type BackupTargetType = "local_folder" | "lan_share" | "cloud_folder";
 export type BackupStatus = "healthy" | "warning";
 export type LanAccessStatus = "running" | "stopped" | "error";
@@ -128,4 +128,3 @@ export type ActionKind =
   | "receiveStock"
   | "issueMaterial"
   | "removeItem";
-
