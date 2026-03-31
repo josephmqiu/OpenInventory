@@ -80,6 +80,7 @@ export function makeAutoUpdateService(
       });
     },
     installUpdate: () => {
+      if (currentStatus.stage !== "downloaded") return;
       autoUpdater.quitAndInstall(false, true);
     },
     getStatus: () => currentStatus,

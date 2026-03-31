@@ -165,7 +165,6 @@ export function registerIpcHandlers(
 
   ipcMain.handle("check-for-updates", () => {
     autoUpdateService.checkForUpdates();
-    return autoUpdateService.getStatus();
   });
 
   ipcMain.handle("download-update", () => {

@@ -130,11 +130,7 @@ app.whenReady().then(async () => {
   createWindow();
 
   // Check for updates shortly after launch (non-blocking).
-  if (mainWindow) {
-    mainWindow.on("ready-to-show", () => {
-      setTimeout(() => autoUpdateService.checkForUpdates(), 3000);
-    });
-  }
+  setTimeout(() => autoUpdateService.checkForUpdates(), 3000);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
