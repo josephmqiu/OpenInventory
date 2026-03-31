@@ -123,13 +123,6 @@ export function AuditPanel({ dictionary, language, personnel }: AuditPanelProps)
 
   return (
     <section className="panel">
-      <div className="panel__header">
-        <div>
-          <h2>{dictionary.audit}</h2>
-          <p>{dictionary.auditHint}</p>
-        </div>
-      </div>
-
       {/* Tab navigation */}
       <div className="audit-tabs" role="tablist">
         <button
