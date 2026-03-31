@@ -142,20 +142,9 @@ async function handleApiRoute(
       return;
     }
 
-    // PUT /api/backup-plan
-    if (pathname === "/api/backup-plan" && method === "PUT") {
-      const body = await readBody(req);
-      const result = await runEffect(db.updateBackupPlan(body));
-      sendJson(res, 200, result);
-      return;
-    }
-
-    // POST /api/backup-now
-    if (pathname === "/api/backup-now" && method === "POST") {
-      const result = await runEffect(db.backupNow());
-      sendJson(res, 200, result);
-      return;
-    }
+    // Backup endpoints are desktop-only (IPC) — not exposed over LAN
+    // to prevent authenticated LAN devices from writing to arbitrary
+    // filesystem paths on the host.
 
     // PUT /api/language
     if (pathname === "/api/language" && method === "PUT") {
@@ -209,7 +198,14 @@ async function handlePublicRoute(
       const body = await readBody(req);
       body.itemId = issueMatch[1];
       const result = await runEffect(db.issueMaterial(body));
-      sendJson(res, 200, result.snapshot);
+      // Return PublicIssueContext shape (not the full snapshot) so the
+      // frontend can update the QuickIssuePage with the refreshed item.
+      const item = result.snapshot.items.find((i) => i.id === issueMatch[1]);
+      sendJson(res, 200, {
+        item: item ?? null,
+        personnel: result.snapshot.personnel,
+        language: result.snapshot.language,
+      });
       return;
     }
 
@@ -243,10 +239,21 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
   res.end(JSON.stringify(body));
 }
 
+const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+
 function readBody(req: http.IncomingMessage): Promise<Json> {
   return new Promise((resolve, reject) => {
     let data = "";
-    req.on("data", (chunk) => (data += chunk));
+    let bytes = 0;
+    req.on("data", (chunk: Buffer | string) => {
+      bytes += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
+        req.destroy();
+        reject(new Error("Request body too large"));
+        return;
+      }
+      data += chunk;
+    });
     req.on("end", () => {
       try {
         resolve(data ? JSON.parse(data) : {});

@@ -1,10 +1,10 @@
 # Design System — OpenInventory
 
 ## Product Context
-- **What this is:** Tauri 2 desktop app for inventory monitoring and material issue tracking
+- **What this is:** Electron desktop app for inventory monitoring and material issue tracking
 - **Who it's for:** Small business owners and teams (1-2 people handling ordering, tracking, issuing)
 - **Space/industry:** Inventory management, warehouse operations, supply chain
-- **Project type:** Desktop app (Tauri) with tablet support
+- **Project type:** Desktop app (Electron) with tablet support via LAN HTTP server
 - **Usage environment:** Desktop primary, tablet secondary. Extended daily use.
 
 ## Aesthetic Direction

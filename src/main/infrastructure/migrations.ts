@@ -24,6 +24,10 @@ const MIGRATIONS: Migration[] = [
 
       if (hasDeadColumns.c === 0) return;
 
+      // Temporarily disable FK enforcement so DROP TABLE succeeds even
+      // when child rows exist in inventory_movements / low_stock_alerts.
+      db.pragma("foreign_keys = OFF");
+
       db.exec(`
         CREATE TABLE inventory_items_new (
             id TEXT PRIMARY KEY,
@@ -106,6 +110,9 @@ const MIGRATIONS: Migration[] = [
 
       // Drop audit_logs table
       db.exec("DROP TABLE IF EXISTS audit_logs;");
+
+      // Re-enable FK enforcement after all table rebuilds are complete.
+      db.pragma("foreign_keys = ON");
     },
   },
 ];

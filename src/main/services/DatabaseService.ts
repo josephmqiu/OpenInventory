@@ -988,8 +988,8 @@ export function makeDatabaseService(
       }),
 
     backupNow: () =>
-      Effect.try({
-        try: () => {
+      Effect.tryPromise({
+        try: async () => {
           const targetPath = (readSetting(db, "backup.target_path") ?? "").trim();
           if (targetPath === "") {
             throw new ValidationError({
@@ -1009,9 +1009,13 @@ export function makeDatabaseService(
           );
           fs.mkdirSync(targetPath, { recursive: true });
 
-          // Synchronous copy via backup API (returns Promise, but we handle it)
+          // Await the backup so we only mark success after it completes.
           const source = new Database(dbPath, { readonly: true });
-          source.backup(backupFile).then(() => source.close()).catch(() => source.close());
+          try {
+            await source.backup(backupFile);
+          } finally {
+            source.close();
+          }
 
           const updateFn = db.transaction(() => {
             writeSetting(
