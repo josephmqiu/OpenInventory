@@ -307,12 +307,33 @@ textarea {
 /* ---- D. Feedback Banners ---- */
 
 .feedback-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 12px;
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   font-size: 13px;
   border-left: 2px solid var(--border);
   background: var(--surface);
+}
+
+.feedback-banner__dismiss {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 16px;
+  line-height: 1;
+  background: transparent;
+  border-color: transparent;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.feedback-banner__dismiss:hover {
+  opacity: 1;
+  background: transparent;
+  border-color: transparent;
 }
 
 .feedback-banner--success {

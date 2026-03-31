@@ -293,8 +293,18 @@ export function App() {
           </div>
         </header>
 
-        {notice && <div className={`feedback-banner feedback-banner--${notice.tone}`}>{notice.message}</div>}
-        {actionError && <div className="feedback-banner feedback-banner--error">{actionError}</div>}
+        {notice && (
+          <div className={`feedback-banner feedback-banner--${notice.tone}`}>
+            <span>{notice.message}</span>
+            <button className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label="Dismiss">&times;</button>
+          </div>
+        )}
+        {actionError && (
+          <div className="feedback-banner feedback-banner--error">
+            <span>{actionError}</span>
+            <button className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label="Dismiss">&times;</button>
+          </div>
+        )}
 
         {!issueRouteItemId && snapshot && (
           <>
