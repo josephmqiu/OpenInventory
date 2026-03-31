@@ -41,17 +41,18 @@ export function createTestDb(): TestDb {
 }
 
 /** On Windows, SQLite file handles may not release immediately after db.close().
- *  Retry rmSync a few times to avoid EBUSY failures in CI. */
-function tryRemoveDir(dir: string, retries = 3): void {
+ *  Retry rmSync with exponential back-off to avoid EBUSY failures in CI. */
+function tryRemoveDir(dir: string, retries = 5): void {
   for (let i = 0; i < retries; i++) {
     try {
       fs.rmSync(dir, { recursive: true, force: true });
       return;
     } catch (err: unknown) {
       if (i === retries - 1) throw err;
-      // Small sync delay before retry — only needed on Windows
+      // Exponential back-off: 100, 200, 400, 800ms
+      const delay = 100 * Math.pow(2, i);
       const start = Date.now();
-      while (Date.now() - start < 50) { /* spin */ }
+      while (Date.now() - start < delay) { /* spin */ }
     }
   }
 }

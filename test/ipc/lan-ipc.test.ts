@@ -15,6 +15,7 @@ interface LanState {
 }
 
 let t: TestDb;
+let dbService: ReturnType<typeof makeDatabaseService>;
 let lanService: LanServerServiceApi;
 let lanState: LanState;
 
@@ -32,13 +33,14 @@ function updateLanState(state: LanAccessState): void {
 
 beforeEach(() => {
   t = createTestDb();
-  const dbService = makeDatabaseService(t.dbPath);
+  dbService = makeDatabaseService(t.dbPath);
   lanService = makeLanServerService(dbService, "");
   lanState = { primaryUrl: "" };
 });
 
 afterEach(async () => {
   await run(lanService.shutdown());
+  dbService.close();
   t.cleanup();
 });
 

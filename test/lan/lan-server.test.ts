@@ -15,6 +15,7 @@ import { makeDatabaseService } from "../../src/main/services/DatabaseService";
 import { makeLanServerService, type LanServerServiceApi } from "../../src/main/services/LanServerService";
 
 let t: TestDb;
+let dbService: ReturnType<typeof makeDatabaseService>;
 let lanService: LanServerServiceApi;
 
 function run<A>(effect: Effect.Effect<A, unknown>): Promise<A> {
@@ -33,12 +34,13 @@ function httpGet(url: string): Promise<{ status: number; body: string }> {
 
 beforeEach(() => {
   t = createTestDb();
-  const dbService = makeDatabaseService(t.dbPath);
+  dbService = makeDatabaseService(t.dbPath);
   lanService = makeLanServerService(dbService, "");
 });
 
 afterEach(async () => {
   await run(lanService.shutdown());
+  dbService.close();
   t.cleanup();
 });
 
