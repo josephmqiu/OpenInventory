@@ -645,6 +645,18 @@ button.button-danger:hover {
   opacity: 0.9;
 }
 
+button.button-danger-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+button.button-danger-ghost:hover {
+  background: var(--danger-muted);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 button.button-inline {
   padding: 6px 10px;
   font-size: 12px;

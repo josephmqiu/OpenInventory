@@ -172,7 +172,7 @@ export function ItemManagementTable({
                           {dictionary.modifyItem}
                         </button>
                         <button
-                          className="button-danger button-inline"
+                          className="button-danger-ghost button-inline"
                           disabled={busy}
                           onClick={() => onRemoveItem(item.id)}
                           type="button"

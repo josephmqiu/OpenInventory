@@ -58,7 +58,7 @@ export function PersonnelPanel({
             <article className="personnel-card" key={member.id}>
               <strong>{member.name}</strong>
               <button
-                className="button-danger button-inline"
+                className="button-danger-ghost button-inline"
                 disabled={busy}
                 onClick={() => void onRemovePersonnel(member.id)}
                 type="button"
