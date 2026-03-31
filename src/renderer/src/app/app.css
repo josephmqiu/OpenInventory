@@ -30,7 +30,7 @@
   --info: #7B93A8;
   --info-muted: rgba(123, 147, 168, 0.08);
 
-  /* Sidebar — always dark, never overridden */
+  /* Sidebar — dark by default */
   --sidebar-bg: #0D0D10;
   --sidebar-text: #E8E6E3;
   --sidebar-muted: #82828A;
@@ -38,6 +38,7 @@
   --sidebar-border: #2A2A32;
   --sidebar-active-bg: rgba(212, 145, 42, 0.10);
   --sidebar-accent: #D4912A;
+  --sidebar-hover: rgba(255, 255, 255, 0.03);
 
   /* Tokens */
   --radius-sm: 2px;
@@ -71,6 +72,16 @@
   --success-muted: rgba(61, 122, 81, 0.06);
   --info: #5A7A94;
   --info-muted: rgba(90, 122, 148, 0.06);
+
+  /* Light sidebar — warm stone */
+  --sidebar-bg: #EFEEEC;
+  --sidebar-text: #1A1A1E;
+  --sidebar-muted: #6B6966;
+  --sidebar-dim: #6E6B68;
+  --sidebar-border: #E2E0DC;
+  --sidebar-active-bg: rgba(184, 122, 26, 0.08);
+  --sidebar-accent: #B87A1A;
+  --sidebar-hover: rgba(0, 0, 0, 0.04);
 }
 
 /* ---- B. Reset & Base ---- */
@@ -192,7 +203,7 @@ textarea:focus-visible {
 
 .nav-item:hover {
   color: var(--sidebar-text);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--sidebar-hover);
 }
 
 .nav-item--active {
