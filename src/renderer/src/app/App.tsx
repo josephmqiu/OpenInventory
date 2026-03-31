@@ -262,38 +262,42 @@ export function App() {
     <div className={`app-shell${sidebarCollapsed ? " app-shell--collapsed" : ""}`}>
       <aside className={`sidebar${sidebarCollapsed ? " sidebar--collapsed" : ""}`}>
         {!sidebarCollapsed && (
-          <div className="sidebar__brand">
-            <span className="sidebar__eyebrow">{browserRuntime ? dictionary.inventoryLan : dictionary.inventoryDesktop}</span>
-            <h1>{dictionary.appName}</h1>
-            <p>{dictionary.tagline}</p>
-          </div>
+          <>
+            <div className="sidebar__brand">
+              <span className="sidebar__eyebrow">{browserRuntime ? dictionary.inventoryLan : dictionary.inventoryDesktop}</span>
+              <h1>{dictionary.appName}</h1>
+              <p>{dictionary.tagline}</p>
+            </div>
+            {!issueRouteItemId && (
+              <nav className="sidebar__nav">
+                {navOrder.map((item) => (
+                  <button
+                    key={item}
+                    className={section === item ? "nav-item nav-item--active" : "nav-item"}
+                    onClick={() => { closeAction(); closeBatchIssue(); setSection(item); }}
+                    type="button"
+                  >
+                    {dictionary[item]}
+                  </button>
+                ))}
+              </nav>
+            )}
+          </>
         )}
-        <div className="sidebar__toggle-wrap">
+        <div className="sidebar__footer">
           <button
-            className="sidebar__toggle"
+            className="button-secondary button-icon-only"
             onClick={() => setSidebarCollapsed((prev) => !prev)}
             type="button"
-            title={sidebarCollapsed ? "Expand" : "Collapse"}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {sidebarCollapsed ? "\u00BB" : "\u00AB"}
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+              <line x1="6.5" y1="2.5" x2="6.5" y2="13.5" />
+            </svg>
           </button>
         </div>
-        {!issueRouteItemId && (
-          <nav className="sidebar__nav">
-            {navOrder.map((item) => (
-              <button
-                key={item}
-                className={section === item ? "nav-item nav-item--active" : "nav-item"}
-                onClick={() => { closeAction(); closeBatchIssue(); setSection(item); }}
-                type="button"
-                title={sidebarCollapsed ? dictionary[item] : undefined}
-              >
-                {sidebarCollapsed ? dictionary[item].charAt(0) : dictionary[item]}
-              </button>
-            ))}
-          </nav>
-        )}
       </aside>
       <main className="content">
         <header className="topbar">
