@@ -213,23 +213,80 @@ export function useInventoryState(): InventoryState {
   }, [desktopRuntime, issueRouteItemId, reloadKey, runtime]);
 
   useEffect(() => {
-    if (!desktopRuntime || issueRouteItemId || busy) {
+    if (!desktopRuntime || issueRouteItemId || busy || typeof window === "undefined" || typeof document === "undefined") {
       return;
     }
 
-    const refreshInterval = window.setInterval(() => {
-      loadAppSnapshot()
-        .then((result) => {
-          setLanguage(result.language);
-          setSnapshot(result);
-        })
-        .catch(() => {
-          // Keep the last successful desktop snapshot if a background refresh fails.
-        });
-    }, 2000);
+    let cancelled = false;
+    let refreshTimeout: number | undefined;
+    let refreshInFlight = false;
+
+    const clearRefreshTimeout = () => {
+      if (refreshTimeout !== undefined) {
+        window.clearTimeout(refreshTimeout);
+        refreshTimeout = undefined;
+      }
+    };
+
+    const scheduleRefresh = (delayMs: number) => {
+      clearRefreshTimeout();
+
+      if (cancelled || document.visibilityState !== "visible") {
+        return;
+      }
+
+      refreshTimeout = window.setTimeout(() => {
+        refreshTimeout = undefined;
+        void refreshSnapshot();
+      }, delayMs);
+    };
+
+    const refreshSnapshot = async () => {
+      if (cancelled || refreshInFlight || document.visibilityState !== "visible") {
+        return;
+      }
+
+      refreshInFlight = true;
+
+      try {
+        const result = await loadAppSnapshot();
+        if (cancelled) {
+          return;
+        }
+
+        setLanguage(result.language);
+        setSnapshot(result);
+      } catch {
+        // Keep the last successful desktop snapshot if a background refresh fails.
+      } finally {
+        refreshInFlight = false;
+        if (!cancelled) {
+          scheduleRefresh(2000 + Math.floor(Math.random() * 501));
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        clearRefreshTimeout();
+        return;
+      }
+
+      if (!refreshInFlight) {
+        void refreshSnapshot();
+      }
+    };
+
+    if (document.visibilityState === "visible") {
+      scheduleRefresh(2000 + Math.floor(Math.random() * 501));
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.clearInterval(refreshInterval);
+      cancelled = true;
+      clearRefreshTimeout();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [busy, desktopRuntime, issueRouteItemId]);
 
