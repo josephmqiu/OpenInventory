@@ -204,6 +204,16 @@ export function useInventoryState(): InventoryState {
             setActionError(toErrorMessage(error));
           }
         });
+    } else if (isDev) {
+      // Dev preview: show the LAN panel with stub data so it's visible in the browser.
+      setLanAccess({
+        enabled: false,
+        port: 4123,
+        accessKey: "dev-preview-stub-key-0000",
+        urls: [],
+        status: "stopped",
+        statusMessage: "Dev preview — LAN server runs only in Electron.",
+      });
     } else {
       setLanAccess(null);
     }
@@ -401,6 +411,10 @@ export function useInventoryState(): InventoryState {
   };
 
   const handleLanAccessSave = async (input: UpdateLanAccessInput): Promise<boolean> => {
+    if (!desktopRuntime) {
+      setNotice({ message: "LAN server management is only available in the desktop app.", tone: "warning" });
+      return false;
+    }
     try {
       setBusy(true);
       setActionError(null);
@@ -422,6 +436,10 @@ export function useInventoryState(): InventoryState {
   };
 
   const handleLanAccessKeyRegenerate = async () => {
+    if (!desktopRuntime) {
+      setNotice({ message: "LAN server management is only available in the desktop app.", tone: "warning" });
+      return;
+    }
     try {
       setBusy(true);
       setActionError(null);

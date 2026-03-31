@@ -23,6 +23,7 @@ export interface LanServerServiceApi {
     port: number;
   }) => Effect.Effect<LanAccessState, AppError>;
   readonly regenerateAccessKey: () => Effect.Effect<LanAccessState, AppError>;
+  readonly shutdown: () => Effect.Effect<void, AppError>;
 }
 
 export class LanServerService extends Context.Tag("LanServerService")<
@@ -64,15 +65,19 @@ export function makeLanServerService(
     status: "running" | "stopped" | "error",
     statusMessage: string = "",
   ): LanAccessState {
+    const port = actualPort || currentSettings.port;
     return {
       enabled: currentSettings.enabled,
-      port: currentSettings.port,
+      port,
       accessKey: currentSettings.accessKey,
-      urls: status === "running" ? buildUrls(currentSettings.port) : [],
+      urls: status === "running" ? buildUrls(port) : [],
       status,
       statusMessage,
     };
   }
+
+  /** The actual port the server is listening on (may differ from config when port is 0). */
+  let actualPort = 0;
 
   async function startServer(): Promise<void> {
     if (server) {
@@ -89,6 +94,8 @@ export function makeLanServerService(
 
     return new Promise<void>((resolve, reject) => {
       server!.listen(currentSettings.port, () => {
+        const addr = server!.address();
+        actualPort = typeof addr === "object" && addr ? addr.port : currentSettings.port;
         resolve();
       });
       server!.on("error", (err) => {
@@ -181,6 +188,14 @@ export function makeLanServerService(
           }
 
           return buildState(server ? "running" : "stopped");
+        },
+        catch: (e) => new ServerError({ message: String(e) }),
+      }),
+
+    shutdown: () =>
+      Effect.tryPromise({
+        try: async () => {
+          await stopServer();
         },
         catch: (e) => new ServerError({ message: String(e) }),
       }),

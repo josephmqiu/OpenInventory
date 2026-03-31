@@ -3,6 +3,7 @@ import { formatDate } from "../../app/formatDate";
 import { localizeCategory, localizeUnit, type Dictionary } from "../../app/i18n";
 import type { InventoryItem, InventoryMovement, Language } from "../../domain/models";
 import { getItemMovements } from "../../services/inventoryGateway";
+import { QrCodeImage } from "./QrCodeImage";
 
 interface ItemDetailsPanelProps {
   dictionary: Dictionary;
@@ -105,7 +106,7 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
         <div className="item-details-qr">
           <h3>{dictionary.qrCode}</h3>
           {item.qrCodeDataUrl ? (
-            <img alt={item.sku} src={item.qrCodeDataUrl} />
+            <QrCodeImage text={item.qrCodeDataUrl} alt={item.sku} />
           ) : (
             <p>{dictionary.qrCodeUnavailable}</p>
           )}

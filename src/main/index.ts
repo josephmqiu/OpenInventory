@@ -5,10 +5,16 @@ import { is } from "@electron-toolkit/utils";
 
 import { DatabaseService, makeDatabaseLayer } from "./services/DatabaseService";
 import { NotificationService, NotificationServiceLive } from "./services/NotificationService";
+import { makeLanServerService, type LanServerServiceApi } from "./services/LanServerService";
 import { runPendingMigrations } from "./infrastructure/migrations";
 import { registerIpcHandlers } from "./ipc";
 import Database from "better-sqlite3";
 import fs from "fs";
+
+/** Mutable ref so the QR generator closure always reads the latest LAN URL. */
+export interface LanState {
+  primaryUrl: string;
+}
 
 function resolveDbPath(): string {
   const dataDir = join(app.getPath("userData"), "data");
@@ -60,17 +66,45 @@ app.whenReady().then(async () => {
   const dbPath = resolveDbPath();
   initializeDatabase(dbPath);
 
+  // Mutable ref — the QR generator closure reads this on every snapshot load.
+  const lanState: LanState = { primaryUrl: "" };
+
+  // QR code generator: returns the public LAN URL for each item, or "" when
+  // the LAN server is off. The field is named qrCodeDataUrl for historical
+  // reasons but now contains a plain URL (rendered to a QR image on the frontend).
+  const qrCodeGenerator = (itemId: string, _sku: string): string =>
+    lanState.primaryUrl
+      ? `${lanState.primaryUrl}/public/items/${itemId}/context`
+      : "";
+
   const AppLayer = Layer.merge(
-    makeDatabaseLayer(dbPath),
+    makeDatabaseLayer(dbPath, qrCodeGenerator),
     NotificationServiceLive,
   );
 
-  // Build a concrete runtime from the layer
   const runtime = await Effect.runPromise(
     Layer.toRuntime(AppLayer).pipe(Effect.scoped),
   ) as Runtime.Runtime<DatabaseService | NotificationService>;
 
-  registerIpcHandlers(runtime);
+  // Extract the concrete DatabaseServiceApi to hand to LanServerService.
+  const dbServiceApi = await Runtime.runPromise(runtime)(
+    Effect.map(DatabaseService, (s) => s),
+  );
+
+  const rendererDir = is.dev ? "" : join(__dirname, "../renderer");
+  const lanService: LanServerServiceApi = makeLanServerService(dbServiceApi, rendererDir);
+
+  // Auto-start LAN server if previously enabled; populate lanState.
+  try {
+    const state = await Effect.runPromise(lanService.loadState());
+    if (state.status === "running" && state.urls.length > 0) {
+      lanState.primaryUrl = state.urls[0];
+    }
+  } catch {
+    // Non-fatal — app works without LAN server.
+  }
+
+  registerIpcHandlers(runtime, lanService, lanState);
 
   createWindow();
 

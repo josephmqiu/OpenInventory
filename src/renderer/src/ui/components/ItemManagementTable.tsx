@@ -58,9 +58,9 @@ export function ItemManagementTable({
     setSelectedIds(allSelected ? [] : items.map((item) => item.id));
   };
 
-  const handlePrint = (itemsToPrint: InventoryItem[]) => {
+  const handlePrint = async (itemsToPrint: InventoryItem[]) => {
     try {
-      printQrLabels(itemsToPrint, dictionary);
+      await printQrLabels(itemsToPrint, dictionary);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Unable to complete the requested action.");
     }

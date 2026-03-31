@@ -444,7 +444,7 @@ export function App() {
                       onBackupNow={onBackupNow}
                       onSave={onBackupPlanSave}
                     />
-                    {desktopRuntime && lanAccess && (
+                    {lanAccess && (
                       <LanAccessPanel
                         busy={busy}
                         dictionary={dictionary}

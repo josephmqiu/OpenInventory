@@ -1,3 +1,4 @@
+import QRCode from "qrcode";
 import type { Dictionary } from "../../app/i18n";
 import type { InventoryItem } from "../../domain/models";
 
@@ -10,10 +11,22 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-export function printQrLabels(items: InventoryItem[], dictionary: Dictionary): void {
+export async function printQrLabels(items: InventoryItem[], dictionary: Dictionary): Promise<void> {
   if (items.length === 0) {
     return;
   }
+
+  // Pre-generate QR data URLs from the plain URL strings.
+  const qrImages = await Promise.all(
+    items.map(async (item) => {
+      if (!item.qrCodeDataUrl) return "";
+      return QRCode.toDataURL(item.qrCodeDataUrl, {
+        errorCorrectionLevel: "M",
+        margin: 4,
+        width: 300,
+      });
+    }),
+  );
 
   const printWindow = window.open("", "_blank", "width=1100,height=900");
   if (!printWindow) {
@@ -22,9 +35,9 @@ export function printQrLabels(items: InventoryItem[], dictionary: Dictionary): v
 
   const labelMarkup = items
     .map(
-      (item) => `
+      (item, i) => `
         <article class="label-card">
-          <img class="label-card__qr" src="${item.qrCodeDataUrl}" alt="${escapeHtml(item.sku)}" />
+          <img class="label-card__qr" src="${qrImages[i]}" alt="${escapeHtml(item.sku)}" />
           <div class="label-card__text">
             <strong>${escapeHtml(item.name)}</strong>
             <span>${escapeHtml(item.sku)}</span>

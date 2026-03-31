@@ -1,15 +1,25 @@
 import { ipcMain } from "electron";
-import crypto from "crypto";
 import { Effect, Runtime } from "effect";
 import { DatabaseService } from "./services/DatabaseService";
 import { NotificationService } from "./services/NotificationService";
 import { serializeError, type AppError } from "./domain/errors";
+import type { LanServerServiceApi } from "./services/LanServerService";
+import type { LanState } from "./index";
 
 type AppRuntime = Runtime.Runtime<DatabaseService | NotificationService>;
 
-export function registerIpcHandlers(runtime: AppRuntime): void {
+export function registerIpcHandlers(
+  runtime: AppRuntime,
+  lanService: LanServerServiceApi,
+  lanState: LanState,
+): void {
   const run = <A>(effect: Effect.Effect<A, AppError, DatabaseService | NotificationService>): Promise<A> =>
     Runtime.runPromise(runtime)(effect).catch((error) => {
+      throw serializeError(error as AppError);
+    });
+
+  const runLan = <A>(effect: Effect.Effect<A, AppError>): Promise<A> =>
+    Effect.runPromise(effect).catch((error) => {
       throw serializeError(error as AppError);
     });
 
@@ -128,34 +138,35 @@ export function registerIpcHandlers(runtime: AppRuntime): void {
     run(Effect.flatMap(DatabaseService, (s) => s.removePersonnel(args.personnelId))),
   );
 
-  // LAN access handlers are registered separately after LanServerService is created
-  ipcMain.handle("load-lan-access-state", () =>
-    run(Effect.flatMap(DatabaseService, (s) => s.loadLanAccessSettings())),
-  );
+  // ─── LAN access: delegate to LanServerService for real server lifecycle ────
 
-  ipcMain.handle("update-lan-access", (_event, args: { input: unknown }) =>
-    run(
-      Effect.gen(function* () {
-        const db = yield* DatabaseService;
-        const input = args.input as { enabled: boolean; port: number };
-        const current = yield* db.loadLanAccessSettings();
-        const updated = { ...current, enabled: input.enabled, port: input.port };
-        yield* db.saveLanAccessSettings(updated);
-        return yield* db.loadLanAccessSettings();
-      }),
-    ),
-  );
+  ipcMain.handle("load-lan-access-state", async () => {
+    const state = await runLan(lanService.loadState());
+    updateLanState(lanState, state);
+    return state;
+  });
 
-  ipcMain.handle("regenerate-lan-access-key", () =>
-    run(
-      Effect.gen(function* () {
-        const db = yield* DatabaseService;
-        const current = yield* db.loadLanAccessSettings();
-        const newKey = crypto.randomBytes(18).toString("base64url").slice(0, 24);
-        const updated = { ...current, accessKey: newKey };
-        yield* db.saveLanAccessSettings(updated);
-        return yield* db.loadLanAccessSettings();
-      }),
-    ),
-  );
+  ipcMain.handle("update-lan-access", async (_event, args: { input: unknown }) => {
+    const input = args.input as { enabled: boolean; port: number };
+    const state = await runLan(lanService.updateAccess(input));
+    updateLanState(lanState, state);
+    return state;
+  });
+
+  ipcMain.handle("regenerate-lan-access-key", async () => {
+    const state = await runLan(lanService.regenerateAccessKey());
+    updateLanState(lanState, state);
+    return state;
+  });
+}
+
+/** Keep the mutable QR-URL ref in sync with the LAN server state. */
+function updateLanState(
+  lanState: LanState,
+  result: { status: string; urls: string[] },
+): void {
+  lanState.primaryUrl =
+    result.status === "running" && result.urls.length > 0
+      ? result.urls[0]
+      : "";
 }
