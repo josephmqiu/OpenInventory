@@ -151,7 +151,13 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
   if (!tauriInvoke) {
     throw unsupportedRuntimeError("This action");
   }
-  return tauriInvoke<T>(command, args);
+  try {
+    return await tauriInvoke<T>(command, args);
+  } catch (error) {
+    // Tauri IPC rejects with a plain string, not an Error instance.
+    // Wrap it so callers can use instanceof Error and read .message.
+    throw new GatewayError(typeof error === "string" ? error : String(error));
+  }
 }
 
 export async function loadAppSnapshot(): Promise<AppSnapshot> {
