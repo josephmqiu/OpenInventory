@@ -12,7 +12,7 @@ import type {
   UpdateInventoryItemInput,
   UpdateLanAccessInput,
 } from "../domain/models";
-import { dictionaries, type Dictionary } from "./i18n";
+import { dictionaries, localizeBackendMessage, type Dictionary } from "./i18n";
 import { detectRuntime, readIssueRouteItemId, type Runtime } from "./runtime";
 import {
   addPersonnel,
@@ -80,8 +80,8 @@ export interface InventoryState {
   handleLanAccessKeyRegenerate: () => Promise<void>;
 }
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unable to complete the requested action.";
+function toErrorMessage(error: unknown, dictionary: Dictionary): string {
+  return error instanceof Error ? localizeBackendMessage(error.message, dictionary) : dictionary.genericActionError;
 }
 
 function findNewOpenAlert(previous: AppSnapshot, next: AppSnapshot): InventoryAlert | null {
@@ -155,7 +155,7 @@ export function useInventoryState(): InventoryState {
         .catch((loadErrorValue: unknown) => {
           if (!cancelled) {
             setIssueContext(null);
-            setLoadError(toErrorMessage(loadErrorValue));
+            setLoadError(toErrorMessage(loadErrorValue, dictionary));
           }
         });
     } else {
@@ -188,7 +188,7 @@ export function useInventoryState(): InventoryState {
             return;
           }
 
-          setLoadError(toErrorMessage(loadErrorValue));
+          setLoadError(toErrorMessage(loadErrorValue, dictionary));
         });
     }
 
@@ -201,7 +201,7 @@ export function useInventoryState(): InventoryState {
         })
         .catch((error: unknown) => {
           if (!cancelled) {
-            setActionError(toErrorMessage(error));
+            setActionError(toErrorMessage(error, dictionary));
           }
         });
     } else if (isDev) {
@@ -212,7 +212,7 @@ export function useInventoryState(): InventoryState {
         accessKey: "dev-preview-stub-key-0000",
         urls: [],
         status: "stopped",
-        statusMessage: "Dev preview — LAN server runs only in Electron.",
+        statusMessage: "Dev preview - LAN server runs only in Electron.",
       });
     } else {
       setLanAccess(null);
@@ -221,7 +221,7 @@ export function useInventoryState(): InventoryState {
     return () => {
       cancelled = true;
     };
-  }, [desktopRuntime, issueRouteItemId, reloadKey, runtime]);
+  }, [desktopRuntime, dictionary, isDev, issueRouteItemId, reloadKey, runtime]);
 
   useEffect(() => {
     if (!desktopRuntime || issueRouteItemId || busy || typeof window === "undefined" || typeof document === "undefined") {
@@ -312,7 +312,7 @@ export function useInventoryState(): InventoryState {
       return;
     }
 
-    setActionError(toErrorMessage(error));
+    setActionError(toErrorMessage(error, dictionary));
   };
 
   const executeMutation = async (work: () => Promise<AppSnapshot>, successMessage: string): Promise<boolean> => {
@@ -365,7 +365,7 @@ export function useInventoryState(): InventoryState {
       return dictionary.successIssueMaterial;
     } catch (error) {
       handleGatewayError(error);
-      throw new Error(toErrorMessage(error));
+      throw new Error(toErrorMessage(error, dictionary));
     } finally {
       setBusy(false);
     }
@@ -412,7 +412,7 @@ export function useInventoryState(): InventoryState {
 
   const handleLanAccessSave = async (input: UpdateLanAccessInput): Promise<boolean> => {
     if (!desktopRuntime) {
-      setNotice({ message: "LAN server management is only available in the desktop app.", tone: "warning" });
+      setNotice({ message: dictionary.lanDesktopOnly, tone: "warning" });
       return false;
     }
     try {
@@ -423,7 +423,7 @@ export function useInventoryState(): InventoryState {
       setLanAccess(nextState);
       setSnapshot(nextSnapshot);
       setNotice({
-        message: nextState.enabled ? "LAN access settings updated." : "LAN access disabled.",
+        message: nextState.enabled ? dictionary.lanAccessUpdated : dictionary.lanAccessDisabled,
         tone: nextState.status === "error" ? "warning" : "success",
       });
       return true;
@@ -437,7 +437,7 @@ export function useInventoryState(): InventoryState {
 
   const handleLanAccessKeyRegenerate = async () => {
     if (!desktopRuntime) {
-      setNotice({ message: "LAN server management is only available in the desktop app.", tone: "warning" });
+      setNotice({ message: dictionary.lanDesktopOnly, tone: "warning" });
       return;
     }
     try {
@@ -446,7 +446,7 @@ export function useInventoryState(): InventoryState {
       const nextState = await regenerateLanAccessKey();
       setLanAccess(nextState);
       setNotice({
-        message: "LAN access key regenerated.",
+        message: dictionary.lanAccessKeyRegenerated,
         tone: "success",
       });
     } catch (error) {
@@ -459,7 +459,7 @@ export function useInventoryState(): InventoryState {
   const connectBrowser = () => {
     const trimmedKey = accessKeyInput.trim();
     if (!trimmedKey) {
-      setLoadError("Enter the LAN access key shown in the desktop app.");
+      setLoadError(dictionary.enterLanAccessKey);
       return;
     }
 

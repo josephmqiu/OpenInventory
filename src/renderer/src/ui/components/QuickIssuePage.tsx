@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { localizeCategory, localizeUnit, type Dictionary } from "../../app/i18n";
+import { localizeBackendMessage, localizeCategory, localizeUnit, type Dictionary } from "../../app/i18n";
 import type { InventoryItem, Language, PersonnelMember, StockMutationInput } from "../../domain/models";
 
 interface QuickIssuePageProps {
@@ -33,13 +33,13 @@ export function QuickIssuePage({ busy, dictionary, item, language, personnel, on
         itemId: item.id,
         quantity,
         performedBy: performedBy.trim(),
-        reason: "QR issue",
+        reason: dictionary.qrIssueReason,
       });
       setQuantityInput("");
       setFeedback(message);
       setFeedbackType("success");
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Unable to complete the requested action.");
+      setFeedback(error instanceof Error ? localizeBackendMessage(error.message, dictionary) : dictionary.genericActionError);
       setFeedbackType("error");
     }
   };
@@ -88,7 +88,7 @@ export function QuickIssuePage({ busy, dictionary, item, language, personnel, on
           </div>
           <div>
             <dt>{dictionary.supplier}</dt>
-            <dd>{item.supplier || dictionary.notAvailable}</dd>
+            <dd>{item.supplier || dictionary.notProvided}</dd>
           </div>
         </dl>
 

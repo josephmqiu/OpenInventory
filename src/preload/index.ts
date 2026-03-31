@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 
 export interface ElectronAPI {
   invoke: <T>(channel: string, args?: unknown) => Promise<T>;
+  on: (channel: string, callback: (...args: unknown[]) => void) => () => void;
 }
 
 const ALLOWED_CHANNELS = new Set([
@@ -22,6 +23,13 @@ const ALLOWED_CHANNELS = new Set([
   "load-lan-access-state",
   "update-lan-access",
   "regenerate-lan-access-key",
+  "check-for-updates",
+  "download-update",
+  "install-update",
+]);
+
+const ALLOWED_EVENT_CHANNELS = new Set([
+  "auto-update-status",
 ]);
 
 const electronAPI: ElectronAPI = {
@@ -30,6 +38,15 @@ const electronAPI: ElectronAPI = {
       return Promise.reject(new Error(`IPC channel not allowed: ${channel}`));
     }
     return ipcRenderer.invoke(channel, args);
+  },
+  on: (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
+    if (!ALLOWED_EVENT_CHANNELS.has(channel)) {
+      console.warn(`IPC event channel not allowed: ${channel}`);
+      return () => {};
+    }
+    const handler = (_event: Electron.IpcRendererEvent, ...args: unknown[]): void => callback(...args);
+    ipcRenderer.on(channel, handler);
+    return () => ipcRenderer.removeListener(channel, handler);
   },
 };
 

@@ -6,6 +6,7 @@ import { is } from "@electron-toolkit/utils";
 import { DatabaseService, makeDatabaseLayer } from "./services/DatabaseService";
 import { NotificationService, NotificationServiceLive } from "./services/NotificationService";
 import { makeLanServerService, type LanServerServiceApi } from "./services/LanServerService";
+import { makeAutoUpdateService, type AutoUpdateServiceApi } from "./services/AutoUpdateService";
 import { runPendingMigrations } from "./infrastructure/migrations";
 import { registerIpcHandlers } from "./ipc";
 import Database from "better-sqlite3";
@@ -35,8 +36,10 @@ function initializeDatabase(dbPath: string): void {
   db.close();
 }
 
+let mainWindow: BrowserWindow | null = null;
+
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1480,
     height: 960,
     minWidth: 900,
@@ -49,7 +52,7 @@ function createWindow(): void {
   });
 
   mainWindow.on("ready-to-show", () => {
-    mainWindow.show();
+    mainWindow?.show();
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -114,9 +117,20 @@ app.whenReady().then(async () => {
     // Non-fatal — app works without LAN server.
   }
 
-  registerIpcHandlers(runtime, lanService, lanState);
+  const autoUpdateService: AutoUpdateServiceApi = makeAutoUpdateService((status) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send("auto-update-status", status);
+      }
+    }
+  });
+
+  registerIpcHandlers(runtime, lanService, lanState, autoUpdateService);
 
   createWindow();
+
+  // Check for updates shortly after launch (non-blocking).
+  setTimeout(() => autoUpdateService.checkForUpdates(), 3000);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

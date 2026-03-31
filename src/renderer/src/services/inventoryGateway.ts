@@ -8,6 +8,7 @@ import type {
   LanAccessState,
   PublicIssueContext,
   UpdateBackupPlanInput,
+  UpdateStatus,
   StockMutationInput,
   UpdateInventoryItemInput,
   UpdateLanAccessInput,
@@ -373,4 +374,29 @@ export async function updateAppLanguage(language: Language): Promise<void> {
   }
 
   throw unsupportedRuntimeError("Updating the app language");
+}
+
+// ─── Auto-update ──────────────────────────────────────────────────────────────
+
+export async function checkForUpdates(): Promise<void> {
+  if (detectRuntime() !== "desktop") return;
+  await invokeCommand<void>("check_for_updates");
+}
+
+export async function downloadUpdate(): Promise<void> {
+  if (detectRuntime() !== "desktop") return;
+  await invokeCommand<void>("download_update");
+}
+
+export async function installUpdate(): Promise<void> {
+  if (detectRuntime() !== "desktop") return;
+  await invokeCommand<void>("install_update");
+}
+
+export function onAutoUpdateStatus(
+  callback: (status: UpdateStatus) => void,
+): () => void {
+  const api = window.electronAPI;
+  if (!api?.on) return () => {};
+  return api.on("auto-update-status", (status) => callback(status as UpdateStatus));
 }

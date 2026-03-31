@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Dictionary } from "../../app/i18n";
+import { localizeBackendMessage, type Dictionary } from "../../app/i18n";
 import type { LanAccessState, UpdateLanAccessInput } from "../../domain/models";
 
 interface LanAccessPanelProps {
@@ -100,7 +100,7 @@ export function LanAccessPanel({ busy, dictionary, lanAccess, onSave, onRegenera
       <div className="backup-grid lan-access-grid">
         <div>
           <dt>{dictionary.lanStatus}</dt>
-          <dd>{lanAccess.statusMessage}</dd>
+          <dd>{lanAccess.statusMessage ? localizeBackendMessage(lanAccess.statusMessage, dictionary) : dictionary.notProvided}</dd>
         </div>
         <div>
           <dt>{dictionary.lanOpenOnDevice}</dt>

@@ -99,6 +99,8 @@ describe("LAN Router — public routes", () => {
   it("GET /public/items/:id/context returns 404 for unknown item", async () => {
     const res = await request("/public/items/nonexistent-id/context");
     expect(res.status).toBe(404);
+    const body = res.body as { message: string };
+    expect(body.message).toBe("Item not found.");
   });
 
   it("POST /public/items/:id/issue issues material without auth", async () => {
@@ -135,6 +137,8 @@ describe("LAN Router — auth", () => {
       headers: { "x-inventory-key": "wrong-key-000000000000" },
     });
     expect(res.status).toBe(401);
+    const body = res.body as { message: string };
+    expect(body.message).toBe("Invalid access key.");
   });
 
   it("returns 429 after repeated failed attempts", async () => {
@@ -170,6 +174,8 @@ describe("LAN Router — API routes", () => {
       headers: { "x-inventory-key": ACCESS_KEY },
     });
     expect(res.status).toBe(404);
+    const body = res.body as { message: string };
+    expect(body.message).toBe("Not found.");
   });
 });
 
@@ -307,10 +313,26 @@ describe("LAN Router — public endpoint data exposure", () => {
     const res = await request("/public/items/fake-id-12345/context");
     expect(res.status).toBe(404);
     const body = res.body as { message: string };
-    expect(body.message).toBe("Item not found");
+    expect(body.message).toBe("Item not found.");
     // Should not leak internal details
     expect(JSON.stringify(res.body)).not.toContain("stack");
     expect(JSON.stringify(res.body)).not.toContain("Error:");
+  });
+
+  it("returns Chinese auth and not-found messages when the app language is zh-CN", async () => {
+    await Effect.runPromise(dbService.updateLanguage("zh-CN"));
+
+    const authRes = await request("/api/health", {
+      headers: { "x-inventory-key": "wrong-key-000000000000" },
+    });
+    expect(authRes.status).toBe(401);
+    const authBody = authRes.body as { message: string };
+    expect(authBody.message).toBe("访问密钥无效。");
+
+    const res = await request("/public/items/nonexistent-id/context");
+    expect(res.status).toBe(404);
+    const body = res.body as { message: string };
+    expect(body.message).toBe("未找到物料。");
   });
 });
 

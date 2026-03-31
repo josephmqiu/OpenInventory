@@ -1,5 +1,14 @@
 export type Language = "en" | "zh-CN";
 
+export type UpdateStatus =
+  | { stage: "idle" }
+  | { stage: "checking" }
+  | { stage: "available"; version: string; releaseNotes: string }
+  | { stage: "not-available"; version: string }
+  | { stage: "downloading"; percent: number; transferred: number; total: number }
+  | { stage: "downloaded"; version: string }
+  | { stage: "error"; message: string };
+
 export type StockStatus = "in_stock" | "low_stock" | "out_of_stock";
 export type AlertStatus = "open" | "resolved";
 export type BackupTargetType = "local_folder" | "lan_share" | "cloud_folder";

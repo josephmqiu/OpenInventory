@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { formatDate } from "../../app/formatDate";
-import { localizeCategory, localizeUnit, type Dictionary } from "../../app/i18n";
+import { localizeBackendMessage, localizeCategory, localizeUnit, type Dictionary } from "../../app/i18n";
 import type { InventoryItem, InventoryMovement, Language } from "../../domain/models";
 import { getItemMovements } from "../../services/inventoryGateway";
 import { QrCodeImage } from "./QrCodeImage";
@@ -35,7 +35,7 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
         if (cancelled) {
           return;
         }
-        setMovementError(error instanceof Error ? error.message : dictionary.noMovements);
+        setMovementError(error instanceof Error ? localizeBackendMessage(error.message, dictionary) : dictionary.noMovements);
       })
       .finally(() => {
         if (!cancelled) {
@@ -46,7 +46,7 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
     return () => {
       cancelled = true;
     };
-  }, [dictionary.noMovements, item.id]);
+  }, [dictionary, item.id]);
 
   return (
     <section className="panel item-details-panel">
@@ -88,7 +88,7 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
           </div>
           <div>
             <dt>{dictionary.supplier}</dt>
-            <dd>{item.supplier || dictionary.notAvailable}</dd>
+            <dd>{item.supplier || dictionary.notProvided}</dd>
           </div>
           <div>
             <dt>{dictionary.currentQuantity}</dt>
@@ -147,8 +147,8 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
                     <td>{formatDate(movement.createdAt, language)}</td>
                     <td>{movement.movementType === "receive" ? dictionary.receiveStock : dictionary.issueMaterial}</td>
                     <td>{movement.quantity}</td>
-                    <td>{movement.performedBy || dictionary.notAvailable}</td>
-                    <td>{movement.reason || dictionary.notAvailable}</td>
+                    <td>{movement.performedBy || dictionary.notProvided}</td>
+                    <td>{movement.reason || dictionary.notProvided}</td>
                   </tr>
                 ))}
               </tbody>

@@ -392,6 +392,79 @@ textarea:focus-visible {
   color: var(--warning);
 }
 
+/* ---- Update Banner ---- */
+
+.update-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font-ui);
+  border-left: 2px solid var(--border);
+  background: var(--surface);
+}
+
+.update-banner--info {
+  border-color: var(--info);
+  background: var(--info-muted);
+  color: var(--text);
+}
+
+.update-banner--success {
+  border-color: var(--success);
+  background: var(--success-muted);
+  color: var(--text);
+}
+
+.update-banner--error {
+  border-color: var(--danger);
+  background: var(--danger-muted);
+  color: var(--danger);
+}
+
+.update-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.update-banner__dismiss {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 16px;
+  line-height: 1;
+  background: transparent;
+  border-color: transparent;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.update-banner__dismiss:hover {
+  opacity: 1;
+  background: transparent;
+  border-color: transparent;
+}
+
+.update-banner__progress {
+  flex: 1;
+  max-width: 200px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.update-banner__progress-bar {
+  height: 100%;
+  background: var(--info);
+  transition: width 0.3s ease;
+}
+
 /* ---- E. Instrument Strip (Dashboard Metrics) ---- */
 
 .metrics-grid {

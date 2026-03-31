@@ -1,5 +1,6 @@
-appId: com.local.inventory-monitor
-productName: Inventory Monitor
+appId: com.openinventory.app
+productName: OpenInventory
+copyright: "Copyright © 2026 OpenInventory"
 directories:
   buildResources: build
 files:
@@ -13,7 +14,12 @@ files:
 asarUnpack:
   - "**/*.node"
   - "out/renderer/**/*"
+publish:
+  provider: github
+  owner: danrepo
+  repo: OpenInventory
 mac:
+  category: public.app-category.business
   artifactName: "${productName}-${version}-${arch}.${ext}"
   identity: null
   target:
@@ -21,5 +27,19 @@ mac:
       arch:
         - x64
         - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+win:
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
 dmg:
   artifactName: "${productName}-${version}-${arch}.${ext}"

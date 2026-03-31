@@ -91,11 +91,11 @@ export function BackupPanel({ busy, dictionary, language, backupPlan, onBackupNo
       <dl className="backup-grid">
         <div>
           <dt>{dictionary.lastBackup}</dt>
-          <dd>{displayValue(formatDate(backupPlan.lastSuccessfulBackup, language), dictionary.notAvailable)}</dd>
+          <dd>{displayValue(formatDate(backupPlan.lastSuccessfulBackup, language), dictionary.notProvided)}</dd>
         </div>
         <div>
           <dt>{dictionary.nextBackup}</dt>
-          <dd>{displayValue(formatDate(backupPlan.nextScheduledBackup, language), dictionary.notAvailable)}</dd>
+          <dd>{displayValue(formatDate(backupPlan.nextScheduledBackup, language), dictionary.notProvided)}</dd>
         </div>
       </dl>
       <div className="action-panel__footer action-panel__footer--spread">

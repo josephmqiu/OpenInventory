@@ -31,6 +31,9 @@ const IPC_CHANNELS = [
   "remove-inventory-item",
   "add-personnel",
   "remove-personnel",
+  "check-for-updates",
+  "download-update",
+  "install-update",
 ] as const;
 
 type IpcChannel = (typeof IPC_CHANNELS)[number];
@@ -116,13 +119,28 @@ const CHANNEL_CONTRACTS: Record<
     returns: "AppSnapshot",
     mutates: true,
   },
+  "check-for-updates": {
+    args: "none",
+    returns: "void",
+    mutates: false,
+  },
+  "download-update": {
+    args: "none",
+    returns: "void",
+    mutates: false,
+  },
+  "install-update": {
+    args: "none",
+    returns: "void",
+    mutates: true,
+  },
 };
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("IPC channel registration", () => {
-  it("defines exactly 17 channels", () => {
-    expect(IPC_CHANNELS).toHaveLength(17);
+  it("defines exactly 20 channels", () => {
+    expect(IPC_CHANNELS).toHaveLength(20);
   });
 
   it("all channels have unique names", () => {
@@ -152,14 +170,15 @@ describe("IPC channel contracts", () => {
     expect(c.mutates).toBe(false);
   });
 
-  it("all mutating commands return AppSnapshot (except update-app-language)", () => {
+  it("all mutating commands return AppSnapshot (except update-app-language and install-update)", () => {
+    const exceptions = new Set([
+      "update-app-language",
+      "update-lan-access",
+      "regenerate-lan-access-key",
+      "install-update",
+    ]);
     for (const [channel, contract] of Object.entries(CHANNEL_CONTRACTS)) {
-      if (
-        contract.mutates &&
-        channel !== "update-app-language" &&
-        channel !== "update-lan-access" &&
-        channel !== "regenerate-lan-access-key"
-      ) {
+      if (contract.mutates && !exceptions.has(channel)) {
         expect(contract.returns).toBe("AppSnapshot");
       }
     }
@@ -274,10 +293,13 @@ describe("channel name mapping from Tauri to Electron", () => {
     remove_inventory_item: "remove-inventory-item",
     add_personnel: "add-personnel",
     remove_personnel: "remove-personnel",
+    check_for_updates: "check-for-updates",
+    download_update: "download-update",
+    install_update: "install-update",
   };
 
-  it("maps all 17 Tauri commands to Electron channels", () => {
-    expect(Object.keys(TAURI_TO_ELECTRON)).toHaveLength(17);
+  it("maps all 20 commands to Electron channels", () => {
+    expect(Object.keys(TAURI_TO_ELECTRON)).toHaveLength(20);
   });
 
   it("converts snake_case to kebab-case correctly", () => {

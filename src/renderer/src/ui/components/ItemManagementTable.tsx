@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { localizeCategory, localizeUnit, type Dictionary } from "../../app/i18n";
+import { formatDate } from "../../app/formatDate";
+import { localizeBackendMessage, localizeCategory, localizeUnit, type Dictionary } from "../../app/i18n";
 import type { InventoryItem, Language } from "../../domain/models";
 import { ItemDetailsPanel } from "./ItemDetailsPanel";
 import { printQrLabels } from "../printing/qrLabelPrinter";
@@ -62,7 +63,7 @@ export function ItemManagementTable({
     try {
       await printQrLabels(itemsToPrint, dictionary);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Unable to complete the requested action.");
+      onError(error instanceof Error ? localizeBackendMessage(error.message, dictionary) : dictionary.genericActionError);
     }
   };
 
@@ -149,10 +150,10 @@ export function ItemManagementTable({
                     <td>{localizeCategory(item.category, language)}</td>
                     <td>{item.location}</td>
                     <td>{localizeUnit(item.unit, language)}</td>
-                    <td>{item.supplier || dictionary.notAvailable}</td>
+                    <td>{item.supplier || dictionary.notProvided}</td>
                     <td>{item.reorderQuantity}</td>
                     <td className="cell-strong">{item.currentQuantity}</td>
-                    <td>{item.lastUpdated}</td>
+                    <td>{formatDate(item.lastUpdated, language)}</td>
                     <td>
                       <div className="row-actions row-actions--spread">
                         <button
