@@ -1,6 +1,7 @@
 node_modules/
 dist/
 out/
+*.dmg
 .vite/
 .claude/
 # Test artifacts

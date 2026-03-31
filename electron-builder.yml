@@ -9,16 +9,16 @@ files:
   - "!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
   - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
   - "!{vitest.config.ts,vitest.config.node.ts}"
-  - "!{test,src-tauri}"
+  - "!{test,e2e,scripts}"
 asarUnpack:
   - "**/*.node"
 mac:
   artifactName: "${productName}-${version}-${arch}.${ext}"
+  identity: null
   target:
     - target: dmg
       arch:
         - x64
         - arm64
-  entitlementsInherit: build/entitlements.mac.plist
 dmg:
   artifactName: "${productName}-${version}-${arch}.${ext}"
