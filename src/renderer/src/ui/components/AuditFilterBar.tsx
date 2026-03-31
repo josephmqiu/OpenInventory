@@ -11,9 +11,9 @@ interface AuditFilterBarProps {
   disabled: boolean;
 }
 
-function toDatetimeLocal(iso: string | undefined): string {
+function toDateInput(iso: string | undefined): string {
   if (!iso) return "";
-  return iso.replace(" ", "T").slice(0, 16);
+  return iso.slice(0, 10);
 }
 
 function defaultDateFrom(): string {
@@ -54,13 +54,14 @@ function presetRange(key: PresetKey): { dateFrom: string; dateTo: string } {
 
 export function AuditFilterBar({
   dictionary,
+  language,
   personnel,
   filters,
   onFiltersChange,
   disabled,
 }: AuditFilterBarProps) {
-  const [dateFrom, setDateFrom] = useState(toDatetimeLocal(filters.dateFrom));
-  const [dateTo, setDateTo] = useState(toDatetimeLocal(filters.dateTo));
+  const [dateFrom, setDateFrom] = useState(toDateInput(filters.dateFrom));
+  const [dateTo, setDateTo] = useState(toDateInput(filters.dateTo));
   const [movementType, setMovementType] = useState(filters.movementType ?? "");
   const [itemSearch, setItemSearch] = useState(filters.itemSearch ?? "");
   const [performedBy, setPerformedBy] = useState(filters.performedBy ?? "");
@@ -69,8 +70,8 @@ export function AuditFilterBar({
 
   const applyFilters = () => {
     onFiltersChange({
-      dateFrom: dateFrom ? dateFrom.replace("T", " ") + (dateFrom.length === 16 ? ":00" : "") : undefined,
-      dateTo: dateTo ? dateTo.replace("T", " ") + (dateTo.length === 16 ? ":59" : "") : undefined,
+      dateFrom: dateFrom ? dateFrom + " 00:00:00" : undefined,
+      dateTo: dateTo ? dateTo + " 23:59:59" : undefined,
       movementType: (movementType as "receive" | "issue") || undefined,
       itemSearch: itemSearch || undefined,
       performedBy: performedBy || undefined,
@@ -83,8 +84,8 @@ export function AuditFilterBar({
   const clearFilters = () => {
     const from = defaultDateFrom();
     const to = defaultDateTo();
-    setDateFrom(toDatetimeLocal(from));
-    setDateTo(toDatetimeLocal(to));
+    setDateFrom(toDateInput(from));
+    setDateTo(toDateInput(to));
     setMovementType("");
     setItemSearch("");
     setPerformedBy("");
@@ -100,8 +101,8 @@ export function AuditFilterBar({
 
   const applyPreset = (key: PresetKey) => {
     const range = presetRange(key);
-    setDateFrom(toDatetimeLocal(range.dateFrom));
-    setDateTo(toDatetimeLocal(range.dateTo));
+    setDateFrom(toDateInput(range.dateFrom));
+    setDateTo(toDateInput(range.dateTo));
     setActivePreset(key);
     onFiltersChange({
       ...filters,
@@ -124,15 +125,18 @@ export function AuditFilterBar({
     { key: "last30Days", label: dictionary.last30Days },
   ];
 
+  const allPersonnel = language === "en" ? "All" : "全部";
+
   return (
     <div className="audit-filter-bar" role="search">
-      <div className="audit-filter-bar__row">
+      {/* Row 1: Date range — presets are the fast path, inputs are the power path */}
+      <div className="audit-filter-bar__date-row">
         <div className="audit-date-presets">
           {presets.map((p) => (
             <button
               key={p.key}
               type="button"
-              className={`button-secondary button-inline${activePreset === p.key ? " audit-preset--active" : ""}`}
+              className={`audit-preset${activePreset === p.key ? " audit-preset--active" : ""}`}
               onClick={() => applyPreset(p.key)}
               disabled={disabled}
             >
@@ -140,65 +144,56 @@ export function AuditFilterBar({
             </button>
           ))}
         </div>
-        <div className="audit-filter-bar__field">
-          <span>{dictionary.dateFrom}</span>
+        <div className="audit-date-range">
           <input
-            type="datetime-local"
+            type="date"
             value={dateFrom}
             onChange={(e) => handleDateChange("from", e.target.value)}
             disabled={disabled}
+            aria-label={dictionary.dateFrom}
           />
-        </div>
-        <div className="audit-filter-bar__field">
-          <span>{dictionary.dateTo}</span>
+          <span className="audit-date-range__sep">&ndash;</span>
           <input
-            type="datetime-local"
+            type="date"
             value={dateTo}
             onChange={(e) => handleDateChange("to", e.target.value)}
             disabled={disabled}
+            aria-label={dictionary.dateTo}
           />
         </div>
       </div>
-      <div className="audit-filter-bar__row">
-        <div className="audit-filter-bar__field">
-          <span>{dictionary.movementType}</span>
-          <select value={movementType} onChange={(e) => setMovementType(e.target.value)} disabled={disabled}>
-            <option value="">{dictionary.allTypes}</option>
-            <option value="receive">{dictionary.receiveStock}</option>
-            <option value="issue">{dictionary.issueMaterial}</option>
-          </select>
-        </div>
-        <div className="audit-filter-bar__field">
-          <span>{dictionary.itemSearch}</span>
-          <input
-            type="text"
-            value={itemSearch}
-            onChange={(e) => setItemSearch(e.target.value)}
-            placeholder={dictionary.itemSearch}
-            disabled={disabled}
-          />
-        </div>
-        <div className="audit-filter-bar__field">
-          <span>{dictionary.performedBy}</span>
-          <select value={performedBy} onChange={(e) => setPerformedBy(e.target.value)} disabled={disabled}>
-            <option value="">{dictionary.allTypes}</option>
-            {personnel.map((p) => (
-              <option key={p.id} value={p.name}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="audit-filter-bar__field">
-          <span>{dictionary.textSearch}</span>
-          <input
-            type="text"
-            value={textSearch}
-            onChange={(e) => setTextSearch(e.target.value)}
-            placeholder={dictionary.textSearchHint}
-            disabled={disabled}
-          />
-        </div>
+
+      {/* Row 2: Data filters — compact inline fields with integrated actions */}
+      <div className="audit-filter-bar__filter-row">
+        <select value={movementType} onChange={(e) => setMovementType(e.target.value)} disabled={disabled} aria-label={dictionary.movementType}>
+          <option value="">{dictionary.allTypes}</option>
+          <option value="receive">{dictionary.receiveStock}</option>
+          <option value="issue">{dictionary.issueMaterial}</option>
+        </select>
+        <input
+          type="text"
+          value={itemSearch}
+          onChange={(e) => setItemSearch(e.target.value)}
+          placeholder={dictionary.itemSearch}
+          disabled={disabled}
+          aria-label={dictionary.itemSearch}
+        />
+        <select value={performedBy} onChange={(e) => setPerformedBy(e.target.value)} disabled={disabled} aria-label={dictionary.performedBy}>
+          <option value="">{allPersonnel}</option>
+          {personnel.map((p) => (
+            <option key={p.id} value={p.name}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <input
+          type="text"
+          value={textSearch}
+          onChange={(e) => setTextSearch(e.target.value)}
+          placeholder={dictionary.textSearchHint}
+          disabled={disabled}
+          aria-label={dictionary.textSearch}
+        />
         <div className="audit-filter-bar__actions">
           <button type="button" onClick={applyFilters} disabled={disabled}>
             {dictionary.applyFilters}
