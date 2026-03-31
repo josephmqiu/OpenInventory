@@ -17,6 +17,7 @@ import type { Dictionary } from "./i18n";
 import { useInventoryState } from "./useInventoryState";
 import { useAutoUpdate } from "./useAutoUpdate";
 import { UpdateBanner } from "../ui/components/UpdateBanner";
+import { LogOut, Moon, PanelLeft, Sun, SunMoon } from "lucide-react";
 
 type Section = "dashboard" | "inventory" | "itemManagement" | "alerts" | "audit" | "personnel" | "settings";
 
@@ -292,10 +293,7 @@ export function App() {
             title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-              <line x1="6.5" y1="2.5" x2="6.5" y2="13.5" />
-            </svg>
+            <PanelLeft size={16} strokeWidth={1.5} />
           </button>
         </div>
       </aside>
@@ -314,7 +312,7 @@ export function App() {
                 title={dictionary.disconnect}
                 aria-label={dictionary.disconnect}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M11 11l3-3-3-3M6 8h8"/></svg>
+                <LogOut size={16} strokeWidth={1.5} />
               </button>
             )}
             <button
@@ -324,15 +322,9 @@ export function App() {
               title={theme === "auto" ? dictionary.autoMode : theme === "light" ? dictionary.lightMode : dictionary.darkMode}
               aria-label={theme === "auto" ? dictionary.autoMode : theme === "light" ? dictionary.lightMode : dictionary.darkMode}
             >
-              {theme === "auto" && (
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="8" cy="8" r="5"/><path d="M8 3v10"/><path d="M8 3a5 5 0 0 1 0 10"/></svg>
-              )}
-              {theme === "light" && (
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
-              )}
-              {theme === "dark" && (
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 9.34A6 6 0 0 1 6.66 2 6 6 0 1 0 14 9.34Z"/></svg>
-              )}
+              {theme === "auto" && <SunMoon size={16} strokeWidth={1.5} />}
+              {theme === "light" && <Sun size={16} strokeWidth={1.5} />}
+              {theme === "dark" && <Moon size={16} strokeWidth={1.5} />}
             </button>
             <button
               className="button-secondary button-icon-only"
