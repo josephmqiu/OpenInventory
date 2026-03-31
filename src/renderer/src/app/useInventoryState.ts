@@ -129,7 +129,8 @@ export function useInventoryState(): InventoryState {
   const [reloadKey, setReloadKey] = useState(0);
   const [accessKeyInput, setAccessKeyInput] = useState(() => readPersistedLanAccessKey());
   const dictionary = dictionaries[language];
-  const requiresBrowserAuth = runtime !== "desktop" && !issueRouteItemId && !readPersistedLanAccessKey().trim();
+  const isDev = typeof window !== "undefined" && window.location.port !== "";
+  const requiresBrowserAuth = runtime !== "desktop" && !issueRouteItemId && !isDev && !readPersistedLanAccessKey().trim();
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -160,7 +161,7 @@ export function useInventoryState(): InventoryState {
     } else {
       setIssueContext(null);
 
-      if (runtime !== "desktop" && !readPersistedLanAccessKey().trim()) {
+      if (runtime !== "desktop" && !isDev && !readPersistedLanAccessKey().trim()) {
         setSnapshot(null);
         return () => {
           cancelled = true;

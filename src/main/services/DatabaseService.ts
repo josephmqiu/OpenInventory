@@ -448,12 +448,6 @@ export function makeDatabaseService(
   const db = new Database(dbPath);
   db.pragma("foreign_keys = ON");
 
-  // Apply schema
-  const schemaPath = path.join(__dirname, "../infrastructure/schema.sql");
-  if (fs.existsSync(schemaPath)) {
-    db.exec(fs.readFileSync(schemaPath, "utf-8"));
-  }
-
   // Generate QR data URL (or empty string if no generator)
   const qrDataUrl = qrCodeGenerator ?? (() => "");
 

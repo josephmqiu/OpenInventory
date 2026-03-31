@@ -3,12 +3,14 @@ dist/
 out/
 .vite/
 .claude/
+src-tauri/target/
 *.log
 .DS_Store
 Thumbs.db
 
 # Runtime app data
 data/
+.dev-data/
 *.db-shm
 *.db-wal
 .gstack/

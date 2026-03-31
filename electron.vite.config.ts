@@ -22,5 +22,11 @@ export default defineConfig({
       },
     },
     plugins: [react()],
+    server: {
+      proxy: {
+        "/api": "http://localhost:4123",
+        "/public": "http://localhost:4123",
+      },
+    },
   },
 });
