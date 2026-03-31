@@ -53,7 +53,7 @@ Default theme. Optimized for extended use and reduced eye fatigue.
   --input-bg: #18181D;
   --text: #E8E6E3;
   --text-muted: #9B9A97;
-  --text-dim: #5C5C63;
+  --text-dim: #7E7E86;
   --accent: #D4912A;
   --accent-hover: #E09E30;
   --accent-muted: rgba(212, 145, 42, 0.10);
@@ -82,7 +82,7 @@ For bright environments or user preference. Warm off-white, not blue-tinted.
   --input-bg: #FFFFFF;
   --text: #1A1A1E;
   --text-muted: #6B6966;
-  --text-dim: #9E9B97;
+  --text-dim: #787572;
   --accent: #B87A1A;
   --accent-hover: #D4912A;
   --accent-muted: rgba(184, 122, 26, 0.07);
@@ -107,7 +107,7 @@ The sidebar is the structural frame of the app. It stays dark regardless of them
 :root {
   --sidebar-bg: #0D0D10;
   --sidebar-text: #E8E6E3;
-  --sidebar-muted: #5C5C63;
+  --sidebar-muted: #82828A;
   --sidebar-border: #2A2A32;
   --sidebar-active-bg: rgba(212, 145, 42, 0.10);
   --sidebar-accent: #D4912A;
@@ -179,3 +179,4 @@ The sidebar is the structural frame of the app. It stays dark regardless of them
 | 2026-03-30 | IBM Plex + JetBrains Mono type stack | IBM Plex designed for enterprise/industrial use. JetBrains Mono for display numbers adds tool-grade identity. All open source (SIL OFL), all on Google Fonts. |
 | 2026-03-30 | Max 4px border radius | Deliberate departure from category norm (most inventory apps use 12-24px). Sharp corners = precision tool, not friendly app. |
 | 2026-03-30 | Instrument strip over metric cards | Horizontal band of readouts with dividers instead of floating cards. Denser, more scannable, more industrial. |
+| 2026-03-30 | Brighten --text-dim for WCAG AA | Original #5C5C63 (dark) and #9E9B97 (light) failed WCAG AA contrast for small text. Brightened to #7E7E86 (4.31:1) and #787572 (4.58:1). Sidebar muted #6B6B73 → #82828A (5.09:1). Flagged by /design-review Codex audit. |
