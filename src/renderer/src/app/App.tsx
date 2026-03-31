@@ -12,14 +12,15 @@ import { ActionPanel } from "../ui/components/ActionPanel";
 import { BatchIssuePanel } from "../ui/components/BatchIssuePanel";
 import { LanAccessPanel } from "../ui/components/LanAccessPanel";
 import { QuickIssuePage } from "../ui/components/QuickIssuePage";
+import { AuditPanel } from "../ui/components/AuditPanel";
 import type { Dictionary } from "./i18n";
 import { useInventoryState } from "./useInventoryState";
 import { useAutoUpdate } from "./useAutoUpdate";
 import { UpdateBanner } from "../ui/components/UpdateBanner";
 
-type Section = "dashboard" | "inventory" | "itemManagement" | "alerts" | "personnel" | "settings";
+type Section = "dashboard" | "inventory" | "itemManagement" | "alerts" | "audit" | "personnel" | "settings";
 
-const navOrder: Section[] = ["dashboard", "inventory", "itemManagement", "alerts", "personnel", "settings"];
+const navOrder: Section[] = ["dashboard", "inventory", "itemManagement", "alerts", "audit", "personnel", "settings"];
 
 function sectionSubtitle(section: Section, dictionary: Dictionary): string {
   switch (section) {
@@ -29,6 +30,8 @@ function sectionSubtitle(section: Section, dictionary: Dictionary): string {
       return dictionary.manageItemsHint;
     case "alerts":
       return dictionary.noAlertsHint;
+    case "audit":
+      return dictionary.auditHint;
     case "personnel":
       return dictionary.managePersonnelHint;
     case "settings":
@@ -436,6 +439,13 @@ export function App() {
                 )}
                 {section === "alerts" && (
                   <AlertsPanel dictionary={dictionary} alerts={snapshot.alerts} language={language} />
+                )}
+                {section === "audit" && (
+                  <AuditPanel
+                    dictionary={dictionary}
+                    language={language}
+                    personnel={snapshot.personnel}
+                  />
                 )}
                 {section === "personnel" && (
                   <PersonnelPanel

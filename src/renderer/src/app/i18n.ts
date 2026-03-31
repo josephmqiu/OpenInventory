@@ -365,6 +365,62 @@ export interface Dictionary {
   updateRestart: string;
   updateLater: string;
   dismiss: string;
+  // ─── Audit ──────────────────────────────────────────
+  audit: string;
+  auditHint: string;
+  activityLog: string;
+  activityLogHint: string;
+  activitySummary: string;
+  activitySummaryHint: string;
+  dateFrom: string;
+  dateTo: string;
+  movementType: string;
+  allTypes: string;
+  itemSearch: string;
+  textSearch: string;
+  textSearchHint: string;
+  applyFilters: string;
+  clearFilters: string;
+  today: string;
+  thisWeek: string;
+  thisMonth: string;
+  last30Days: string;
+  totalMovements: string;
+  totalReceived: string;
+  totalIssued: string;
+  uniqueItemsMoved: string;
+  uniquePersonnelActive: string;
+  previousQuantity: string;
+  newQuantity: string;
+  referenceNo: string;
+  notes: string;
+  balance: string;
+  byPersonnel: string;
+  byItem: string;
+  alertFrequency: string;
+  receiveCount: string;
+  issueCount: string;
+  totalQuantityMoved: string;
+  distinctItemsMoved: string;
+  netChange: string;
+  triggerCount: string;
+  lastTriggered: string;
+  pageOf: (current: number, total: number) => string;
+  previousPage: string;
+  nextPage: string;
+  exportCsv: string;
+  exportTruncated: (max: number) => string;
+  auditDrillDown: string;
+  auditDrillDownHint: (itemName: string) => string;
+  noAuditData: string;
+  noAuditDataHint: string;
+  noAuditDataEver: string;
+  noAuditDataEverHint: string;
+  loadingAuditData: string;
+  anomalyTooltip: (multiplier: number) => string;
+  clickToFilter: string;
+  retryLoad: string;
+  goToInventory: string;
 }
 
 export const dictionaries: Record<Language, Dictionary> = {
@@ -550,6 +606,62 @@ export const dictionaries: Record<Language, Dictionary> = {
     updateRestart: "Restart Now",
     updateLater: "Later",
     dismiss: "Dismiss",
+    // ─── Audit ──────────────────────────────────────────
+    audit: "Audit",
+    auditHint: "Review movement history, personnel activity, and inventory trends.",
+    activityLog: "Activity Log",
+    activityLogHint: "Complete movement history across all inventory items.",
+    activitySummary: "Activity Summary",
+    activitySummaryHint: "Aggregated analytics by personnel, item, and alert frequency.",
+    dateFrom: "From",
+    dateTo: "To",
+    movementType: "Movement Type",
+    allTypes: "All Types",
+    itemSearch: "Item Name or SKU",
+    textSearch: "Reason / Reference / Notes",
+    textSearchHint: "Search in reason, reference number, or notes fields.",
+    applyFilters: "Apply",
+    clearFilters: "Clear",
+    today: "Today",
+    thisWeek: "This Week",
+    thisMonth: "This Month",
+    last30Days: "Last 30 Days",
+    totalMovements: "Total Movements",
+    totalReceived: "Total Received",
+    totalIssued: "Total Issued",
+    uniqueItemsMoved: "Items Affected",
+    uniquePersonnelActive: "Personnel Active",
+    previousQuantity: "Prev Qty",
+    newQuantity: "New Qty",
+    referenceNo: "Reference No.",
+    notes: "Notes",
+    balance: "Balance",
+    byPersonnel: "By Personnel",
+    byItem: "By Item",
+    alertFrequency: "Alert Frequency",
+    receiveCount: "Receives",
+    issueCount: "Issues",
+    totalQuantityMoved: "Total Qty Moved",
+    distinctItemsMoved: "Distinct Items",
+    netChange: "Net Change",
+    triggerCount: "Triggers",
+    lastTriggered: "Last Triggered",
+    pageOf: (current, total) => `Page ${current} of ${total}`,
+    previousPage: "Previous",
+    nextPage: "Next",
+    exportCsv: "Export CSV",
+    exportTruncated: (max) => `Export limited to first ${max.toLocaleString()} rows.`,
+    auditDrillDown: "Item History",
+    auditDrillDownHint: (itemName) => `All movements for ${itemName} in the selected date range.`,
+    noAuditData: "No movements match the current filters.",
+    noAuditDataHint: "Adjust the date range or filter criteria to find movement records.",
+    noAuditDataEver: "No movements recorded yet.",
+    noAuditDataEverHint: "Receive or issue inventory to see activity here.",
+    loadingAuditData: "Loading audit data...",
+    anomalyTooltip: (multiplier) => `This quantity is ${multiplier.toFixed(1)}x the average for this item.`,
+    clickToFilter: "Click to filter",
+    retryLoad: "Retry",
+    goToInventory: "Go to Inventory",
   },
   "zh-CN": {
     appName: "OpenInventory",
@@ -733,5 +845,61 @@ export const dictionaries: Record<Language, Dictionary> = {
     updateRestart: "立即重启",
     updateLater: "稍后",
     dismiss: "关闭",
+    // ─── Audit ──────────────────────────────────────────
+    audit: "审计",
+    auditHint: "查看出入库历史、人员活动及库存趋势。",
+    activityLog: "活动日志",
+    activityLogHint: "所有库存物料的完整出入库历史。",
+    activitySummary: "活动汇总",
+    activitySummaryHint: "按人员、物料和预警频率汇总分析。",
+    dateFrom: "开始日期",
+    dateTo: "结束日期",
+    movementType: "变动类型",
+    allTypes: "全部类型",
+    itemSearch: "物料名称或 SKU",
+    textSearch: "原因 / 参考号 / 备注",
+    textSearchHint: "在原因、参考号或备注字段中搜索。",
+    applyFilters: "应用",
+    clearFilters: "清除",
+    today: "今天",
+    thisWeek: "本周",
+    thisMonth: "本月",
+    last30Days: "近30天",
+    totalMovements: "总变动数",
+    totalReceived: "总入库量",
+    totalIssued: "总出库量",
+    uniqueItemsMoved: "涉及物料数",
+    uniquePersonnelActive: "活跃人员数",
+    previousQuantity: "变动前数量",
+    newQuantity: "变动后数量",
+    referenceNo: "参考号",
+    notes: "备注",
+    balance: "余额",
+    byPersonnel: "按人员",
+    byItem: "按物料",
+    alertFrequency: "预警频率",
+    receiveCount: "入库次数",
+    issueCount: "出库次数",
+    totalQuantityMoved: "总变动量",
+    distinctItemsMoved: "涉及物料",
+    netChange: "净变化",
+    triggerCount: "触发次数",
+    lastTriggered: "最近触发",
+    pageOf: (current, total) => `第 ${current} 页，共 ${total} 页`,
+    previousPage: "上一页",
+    nextPage: "下一页",
+    exportCsv: "导出 CSV",
+    exportTruncated: (max) => `导出限制为前 ${max.toLocaleString()} 行。`,
+    auditDrillDown: "物料历史",
+    auditDrillDownHint: (itemName) => `所选日期范围内 ${itemName} 的所有变动记录。`,
+    noAuditData: "当前筛选条件下没有匹配的变动记录。",
+    noAuditDataHint: "调整日期范围或筛选条件以查找变动记录。",
+    noAuditDataEver: "尚无出入库记录。",
+    noAuditDataEverHint: "入库或出库后即可在此查看活动。",
+    loadingAuditData: "正在加载审计数据...",
+    anomalyTooltip: (multiplier) => `此数量是该物料平均值的 ${multiplier.toFixed(1)} 倍。`,
+    clickToFilter: "点击按此值筛选",
+    retryLoad: "重试",
+    goToInventory: "前往库存",
   },
 };
