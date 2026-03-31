@@ -1,10 +1,10 @@
 import { app, BrowserWindow, shell } from "electron";
 import { join } from "path";
-import { Layer, ManagedRuntime } from "effect";
+import { Effect, Layer, Runtime } from "effect";
 import { is } from "@electron-toolkit/utils";
 
-import { makeDatabaseLayer } from "./services/DatabaseService";
-import { NotificationServiceLive } from "./services/NotificationService";
+import { DatabaseService, makeDatabaseLayer } from "./services/DatabaseService";
+import { NotificationService, NotificationServiceLive } from "./services/NotificationService";
 import { runPendingMigrations } from "./infrastructure/migrations";
 import { registerIpcHandlers } from "./ipc";
 import Database from "better-sqlite3";
@@ -56,7 +56,7 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   const dbPath = resolveDbPath();
   initializeDatabase(dbPath);
 
@@ -65,20 +65,12 @@ app.whenReady().then(() => {
     NotificationServiceLive,
   );
 
-  const runtime = ManagedRuntime.make(AppLayer);
+  // Build a concrete runtime from the layer
+  const runtime = await Effect.runPromise(
+    Layer.toRuntime(AppLayer).pipe(Effect.scoped),
+  ) as Runtime.Runtime<DatabaseService | NotificationService>;
 
-  // Register all 17 IPC handlers against the Effect runtime
-  // The runtime provides DatabaseService + NotificationService
-  runtime.runSync(
-    import("effect").then(({ Effect }) =>
-      Effect.sync(() => {
-        // IPC registration happens synchronously
-      }),
-    ) as never,
-  );
-
-  // Actually just register directly — the runtime is available
-  registerIpcHandlers(runtime as never);
+  registerIpcHandlers(runtime);
 
   createWindow();
 
