@@ -1,6 +1,9 @@
 import type {
   AddPersonnelInput,
   AppSnapshot,
+  AuditAnalyticsResult,
+  AuditMovementFilters,
+  AuditPageResult,
   BatchIssueMaterialInput,
   CreateInventoryItemInput,
   InventoryMovement,
@@ -374,6 +377,48 @@ export async function updateAppLanguage(language: Language): Promise<void> {
   }
 
   throw unsupportedRuntimeError("Updating the app language");
+}
+
+// ─── Audit ────────────────────────────────────────────────────────────────────
+
+export async function getAuditMovements(filters: AuditMovementFilters): Promise<AuditPageResult> {
+  if (supportsHttpApi()) {
+    const params = new URLSearchParams();
+    if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) params.set("dateTo", filters.dateTo);
+    if (filters.movementType) params.set("movementType", filters.movementType);
+    if (filters.itemId) params.set("itemId", filters.itemId);
+    if (filters.itemSearch) params.set("itemSearch", filters.itemSearch);
+    if (filters.performedBy) params.set("performedBy", filters.performedBy);
+    if (filters.textSearch) params.set("textSearch", filters.textSearch);
+    params.set("page", String(filters.page));
+    params.set("pageSize", String(filters.pageSize));
+    return fetchJson<AuditPageResult>(`/api/audit/movements?${params}`, { method: "GET" });
+  }
+  if (detectRuntime() === "desktop") {
+    return invokeCommand<AuditPageResult>("get-audit-movements", { filters });
+  }
+  throw unsupportedRuntimeError("Loading audit data");
+}
+
+export async function getAuditAnalytics(
+  filters: Omit<AuditMovementFilters, "page" | "pageSize">,
+): Promise<AuditAnalyticsResult> {
+  if (supportsHttpApi()) {
+    const params = new URLSearchParams();
+    if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) params.set("dateTo", filters.dateTo);
+    if (filters.movementType) params.set("movementType", filters.movementType);
+    if (filters.itemId) params.set("itemId", filters.itemId);
+    if (filters.itemSearch) params.set("itemSearch", filters.itemSearch);
+    if (filters.performedBy) params.set("performedBy", filters.performedBy);
+    if (filters.textSearch) params.set("textSearch", filters.textSearch);
+    return fetchJson<AuditAnalyticsResult>(`/api/audit/analytics?${params}`, { method: "GET" });
+  }
+  if (detectRuntime() === "desktop") {
+    return invokeCommand<AuditAnalyticsResult>("get-audit-analytics", { filters });
+  }
+  throw unsupportedRuntimeError("Loading audit analytics");
 }
 
 // ─── Auto-update ──────────────────────────────────────────────────────────────

@@ -158,3 +158,85 @@ export type ActionKind =
   | "receiveStock"
   | "issueMaterial"
   | "removeItem";
+
+// ─── Audit Types ─────────────────────────────────────────────────────────────
+
+export interface AuditMovementFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  movementType?: "receive" | "issue";
+  itemId?: string;
+  itemSearch?: string;
+  performedBy?: string;
+  textSearch?: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface AuditMovementRow {
+  id: string;
+  itemId: string;
+  itemName: string;
+  itemSku: string;
+  movementType: string;
+  quantity: number;
+  previousQuantity: number;
+  newQuantity: number;
+  reason: string | null;
+  referenceNo: string | null;
+  notes: string | null;
+  performedBy: string | null;
+  performedAt: string;
+  isAnomaly: boolean;
+}
+
+export interface AuditSummary {
+  totalMovements: number;
+  totalReceived: number;
+  totalIssued: number;
+  uniqueItems: number;
+  uniquePersonnel: number;
+}
+
+export interface AuditPageResult {
+  rows: AuditMovementRow[];
+  total: number;
+  summary: AuditSummary;
+}
+
+export interface PersonnelActivityRow {
+  performedBy: string;
+  receiveCount: number;
+  issueCount: number;
+  totalQuantity: number;
+  distinctItems: number;
+}
+
+export interface ItemActivityRow {
+  itemId: string;
+  itemName: string;
+  itemSku: string;
+  receiveCount: number;
+  issueCount: number;
+  totalReceived: number;
+  totalIssued: number;
+  netChange: number;
+  currentQuantity: number;
+}
+
+export interface AlertFrequencyRow {
+  itemId: string;
+  itemName: string;
+  itemSku: string;
+  triggerCount: number;
+  lastTriggeredAt: string;
+  currentStatus: string;
+  currentQuantity: number;
+}
+
+export interface AuditAnalyticsResult {
+  summary: AuditSummary;
+  byPersonnel: PersonnelActivityRow[];
+  byItem: ItemActivityRow[];
+  alertFrequency: AlertFrequencyRow[];
+}

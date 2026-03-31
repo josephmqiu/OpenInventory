@@ -115,6 +115,19 @@ const MIGRATIONS: Migration[] = [
       db.pragma("foreign_keys = ON");
     },
   },
+  {
+    version: 3,
+    apply: (db) => {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_inventory_movements_performed_at
+          ON inventory_movements(performed_at);
+        CREATE INDEX IF NOT EXISTS idx_inventory_movements_type
+          ON inventory_movements(movement_type);
+        CREATE INDEX IF NOT EXISTS idx_inventory_movements_performed_by
+          ON inventory_movements(performed_by);
+      `);
+    },
+  },
 ];
 
 function ensureMigrationsTable(db: Database.Database): void {
