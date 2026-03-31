@@ -140,11 +140,11 @@ export function App() {
     return (
       <main className="state-screen state-screen--auth">
         <div className="auth-card">
-          <span className="sidebar__eyebrow">LAN Inventory Access</span>
+          <span className="sidebar__eyebrow">{dictionary.authTitle}</span>
           <h1>{dictionary.appName}</h1>
-          <p>Enter the access key from the desktop app to open the inventory workspace on this device.</p>
+          <p>{dictionary.authDescription}</p>
           <label className="auth-card__field">
-            <span>Access Key</span>
+            <span>{dictionary.authAccessKeyLabel}</span>
             <input
               autoFocus
               type="password"
@@ -154,7 +154,7 @@ export function App() {
           </label>
           {loadError && <div className="feedback-banner feedback-banner--error">{loadError}</div>}
           <button onClick={connectBrowser} type="button">
-            Connect
+            {dictionary.authConnect}
           </button>
         </div>
       </main>
@@ -349,6 +349,7 @@ export function App() {
                     {desktopRuntime && lanAccess && (
                       <LanAccessPanel
                         busy={busy}
+                        dictionary={dictionary}
                         lanAccess={lanAccess}
                         onRegenerateKey={handleLanAccessKeyRegenerate}
                         onSave={onLanAccessSave}

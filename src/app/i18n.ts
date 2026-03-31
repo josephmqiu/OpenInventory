@@ -187,6 +187,28 @@ export interface Dictionary {
   noAlertsHint: string;
   backupStorageHint: string;
   backupNotConfigured: string;
+  lanAccess: string;
+  lanEnabled: string;
+  lanDisabled: string;
+  lanPort: string;
+  lanAccessKey: string;
+  lanStatus: string;
+  lanStatusRunning: string;
+  lanStatusStopped: string;
+  lanStatusError: string;
+  lanOpenOnDevice: string;
+  lanRegenerateKey: string;
+  lanSaveSettings: string;
+  lanNetworkHint: string;
+  lanEnableHint: string;
+  lanUrlsUnavailable: string;
+  lanCopy: string;
+  lanCopySuccess: string;
+  lanCopyError: string;
+  authTitle: string;
+  authDescription: string;
+  authAccessKeyLabel: string;
+  authConnect: string;
   managePersonnelHint: string;
   personnelName: string;
   addPersonnel: string;
@@ -286,6 +308,28 @@ export const dictionaries: Record<Language, Dictionary> = {
     noAlertsHint: "Alerts will appear when an item reaches or drops below its reorder level.",
     backupStorageHint: "Local database backups can be stored on LAN shares or cloud-synced folders.",
     backupNotConfigured: "Backup destination not configured yet.",
+    lanAccess: "LAN Access",
+    lanEnabled: "Enabled",
+    lanDisabled: "Disabled",
+    lanPort: "Port",
+    lanAccessKey: "Access Key",
+    lanStatus: "Status",
+    lanStatusRunning: "Running",
+    lanStatusStopped: "Stopped",
+    lanStatusError: "Error",
+    lanOpenOnDevice: "Open On Another Device",
+    lanRegenerateKey: "Regenerate Access Key",
+    lanSaveSettings: "Save LAN Settings",
+    lanNetworkHint: "Devices must be on the same local network and use the access key shown below.",
+    lanEnableHint: "Serve the inventory app on your local network so phones and tablets can look up and manage items.",
+    lanUrlsUnavailable: "Enable LAN access to see device URLs.",
+    lanCopy: "Copy",
+    lanCopySuccess: "Access key copied to clipboard.",
+    lanCopyError: "Unable to copy the access key on this device.",
+    authTitle: "LAN Inventory Access",
+    authDescription: "Enter the access key from the desktop app to open the inventory workspace on this device.",
+    authAccessKeyLabel: "Access Key",
+    authConnect: "Connect",
     managePersonnelHint: "Manage the operator list used by stock movement forms.",
     personnelName: "Personnel Name",
     addPersonnel: "Add Personnel",
@@ -396,6 +440,28 @@ export const dictionaries: Record<Language, Dictionary> = {
     noAlertsHint: "当物料数量降到或低于补货量时，预警会出现在这里。",
     backupStorageHint: "本地数据库备份可以保存到 LAN 共享或云同步文件夹。",
     backupNotConfigured: "还未配置备份目标。",
+    lanAccess: "LAN 访问",
+    lanEnabled: "启用",
+    lanDisabled: "禁用",
+    lanPort: "端口",
+    lanAccessKey: "访问密钥",
+    lanStatus: "状态",
+    lanStatusRunning: "运行中",
+    lanStatusStopped: "已停止",
+    lanStatusError: "错误",
+    lanOpenOnDevice: "在其他设备上打开",
+    lanRegenerateKey: "重新生成访问密钥",
+    lanSaveSettings: "保存 LAN 设置",
+    lanNetworkHint: "设备必须连接到同一本地网络，并使用下方显示的访问密钥。",
+    lanEnableHint: "在本地网络上提供库存应用，让手机和平板也能查询和管理物料。",
+    lanUrlsUnavailable: "启用 LAN 访问后即可查看设备访问链接。",
+    lanCopy: "复制",
+    lanCopySuccess: "访问密钥已复制到剪贴板。",
+    lanCopyError: "当前设备无法复制访问密钥。",
+    authTitle: "LAN 库存访问",
+    authDescription: "输入桌面应用中显示的访问密钥，即可在此设备上打开库存工作区。",
+    authAccessKeyLabel: "访问密钥",
+    authConnect: "连接",
     managePersonnelHint: "管理库存操作表单使用的人员列表。",
     personnelName: "人员姓名",
     addPersonnel: "新增人员",
