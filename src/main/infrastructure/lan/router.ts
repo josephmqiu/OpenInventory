@@ -259,12 +259,26 @@ function readBody(req: http.IncomingMessage): Promise<Json> {
 }
 
 function serveStaticFile(pathname: string, res: http.ServerResponse, rendererDir: string): void {
+  if (!rendererDir) {
+    res.writeHead(404);
+    res.end("Not found");
+    return;
+  }
+
+  const resolvedBase = path.resolve(rendererDir);
   const safePath = pathname === "/" ? "/index.html" : pathname;
-  let filePath = path.join(rendererDir, safePath);
+  let filePath = path.resolve(rendererDir, safePath.replace(/^\//, ""));
+
+  // Block path traversal: resolved path must stay inside rendererDir.
+  if (!filePath.startsWith(resolvedBase)) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
 
   if (!fs.existsSync(filePath)) {
     // SPA fallback
-    filePath = path.join(rendererDir, "index.html");
+    filePath = path.join(resolvedBase, "index.html");
   }
 
   if (!fs.existsSync(filePath)) {
@@ -294,7 +308,10 @@ function serveStaticFile(pathname: string, res: http.ServerResponse, rendererDir
   // Electron-vite builds with base="./" for file:// protocol. Rewrite to
   // absolute paths so the SPA works when served over HTTP on sub-routes.
   if (ext === ".html") {
-    content = content.toString("utf-8").replace(/\.\//g, "/");
+    content = content
+      .toString("utf-8")
+      .replace(/\.\//g, "/")
+      .replace('<html lang="en">', '<html lang="en" data-platform="web">');
   }
 
   res.writeHead(200, { "Content-Type": contentType });

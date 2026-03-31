@@ -39,6 +39,8 @@ function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1480,
     height: 960,
+    minWidth: 900,
+    minHeight: 600,
     show: false,
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),

@@ -161,6 +161,35 @@ The sidebar is the structural frame of the app. Dark in dark theme, warm stone i
   - 4px: modals, top-level containers
   - Nothing above 4px. Ever.
 
+## Responsive Strategy
+
+The same React frontend is served in two contexts:
+- **Desktop (Electron):** Window with sidebar layout, `data-platform="desktop"` on `<html>`
+- **Web/LAN (mobile/tablet):** Served via LAN HTTP server, `data-platform="web"` on `<html>`
+
+### Breakpoints
+| Breakpoint | Applies to | Effect |
+|------------|-----------|--------|
+| 1200px | Both | Reduces grid columns (metrics 5->3, backup 3->2). Desktop sidebar narrows 220->180px, content padding tightens. |
+| 960px | Web only | Major layout transform: sidebar collapses to horizontal top nav, single-column layout. |
+| 720px | Web only | Further mobile optimizations: 2-column nav, 2-column metrics, horizontal table scroll. |
+
+### Platform Detection
+The `data-platform` attribute is set on `<html>` before first paint:
+- **Electron:** Inline `<script>` in index.html checks `window.electronAPI` (exposed by preload contextBridge)
+- **LAN web:** The LAN HTTP server injects `data-platform="web"` into the HTML during serving
+- **React:** `main.tsx` reinforces the attribute via `detectRuntime()` as a safety net
+
+### Desktop Window Constraints
+- Minimum: 900x600px (set via BrowserWindow minWidth/minHeight)
+- Default: 1480x960px
+- The sidebar always remains visible on desktop regardless of window size
+
+### Rules
+- The 960px and 720px breakpoints use `[data-platform="web"]` selector prefix
+- The 1200px breakpoint applies universally (no platform prefix) plus desktop-specific compression rules
+- Desktop compression at narrow widths is handled by platform-specific rules, not by collapsing to mobile layout
+
 ## Motion
 - **Approach:** Minimal-functional — only transitions that aid comprehension
 - **Easing:** enter(ease-out) exit(ease-in) move(ease-in-out)
@@ -194,3 +223,4 @@ The sidebar is the structural frame of the app. Dark in dark theme, warm stone i
 | 2026-03-30 | Instrument strip over metric cards | Horizontal band of readouts with dividers instead of floating cards. Denser, more scannable, more industrial. |
 | 2026-03-30 | Brighten --text-dim for WCAG AA | Original #5C5C63 (dark) and #9E9B97 (light) failed WCAG AA contrast for small text. Brightened to #7E7E86 (4.31:1) and #787572 (4.58:1). Sidebar muted #6B6B73 → #82828A (5.09:1). Flagged by /design-review Codex audit. |
 | 2026-03-31 | Light mode sidebar: warm stone | Changed from always-dark to theme-aware. Light sidebar uses #EFEEEC (warm stone) to reduce jarring dark/light contrast. Dark sidebar unchanged. |
+| 2026-03-31 | Platform-scoped responsive breakpoints | Desktop (Electron) and web (LAN) share the same frontend but use `data-platform` attribute to scope CSS breakpoints. 960/720px breakpoints only apply to web/mobile. Desktop gets graceful compression with 900x600 floor. |
