@@ -22,19 +22,18 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   if (typeof window !== "undefined") {
-    window.__TAURI_INTERNALS__ = undefined;
+    window.electronAPI = undefined;
     window.localStorage?.clear?.();
   }
 });
 
 describe("loadAppSnapshot", () => {
-  it("uses the desktop invoke bridge when the Tauri runtime is available", async () => {
-    const invoke = vi
-      .fn(async () => snapshot) as unknown as NonNullable<Window["__TAURI_INTERNALS__"]>["invoke"];
-    window.__TAURI_INTERNALS__ = { invoke };
+  it("uses the desktop invoke bridge when the Electron runtime is available", async () => {
+    const invoke = vi.fn(async () => snapshot);
+    window.electronAPI = { invoke };
 
     await expect(loadAppSnapshot()).resolves.toEqual(snapshot);
-    expect(invoke).toHaveBeenCalledWith("load_app_snapshot", undefined);
+    expect(invoke).toHaveBeenCalledWith("load-app-snapshot", undefined);
   });
 
   it("uses the HTTP API in browser-hosted mode", async () => {

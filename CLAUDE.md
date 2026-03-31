@@ -1,6 +1,20 @@
 # OpenInventory
 
+Electron desktop app (TypeScript + Effect TS backend, React 19 + Vite frontend) for inventory monitoring and material issue tracking.
 
+## Tech Stack
+- **Desktop shell**: Electron (electron-vite for build tooling)
+- **Backend** (main process): Effect TS services, better-sqlite3, Node.js HTTP server for LAN access
+- **Frontend** (renderer): React 19 + Vite, custom CSS, no UI framework
+- **Database**: SQLite via better-sqlite3
+- **IPC**: Electron contextBridge with typed invoke API
+- **Tests**: Vitest (103 backend tests in test/, frontend tests in src/renderer/)
+
+## Key directories
+- `src/main/` — Electron main process (Effect TS services, IPC, LAN server)
+- `src/preload/` — contextBridge preload script
+- `src/renderer/src/` — React frontend (app, domain, services, ui)
+- `test/` — Backend test suite (services, lan, ipc, integration)
 
 ## Skill routing
 

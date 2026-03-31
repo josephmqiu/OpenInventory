@@ -36,8 +36,7 @@ function getDesktopInvoke() {
     return undefined;
   }
 
-  // Prefer Electron API, fall back to Tauri for backward compat during migration
-  return window.electronAPI?.invoke ?? window.__TAURI_INTERNALS__?.invoke;
+  return window.electronAPI?.invoke;
 }
 
 export function isUnauthorizedError(error: unknown): boolean {
@@ -153,9 +152,7 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
     throw unsupportedRuntimeError("This action");
   }
   try {
-    // Electron uses kebab-case channels, Tauri uses snake_case.
-    // Normalize to kebab-case for Electron, keep snake_case for Tauri fallback.
-    const channel = window.electronAPI ? command.replace(/_/g, "-") : command;
+    const channel = command.replace(/_/g, "-");
     return await desktopInvoke<T>(channel, args);
   } catch (error) {
     // IPC rejects with a plain string, not an Error instance.
