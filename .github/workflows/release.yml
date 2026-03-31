@@ -27,6 +27,8 @@ jobs:
       - run: npm ci
       - name: Run tests
         run: npm rebuild better-sqlite3 && npm run test && npm run test:backend
+      - name: Rebuild better-sqlite3 for Electron
+        run: npx electron-rebuild -o better-sqlite3
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,6 +47,8 @@ jobs:
       - run: npm ci
       - name: Run tests
         run: npm rebuild better-sqlite3 && npm run test && npm run test:backend
+      - name: Rebuild better-sqlite3 for Electron
+        run: npx electron-rebuild -o better-sqlite3
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

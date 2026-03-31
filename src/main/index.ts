@@ -1,7 +1,13 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, dialog, shell } from "electron";
 import { join } from "path";
 import { Effect, Layer, Runtime } from "effect";
 import { is } from "@electron-toolkit/utils";
+
+// Surface fatal startup errors instead of silently exiting.
+process.on("uncaughtException", (err) => {
+  dialog.showErrorBox("OpenInventory — Fatal Error", err.stack ?? err.message);
+  app.exit(1);
+});
 
 import { DatabaseService, makeDatabaseLayer } from "./services/DatabaseService";
 import { NotificationService, NotificationServiceLive } from "./services/NotificationService";
