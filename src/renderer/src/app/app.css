@@ -704,6 +704,28 @@ button.button-icon {
   padding: 5px 10px;
 }
 
+button.button-icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  min-width: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+button.button-icon-only:hover {
+  color: var(--text);
+  background: transparent;
+  border-color: var(--text-muted);
+}
+
+button.button-icon-only svg {
+  display: block;
+  flex-shrink: 0;
+}
+
 /* ---- J. Forms ---- */
 
 .form-grid {

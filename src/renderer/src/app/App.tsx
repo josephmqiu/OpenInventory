@@ -74,21 +74,36 @@ export function App() {
     handleLanAccessSave,
     handleLanAccessKeyRegenerate,
   } = useInventoryState();
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
+  type ThemeMode = "dark" | "light" | "auto";
+  const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof localStorage !== "undefined") {
-      return (localStorage.getItem("oi-theme") as "dark" | "light") || "dark";
+      return (localStorage.getItem("oi-theme") as ThemeMode) || "auto";
     }
-    return "dark";
+    return "auto";
   });
+  const [systemDark, setSystemDark] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : true,
+  );
 
   useEffect(() => {
-    if (theme === "light") {
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+
+  const resolvedTheme = theme === "auto" ? (systemDark ? "dark" : "light") : theme;
+
+  useEffect(() => {
+    if (resolvedTheme === "light") {
       document.documentElement.setAttribute("data-theme", "light");
     } else {
       document.documentElement.removeAttribute("data-theme");
     }
     localStorage.setItem("oi-theme", theme);
-  }, [theme]);
+  }, [resolvedTheme, theme]);
+
+  const cycleTheme = () => setTheme(theme === "auto" ? "light" : theme === "light" ? "dark" : "auto");
 
   const desktopRuntime = runtime === "desktop";
   const browserRuntime = runtime !== "desktop";
@@ -269,19 +284,31 @@ export function App() {
           <div className="topbar__controls">
             {browserRuntime && !issueRouteItemId && (
               <button
-                className="button-secondary button-inline"
+                className="button-secondary button-icon-only"
                 onClick={disconnectBrowser}
                 type="button"
+                title={dictionary.disconnect}
+                aria-label={dictionary.disconnect}
               >
-                {dictionary.disconnect}
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M11 11l3-3-3-3M6 8h8"/></svg>
               </button>
             )}
             <button
-              className="button-secondary button-inline"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="button-secondary button-icon-only"
+              onClick={cycleTheme}
               type="button"
+              title={theme === "auto" ? dictionary.autoMode : theme === "light" ? dictionary.lightMode : dictionary.darkMode}
+              aria-label={theme === "auto" ? dictionary.autoMode : theme === "light" ? dictionary.lightMode : dictionary.darkMode}
             >
-              {theme === "dark" ? dictionary.lightMode : dictionary.darkMode}
+              {theme === "auto" && (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="8" cy="8" r="5"/><path d="M8 3v10"/><path d="M8 3a5 5 0 0 1 0 10"/></svg>
+              )}
+              {theme === "light" && (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
+              )}
+              {theme === "dark" && (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 9.34A6 6 0 0 1 6.66 2 6 6 0 1 0 14 9.34Z"/></svg>
+              )}
             </button>
             <label className="language-switch">
               <span>{dictionary.language}</span>

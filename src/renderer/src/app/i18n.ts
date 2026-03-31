@@ -295,6 +295,7 @@ export interface Dictionary {
   inventoryLan: string;
   darkMode: string;
   lightMode: string;
+  autoMode: string;
 }
 
 export const dictionaries: Record<Language, Dictionary> = {
@@ -455,6 +456,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     inventoryLan: "LAN Access",
     darkMode: "Dark",
     lightMode: "Light",
+    autoMode: "Auto",
   },
   "zh-CN": {
     appName: "OpenInventory",
@@ -613,5 +615,6 @@ export const dictionaries: Record<Language, Dictionary> = {
     inventoryLan: "局域网访问",
     darkMode: "深色",
     lightMode: "浅色",
+    autoMode: "自动",
   },
 };
