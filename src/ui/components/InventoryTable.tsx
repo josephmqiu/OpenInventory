@@ -1,3 +1,4 @@
+import { formatDate } from "../../app/formatDate";
 import { localizeCategory, localizeStockStatus, localizeUnit, type Dictionary } from "../../app/i18n";
 import type { InventoryItem, Language } from "../../domain/models";
 
@@ -72,7 +73,7 @@ export function InventoryTable({
                   <td>
                     <span className={`status-pill status-pill--${item.status}`}>{localizeStockStatus(item.status, language)}</span>
                   </td>
-                  <td>{item.lastUpdated}</td>
+                  <td>{formatDate(item.lastUpdated, language)}</td>
                   <td>
                     <div className="row-actions row-actions--compact">
                       <button

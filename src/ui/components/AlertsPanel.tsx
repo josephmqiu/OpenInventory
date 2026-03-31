@@ -1,12 +1,14 @@
-﻿import type { Dictionary } from "../../app/i18n";
-import type { InventoryAlert } from "../../domain/models";
+﻿import { formatDate } from "../../app/formatDate";
+import type { Dictionary } from "../../app/i18n";
+import type { InventoryAlert, Language } from "../../domain/models";
 
 interface AlertsPanelProps {
   dictionary: Dictionary;
   alerts: InventoryAlert[];
+  language: Language;
 }
 
-export function AlertsPanel({ dictionary, alerts }: AlertsPanelProps) {
+export function AlertsPanel({ dictionary, alerts, language }: AlertsPanelProps) {
   return (
     <section className="panel">
       <div className="panel__header">
@@ -32,7 +34,7 @@ export function AlertsPanel({ dictionary, alerts }: AlertsPanelProps) {
               </div>
               <div className="alert-card__meta">
                 <span className={`status-pill status-pill--alert-${alert.status}`}>{alert.status}</span>
-                <small>{alert.triggeredAt}</small>
+                <small>{formatDate(alert.triggeredAt, language)}</small>
               </div>
             </article>
           ))}

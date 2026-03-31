@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { formatDate } from "../../app/formatDate";
 import { localizeBackupTargetType, type Dictionary } from "../../app/i18n";
 import type { BackupPlan, BackupTargetType, Language, UpdateBackupPlanInput } from "../../domain/models";
 
@@ -90,11 +91,11 @@ export function BackupPanel({ busy, dictionary, language, backupPlan, onBackupNo
       <dl className="backup-grid">
         <div>
           <dt>{dictionary.lastBackup}</dt>
-          <dd>{displayValue(backupPlan.lastSuccessfulBackup, dictionary.notAvailable)}</dd>
+          <dd>{displayValue(formatDate(backupPlan.lastSuccessfulBackup, language), dictionary.notAvailable)}</dd>
         </div>
         <div>
           <dt>{dictionary.nextBackup}</dt>
-          <dd>{displayValue(backupPlan.nextScheduledBackup, dictionary.notAvailable)}</dd>
+          <dd>{displayValue(formatDate(backupPlan.nextScheduledBackup, language), dictionary.notAvailable)}</dd>
         </div>
       </dl>
       <div className="action-panel__footer action-panel__footer--spread">

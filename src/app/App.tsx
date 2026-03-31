@@ -362,7 +362,9 @@ export function App() {
                     onRemoveItem={(itemId) => openAction("removeItem", itemId)}
                   />
                 )}
-                {section === "alerts" && <AlertsPanel dictionary={dictionary} alerts={snapshot.alerts} />}
+                {section === "alerts" && (
+                  <AlertsPanel dictionary={dictionary} alerts={snapshot.alerts} language={language} />
+                )}
                 {section === "personnel" && (
                   <PersonnelPanel
                     busy={busy}
