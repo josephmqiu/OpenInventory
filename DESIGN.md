@@ -100,10 +100,11 @@ For bright environments or user preference. Warm off-white, not blue-tinted.
 }
 ```
 
-### Sidebar (always dark, both themes)
-The sidebar is the structural frame of the app. It stays dark regardless of theme to maintain identity.
+### Sidebar
+The sidebar is the structural frame of the app. Dark in dark theme, warm stone in light theme.
 
 ```css
+/* Dark theme sidebar */
 :root {
   --sidebar-bg: #0D0D10;
   --sidebar-text: #E8E6E3;
@@ -111,6 +112,18 @@ The sidebar is the structural frame of the app. It stays dark regardless of them
   --sidebar-border: #2A2A32;
   --sidebar-active-bg: rgba(212, 145, 42, 0.10);
   --sidebar-accent: #D4912A;
+  --sidebar-hover: rgba(255, 255, 255, 0.03);
+}
+
+/* Light theme sidebar — warm stone */
+:root[data-theme="light"] {
+  --sidebar-bg: #EFEEEC;
+  --sidebar-text: #1A1A1E;
+  --sidebar-muted: #6B6966;
+  --sidebar-border: #E2E0DC;
+  --sidebar-active-bg: rgba(184, 122, 26, 0.08);
+  --sidebar-accent: #B87A1A;
+  --sidebar-hover: rgba(0, 0, 0, 0.04);
 }
 ```
 
@@ -180,3 +193,4 @@ The sidebar is the structural frame of the app. It stays dark regardless of them
 | 2026-03-30 | Max 4px border radius | Deliberate departure from category norm (most inventory apps use 12-24px). Sharp corners = precision tool, not friendly app. |
 | 2026-03-30 | Instrument strip over metric cards | Horizontal band of readouts with dividers instead of floating cards. Denser, more scannable, more industrial. |
 | 2026-03-30 | Brighten --text-dim for WCAG AA | Original #5C5C63 (dark) and #9E9B97 (light) failed WCAG AA contrast for small text. Brightened to #7E7E86 (4.31:1) and #787572 (4.58:1). Sidebar muted #6B6B73 → #82828A (5.09:1). Flagged by /design-review Codex audit. |
+| 2026-03-31 | Light mode sidebar: warm stone | Changed from always-dark to theme-aware. Light sidebar uses #EFEEEC (warm stone) to reduce jarring dark/light contrast. Dark sidebar unchanged. |
