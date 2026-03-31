@@ -296,6 +296,14 @@ export interface Dictionary {
   darkMode: string;
   lightMode: string;
   autoMode: string;
+  updateAvailable: string;
+  updateDownloading: string;
+  updateReady: string;
+  updateError: string;
+  updateDownload: string;
+  updateRestart: string;
+  updateLater: string;
+  updateDismiss: string;
 }
 
 export const dictionaries: Record<Language, Dictionary> = {
@@ -457,6 +465,14 @@ export const dictionaries: Record<Language, Dictionary> = {
     darkMode: "Dark",
     lightMode: "Light",
     autoMode: "Auto",
+    updateAvailable: "Version {version} is available",
+    updateDownloading: "Downloading update... {percent}%",
+    updateReady: "Update ready — restart to apply",
+    updateError: "Update check failed",
+    updateDownload: "Download",
+    updateRestart: "Restart Now",
+    updateLater: "Later",
+    updateDismiss: "Dismiss",
   },
   "zh-CN": {
     appName: "OpenInventory",
@@ -616,5 +632,13 @@ export const dictionaries: Record<Language, Dictionary> = {
     darkMode: "深色",
     lightMode: "浅色",
     autoMode: "自动",
+    updateAvailable: "新版本 {version} 可用",
+    updateDownloading: "正在下载更新... {percent}%",
+    updateReady: "更新就绪 — 重启以应用",
+    updateError: "检查更新失败",
+    updateDownload: "下载",
+    updateRestart: "立即重启",
+    updateLater: "稍后",
+    updateDismiss: "关闭",
   },
 };

@@ -4,6 +4,7 @@ import { DatabaseService } from "./services/DatabaseService";
 import { NotificationService } from "./services/NotificationService";
 import { serializeError, type AppError } from "./domain/errors";
 import type { LanServerServiceApi } from "./services/LanServerService";
+import type { AutoUpdateServiceApi } from "./services/AutoUpdateService";
 import type { LanState } from "./index";
 
 type AppRuntime = Runtime.Runtime<DatabaseService | NotificationService>;
@@ -12,6 +13,7 @@ export function registerIpcHandlers(
   runtime: AppRuntime,
   lanService: LanServerServiceApi,
   lanState: LanState,
+  autoUpdateService: AutoUpdateServiceApi,
 ): void {
   const run = <A>(effect: Effect.Effect<A, AppError, DatabaseService | NotificationService>): Promise<A> =>
     Runtime.runPromise(runtime)(effect).catch((error) => {
@@ -157,6 +159,21 @@ export function registerIpcHandlers(
     const state = await runLan(lanService.regenerateAccessKey());
     updateLanState(lanState, state);
     return state;
+  });
+
+  // ─── Auto-update ─────────────────────────────────────────────────────────────
+
+  ipcMain.handle("check-for-updates", () => {
+    autoUpdateService.checkForUpdates();
+    return autoUpdateService.getStatus();
+  });
+
+  ipcMain.handle("download-update", () => {
+    autoUpdateService.downloadUpdate();
+  });
+
+  ipcMain.handle("install-update", () => {
+    autoUpdateService.installUpdate();
   });
 }
 

@@ -1,7 +1,10 @@
 {
   "name": "inventory-monitor",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.0.1",
+  "description": "Desktop inventory monitoring and material issue tracking",
+  "author": "OpenInventory",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
@@ -26,6 +29,7 @@
     "@effect/schema": "^0.75.5",
     "better-sqlite3": "^12.8.0",
     "effect": "^3.21.0",
+    "electron-updater": "^6.8.3",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

@@ -14,6 +14,8 @@ import { LanAccessPanel } from "../ui/components/LanAccessPanel";
 import { QuickIssuePage } from "../ui/components/QuickIssuePage";
 import type { Dictionary } from "./i18n";
 import { useInventoryState } from "./useInventoryState";
+import { useAutoUpdate } from "./useAutoUpdate";
+import { UpdateBanner } from "../ui/components/UpdateBanner";
 
 type Section = "dashboard" | "inventory" | "itemManagement" | "alerts" | "personnel" | "settings";
 
@@ -74,6 +76,7 @@ export function App() {
     handleLanAccessSave,
     handleLanAccessKeyRegenerate,
   } = useInventoryState();
+  const { updateStatus, downloadUpdate, installUpdate, dismissUpdate } = useAutoUpdate();
   type ThemeMode = "dark" | "light" | "auto";
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof localStorage !== "undefined") {
@@ -319,6 +322,16 @@ export function App() {
             </label>
           </div>
         </header>
+
+        {runtime === "desktop" && (
+          <UpdateBanner
+            status={updateStatus}
+            dictionary={dictionary}
+            onDownload={downloadUpdate}
+            onInstall={installUpdate}
+            onDismiss={dismissUpdate}
+          />
+        )}
 
         {notice && (
           <div className={`feedback-banner feedback-banner--${notice.tone}`}>
