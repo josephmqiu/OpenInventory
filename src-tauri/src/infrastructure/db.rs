@@ -11,7 +11,7 @@ use crate::domain::models::{
     CreateInventoryItemInput, InventoryAlert, InventoryItem, Language, PersonnelMember,
     StockMutationInput, StockStatus, UpdateBackupPlanInput, UpdateInventoryItemInput,
 };
-use crate::infrastructure::{qr, schema};
+use crate::infrastructure::{migrations, qr, schema};
 
 static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -67,6 +67,8 @@ impl InventoryDb {
         connection
             .execute_batch(schema::schema_sql())
             .map_err(database_error)?;
+        let mut connection = connection;
+        migrations::run_pending_migrations(&mut connection)?;
 
         self.ensure_qr_assets()
     }

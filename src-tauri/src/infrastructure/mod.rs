@@ -1,3 +1,4 @@
+pub mod migrations;
 pub mod db;
 pub mod lan;
 pub mod qr;
