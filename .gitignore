@@ -1,14 +1,19 @@
 node_modules/
 dist/
+out/
+*.dmg
 .vite/
-target/
+.claude/
+# Test artifacts
+playwright-report/
+test-results/
 *.log
 .DS_Store
 Thumbs.db
 
 # Runtime app data
-src-tauri/data/
 data/
+.dev-data/
 *.db-shm
 *.db-wal
 .gstack/

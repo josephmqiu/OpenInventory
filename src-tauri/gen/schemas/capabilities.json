@@ -1,1 +1,0 @@
-{"main-capability":{"identifier":"main-capability","description":"Default capability for the main inventory monitor window.","local":true,"windows":["main"],"permissions":["core:window:default","core:event:default","notification:default"]}}

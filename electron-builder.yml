@@ -1,0 +1,25 @@
+appId: com.local.inventory-monitor
+productName: Inventory Monitor
+directories:
+  buildResources: build
+files:
+  - "!**/.vscode/*"
+  - "!src/*"
+  - "!electron.vite.config.*"
+  - "!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
+  - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
+  - "!{vitest.config.ts,vitest.config.node.ts}"
+  - "!{test,e2e,scripts}"
+asarUnpack:
+  - "**/*.node"
+  - "out/renderer/**/*"
+mac:
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  identity: null
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+dmg:
+  artifactName: "${productName}-${version}-${arch}.${ext}"

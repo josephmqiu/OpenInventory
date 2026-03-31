@@ -1,6 +1,34 @@
 # OpenInventory
 
-Tauri 2 desktop app (Rust backend, React 19 + Vite frontend) for inventory monitoring and material issue tracking.
+Electron desktop app (TypeScript + Effect TS backend, React 19 + Vite frontend) for inventory monitoring and material issue tracking.
+
+## Tech Stack
+- **Desktop shell**: Electron (electron-vite for build tooling)
+- **Backend** (main process): Effect TS services, better-sqlite3, Node.js HTTP server for LAN access
+- **Frontend** (renderer): React 19 + Vite, custom CSS, no UI framework
+- **Database**: SQLite via better-sqlite3
+- **IPC**: Electron contextBridge with typed invoke API
+- **Tests**: Vitest + Playwright (see Testing section below)
+
+## Key directories
+- `src/main/` — Electron main process (Effect TS services, IPC, LAN server)
+- `src/preload/` — contextBridge preload script
+- `src/renderer/src/` — React frontend (app, domain, services, ui)
+- `test/` — Backend test suite (services, lan, ipc, integration)
+
+## Testing
+
+Run all three test suites before every commit:
+
+```bash
+npm run test           # Frontend unit tests (Vitest, jsdom)
+npm run test:backend   # Backend service tests (Vitest, node — 103 tests)
+npm run test:e2e       # Electron E2E workflow (Playwright — 8 tests, builds app first)
+```
+
+- `test:e2e` handles native module rebuild/restore automatically.
+- E2E tests launch a real Electron instance with an isolated temp database.
+- Config files: `vitest.config.ts` (frontend), `vitest.config.node.ts` (backend), `playwright.config.ts` (E2E).
 
 ## Skill routing
 

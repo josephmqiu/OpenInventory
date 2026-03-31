@@ -1,10 +1,10 @@
 # Design System — OpenInventory
 
 ## Product Context
-- **What this is:** Tauri 2 desktop app for inventory monitoring and material issue tracking
+- **What this is:** Electron desktop app for inventory monitoring and material issue tracking
 - **Who it's for:** Small business owners and teams (1-2 people handling ordering, tracking, issuing)
 - **Space/industry:** Inventory management, warehouse operations, supply chain
-- **Project type:** Desktop app (Tauri) with tablet support
+- **Project type:** Desktop app (Electron) with tablet support via LAN HTTP server
 - **Usage environment:** Desktop primary, tablet secondary. Extended daily use.
 
 ## Aesthetic Direction
@@ -53,7 +53,7 @@ Default theme. Optimized for extended use and reduced eye fatigue.
   --input-bg: #18181D;
   --text: #E8E6E3;
   --text-muted: #9B9A97;
-  --text-dim: #5C5C63;
+  --text-dim: #7E7E86;
   --accent: #D4912A;
   --accent-hover: #E09E30;
   --accent-muted: rgba(212, 145, 42, 0.10);
@@ -82,7 +82,7 @@ For bright environments or user preference. Warm off-white, not blue-tinted.
   --input-bg: #FFFFFF;
   --text: #1A1A1E;
   --text-muted: #6B6966;
-  --text-dim: #9E9B97;
+  --text-dim: #787572;
   --accent: #B87A1A;
   --accent-hover: #D4912A;
   --accent-muted: rgba(184, 122, 26, 0.07);
@@ -100,17 +100,30 @@ For bright environments or user preference. Warm off-white, not blue-tinted.
 }
 ```
 
-### Sidebar (always dark, both themes)
-The sidebar is the structural frame of the app. It stays dark regardless of theme to maintain identity.
+### Sidebar
+The sidebar is the structural frame of the app. Dark in dark theme, warm stone in light theme.
 
 ```css
+/* Dark theme sidebar */
 :root {
   --sidebar-bg: #0D0D10;
   --sidebar-text: #E8E6E3;
-  --sidebar-muted: #5C5C63;
+  --sidebar-muted: #82828A;
   --sidebar-border: #2A2A32;
   --sidebar-active-bg: rgba(212, 145, 42, 0.10);
   --sidebar-accent: #D4912A;
+  --sidebar-hover: rgba(255, 255, 255, 0.03);
+}
+
+/* Light theme sidebar — warm stone */
+:root[data-theme="light"] {
+  --sidebar-bg: #EFEEEC;
+  --sidebar-text: #1A1A1E;
+  --sidebar-muted: #6B6966;
+  --sidebar-border: #E2E0DC;
+  --sidebar-active-bg: rgba(184, 122, 26, 0.08);
+  --sidebar-accent: #B87A1A;
+  --sidebar-hover: rgba(0, 0, 0, 0.04);
 }
 ```
 
@@ -148,6 +161,35 @@ The sidebar is the structural frame of the app. It stays dark regardless of them
   - 4px: modals, top-level containers
   - Nothing above 4px. Ever.
 
+## Responsive Strategy
+
+The same React frontend is served in two contexts:
+- **Desktop (Electron):** Window with sidebar layout, `data-platform="desktop"` on `<html>`
+- **Web/LAN (mobile/tablet):** Served via LAN HTTP server, `data-platform="web"` on `<html>`
+
+### Breakpoints
+| Breakpoint | Applies to | Effect |
+|------------|-----------|--------|
+| 1200px | Both | Reduces grid columns (metrics 5->3, backup 3->2). Desktop sidebar narrows 220->180px, content padding tightens. |
+| 960px | Web only | Major layout transform: sidebar collapses to horizontal top nav, single-column layout. |
+| 720px | Web only | Further mobile optimizations: 2-column nav, 2-column metrics, horizontal table scroll. |
+
+### Platform Detection
+The `data-platform` attribute is set on `<html>` before first paint:
+- **Electron:** Inline `<script>` in index.html checks `window.electronAPI` (exposed by preload contextBridge)
+- **LAN web:** The LAN HTTP server injects `data-platform="web"` into the HTML during serving
+- **React:** `main.tsx` reinforces the attribute via `detectRuntime()` as a safety net
+
+### Desktop Window Constraints
+- Minimum: 900x600px (set via BrowserWindow minWidth/minHeight)
+- Default: 1480x960px
+- The sidebar always remains visible on desktop regardless of window size
+
+### Rules
+- The 960px and 720px breakpoints use `[data-platform="web"]` selector prefix
+- The 1200px breakpoint applies universally (no platform prefix) plus desktop-specific compression rules
+- Desktop compression at narrow widths is handled by platform-specific rules, not by collapsing to mobile layout
+
 ## Motion
 - **Approach:** Minimal-functional — only transitions that aid comprehension
 - **Easing:** enter(ease-out) exit(ease-in) move(ease-in-out)
@@ -179,3 +221,6 @@ The sidebar is the structural frame of the app. It stays dark regardless of them
 | 2026-03-30 | IBM Plex + JetBrains Mono type stack | IBM Plex designed for enterprise/industrial use. JetBrains Mono for display numbers adds tool-grade identity. All open source (SIL OFL), all on Google Fonts. |
 | 2026-03-30 | Max 4px border radius | Deliberate departure from category norm (most inventory apps use 12-24px). Sharp corners = precision tool, not friendly app. |
 | 2026-03-30 | Instrument strip over metric cards | Horizontal band of readouts with dividers instead of floating cards. Denser, more scannable, more industrial. |
+| 2026-03-30 | Brighten --text-dim for WCAG AA | Original #5C5C63 (dark) and #9E9B97 (light) failed WCAG AA contrast for small text. Brightened to #7E7E86 (4.31:1) and #787572 (4.58:1). Sidebar muted #6B6B73 → #82828A (5.09:1). Flagged by /design-review Codex audit. |
+| 2026-03-31 | Light mode sidebar: warm stone | Changed from always-dark to theme-aware. Light sidebar uses #EFEEEC (warm stone) to reduce jarring dark/light contrast. Dark sidebar unchanged. |
+| 2026-03-31 | Platform-scoped responsive breakpoints | Desktop (Electron) and web (LAN) share the same frontend but use `data-platform` attribute to scope CSS breakpoints. 960/720px breakpoints only apply to web/mobile. Desktop gets graceful compression with 900x600 floor. |
