@@ -26,8 +26,9 @@ export function printQrLabels(items: InventoryItem[], dictionary: Dictionary): v
         <article class="label-card">
           <img class="label-card__qr" src="${item.qrCodeDataUrl}" alt="${escapeHtml(item.sku)}" />
           <div class="label-card__text">
-            <strong>${escapeHtml(item.sku)}</strong>
-            <span>${escapeHtml(item.name)}</span>
+            <strong>${escapeHtml(item.name)}</strong>
+            <span>${escapeHtml(item.sku)}</span>
+            <small>${escapeHtml(dictionary.printLocation)}: ${escapeHtml(item.location || dictionary.notAvailable)}</small>
           </div>
         </article>
       `,
@@ -43,6 +44,9 @@ export function printQrLabels(items: InventoryItem[], dictionary: Dictionary): v
         <title>${escapeHtml(dictionary.printSelectedQrs)}</title>
         <style>
           @page { margin: 12mm; }
+          * {
+            box-sizing: border-box;
+          }
           body {
             margin: 0;
             font-family: "Segoe UI", sans-serif;
@@ -51,21 +55,26 @@ export function printQrLabels(items: InventoryItem[], dictionary: Dictionary): v
           }
           .label-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 16px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            align-items: start;
           }
           .label-card {
+            page-break-inside: avoid;
             break-inside: avoid;
+            min-height: 88mm;
             border: 1px solid #d7e2ee;
             border-radius: 14px;
-            padding: 16px;
+            padding: 12px;
             display: grid;
-            gap: 12px;
+            gap: 10px;
             justify-items: center;
+            align-content: start;
           }
           .label-card__qr {
-            width: 180px;
-            height: 180px;
+            width: min(100%, 46mm);
+            height: auto;
+            aspect-ratio: 1;
             object-fit: contain;
           }
           .label-card__text {
@@ -73,8 +82,19 @@ export function printQrLabels(items: InventoryItem[], dictionary: Dictionary): v
             gap: 4px;
             text-align: center;
           }
-          .label-card__text span {
+          .label-card__text strong {
+            font-size: 14px;
+            line-height: 1.25;
+          }
+          .label-card__text span,
+          .label-card__text small {
             color: #5c6e82;
+            line-height: 1.3;
+          }
+          @media (max-width: 900px) {
+            .label-grid {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
           }
         </style>
       </head>
