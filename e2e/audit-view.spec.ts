@@ -34,6 +34,11 @@ test.describe.serial("audit view", () => {
   });
 
   test("setup: receive and issue stock to generate movements", async ({ page }) => {
+    // Navigate away and back to ensure snapshot refreshes with new personnel
+    await page.click("button.nav-item:has-text('Dashboard')");
+    await expect(topbarTitle(page)).toHaveText("Dashboard");
+    await page.waitForTimeout(1000);
+
     await page.click("button.nav-item:has-text('Inventory')");
     await expect(topbarTitle(page)).toHaveText("Inventory");
 
@@ -152,8 +157,15 @@ test.describe.serial("audit view", () => {
   // ── Drill-down ────────────────────────────────────────────────────
 
   test("clicking item name in summary drills down", async ({ page }) => {
+    // Ensure we're on Activity Summary and data is loaded
+    if (!(await page.locator(".audit-tab--active:has-text('Activity Summary')").isVisible())) {
+      await page.click(".audit-tab:has-text('Activity Summary')");
+    }
+    const itemLink = page.locator(".audit-summary-section .cell-link:has-text('Audit Widget')");
+    await expect(itemLink).toBeVisible({ timeout: 10_000 });
+
     // Click Audit Widget in the By Item table
-    await page.click(".audit-summary-section .cell-link:has-text('Audit Widget')");
+    await itemLink.click();
 
     // Should see breadcrumb with item name
     await expect(page.locator(".audit-breadcrumb")).toBeVisible({ timeout: 5_000 });
