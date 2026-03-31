@@ -235,7 +235,7 @@ export function App() {
               <button
                 key={item}
                 className={section === item ? "nav-item nav-item--active" : "nav-item"}
-                onClick={() => setSection(item)}
+                onClick={() => { closeAction(); closeBatchIssue(); setSection(item); }}
                 type="button"
               >
                 {dictionary[item]}
