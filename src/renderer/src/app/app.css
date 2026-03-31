@@ -259,26 +259,6 @@ textarea:focus-visible {
   flex-shrink: 0;
 }
 
-.language-switch {
-  display: grid;
-  gap: 4px;
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.language-switch select {
-  min-width: 160px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  background: var(--input-bg);
-  color: var(--text);
-  font-size: 13px;
-}
-
 /* State screens (loading, error, auth) */
 .state-screen {
   display: grid;

@@ -315,13 +315,17 @@ export function App() {
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M14 9.34A6 6 0 0 1 6.66 2 6 6 0 1 0 14 9.34Z"/></svg>
               )}
             </button>
-            <label className="language-switch">
-              <span>{dictionary.language}</span>
-              <select value={language} onChange={(event) => handleLanguageChange(event.target.value as Language)}>
-                <option value="en">{localizeLanguageName("en")}</option>
-                <option value="zh-CN">{localizeLanguageName("zh-CN")}</option>
-              </select>
-            </label>
+            <button
+              className="button-secondary button-icon-only"
+              onClick={() => handleLanguageChange(language === "en" ? "zh-CN" : "en")}
+              type="button"
+              title={language === "en" ? "切换到中文" : "Switch to English"}
+              aria-label={language === "en" ? "切换到中文" : "Switch to English"}
+            >
+              <span style={{ fontSize: 12, fontWeight: 600, fontFamily: "var(--font-sans)", letterSpacing: "0.02em" }}>
+                {language === "en" ? "中" : "EN"}
+              </span>
+            </button>
           </div>
         </header>
 
