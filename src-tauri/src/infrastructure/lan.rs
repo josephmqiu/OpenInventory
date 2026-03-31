@@ -222,7 +222,10 @@ impl LanServerController {
     }
 
     fn state_from_settings(&self, settings: &LanAccessSettings) -> LanAccessState {
-        let runtime = self.runtime.lock().expect("LAN server state lock poisoned");
+        let runtime = self
+            .runtime
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         LanAccessState {
             enabled: settings.enabled,
             port: settings.port,
