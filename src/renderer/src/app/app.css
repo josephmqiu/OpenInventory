@@ -239,13 +239,13 @@ textarea:focus-visible {
 
 .sidebar__footer .button-icon-only {
   color: var(--sidebar-muted);
-  border-color: var(--sidebar-border);
+  border-color: transparent;
 }
 
 .sidebar__footer .button-icon-only:hover {
   color: var(--sidebar-text);
   background: var(--sidebar-hover);
-  border-color: var(--sidebar-muted);
+  border-color: transparent;
 }
 
 .app-shell--collapsed {
@@ -805,13 +805,13 @@ button.button-icon-only {
   min-width: 0;
   background: transparent;
   color: var(--text-muted);
-  border-color: var(--border);
+  border-color: transparent;
 }
 
 button.button-icon-only:hover {
   color: var(--text);
-  background: transparent;
-  border-color: var(--text-muted);
+  background: var(--raised);
+  border-color: transparent;
 }
 
 button.button-icon-only svg {
