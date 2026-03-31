@@ -43,6 +43,7 @@ function sectionSubtitle(section: Section, dictionary: Dictionary): string {
 
 export function App() {
   const [section, setSection] = useState<Section>("dashboard");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [action, setAction] = useState<ActionKind | null>(null);
   const [activeItemId, setActiveItemId] = useState<string>("");
   const [batchIssueItemIds, setBatchIssueItemIds] = useState<string[]>([]);
@@ -258,12 +259,25 @@ export function App() {
       : sectionSubtitle(section, dictionary);
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar__brand">
-          <span className="sidebar__eyebrow">{browserRuntime ? dictionary.inventoryLan : dictionary.inventoryDesktop}</span>
-          <h1>{dictionary.appName}</h1>
-          <p>{dictionary.tagline}</p>
+    <div className={`app-shell${sidebarCollapsed ? " app-shell--collapsed" : ""}`}>
+      <aside className={`sidebar${sidebarCollapsed ? " sidebar--collapsed" : ""}`}>
+        {!sidebarCollapsed && (
+          <div className="sidebar__brand">
+            <span className="sidebar__eyebrow">{browserRuntime ? dictionary.inventoryLan : dictionary.inventoryDesktop}</span>
+            <h1>{dictionary.appName}</h1>
+            <p>{dictionary.tagline}</p>
+          </div>
+        )}
+        <div className="sidebar__toggle-wrap">
+          <button
+            className="sidebar__toggle"
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+            type="button"
+            title={sidebarCollapsed ? "Expand" : "Collapse"}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? "\u00BB" : "\u00AB"}
+          </button>
         </div>
         {!issueRouteItemId && (
           <nav className="sidebar__nav">
@@ -273,8 +287,9 @@ export function App() {
                 className={section === item ? "nav-item nav-item--active" : "nav-item"}
                 onClick={() => { closeAction(); closeBatchIssue(); setSection(item); }}
                 type="button"
+                title={sidebarCollapsed ? dictionary[item] : undefined}
               >
-                {dictionary[item]}
+                {sidebarCollapsed ? dictionary[item].charAt(0) : dictionary[item]}
               </button>
             ))}
           </nav>
