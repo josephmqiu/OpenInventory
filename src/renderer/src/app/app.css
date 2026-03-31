@@ -204,6 +204,9 @@ textarea:focus-visible {
 }
 
 .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 13px;
   font-weight: 500;
   padding: 8px 12px;
@@ -214,6 +217,10 @@ textarea:focus-visible {
   cursor: pointer;
   text-align: left;
   transition: color 100ms ease, background 100ms ease;
+}
+
+.nav-item svg {
+  flex-shrink: 0;
 }
 
 .nav-item:hover {
@@ -253,9 +260,23 @@ textarea:focus-visible {
 }
 
 .sidebar--collapsed {
-  padding: 0;
-  align-items: center;
-  justify-content: flex-end;
+  padding: 8px 0 0;
+}
+
+.sidebar--collapsed .sidebar__nav {
+  padding: 4px 6px;
+  gap: 2px;
+}
+
+.sidebar--collapsed .nav-item {
+  justify-content: center;
+  padding: 8px;
+  border-left: none;
+}
+
+.sidebar--collapsed .nav-item--active {
+  padding-left: 8px;
+  border-left: none;
 }
 
 /* Content area */

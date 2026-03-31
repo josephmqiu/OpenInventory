@@ -17,11 +17,35 @@ import type { Dictionary } from "./i18n";
 import { useInventoryState } from "./useInventoryState";
 import { useAutoUpdate } from "./useAutoUpdate";
 import { UpdateBanner } from "../ui/components/UpdateBanner";
-import { LogOut, Moon, PanelLeft, Sun, SunMoon } from "lucide-react";
+import {
+  Bell,
+  ClipboardList,
+  LayoutDashboard,
+  LogOut,
+  Moon,
+  Package,
+  PanelLeft,
+  Settings,
+  Sun,
+  SunMoon,
+  Users,
+  Warehouse,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 type Section = "dashboard" | "inventory" | "itemManagement" | "alerts" | "audit" | "personnel" | "settings";
 
 const navOrder: Section[] = ["dashboard", "inventory", "itemManagement", "alerts", "audit", "personnel", "settings"];
+
+const sectionIcons: Record<Section, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  inventory: Warehouse,
+  itemManagement: Package,
+  alerts: Bell,
+  audit: ClipboardList,
+  personnel: Users,
+  settings: Settings,
+};
 
 function sectionSubtitle(section: Section, dictionary: Dictionary): string {
   switch (section) {
@@ -263,27 +287,30 @@ export function App() {
     <div className={`app-shell${sidebarCollapsed ? " app-shell--collapsed" : ""}`}>
       <aside className={`sidebar${sidebarCollapsed ? " sidebar--collapsed" : ""}`}>
         {!sidebarCollapsed && (
-          <>
-            <div className="sidebar__brand">
-              <span className="sidebar__eyebrow">{browserRuntime ? dictionary.inventoryLan : dictionary.inventoryDesktop}</span>
-              <h1>{dictionary.appName}</h1>
-              <p>{dictionary.tagline}</p>
-            </div>
-            {!issueRouteItemId && (
-              <nav className="sidebar__nav">
-                {navOrder.map((item) => (
-                  <button
-                    key={item}
-                    className={section === item ? "nav-item nav-item--active" : "nav-item"}
-                    onClick={() => { closeAction(); closeBatchIssue(); setSection(item); }}
-                    type="button"
-                  >
-                    {dictionary[item]}
-                  </button>
-                ))}
-              </nav>
-            )}
-          </>
+          <div className="sidebar__brand">
+            <span className="sidebar__eyebrow">{browserRuntime ? dictionary.inventoryLan : dictionary.inventoryDesktop}</span>
+            <h1>{dictionary.appName}</h1>
+            <p>{dictionary.tagline}</p>
+          </div>
+        )}
+        {!issueRouteItemId && (
+          <nav className="sidebar__nav">
+            {navOrder.map((item) => {
+              const Icon = sectionIcons[item];
+              return (
+                <button
+                  key={item}
+                  className={section === item ? "nav-item nav-item--active" : "nav-item"}
+                  onClick={() => { closeAction(); closeBatchIssue(); setSection(item); }}
+                  type="button"
+                  title={sidebarCollapsed ? dictionary[item] : undefined}
+                >
+                  <Icon size={16} strokeWidth={1.5} />
+                  {!sidebarCollapsed && <span>{dictionary[item]}</span>}
+                </button>
+              );
+            })}
+          </nav>
         )}
         <div className="sidebar__footer">
           <button
