@@ -130,8 +130,8 @@ describe("LanServerService", () => {
     await run(lanService.shutdown());
 
     // Recreate service (simulating app restart) — use same DB
-    const dbService = makeDatabaseService(t.dbPath);
-    const freshService = makeLanServerService(dbService, "");
+    const freshDbService = makeDatabaseService(t.dbPath);
+    const freshService = makeLanServerService(freshDbService, "");
 
     const state = await run(freshService.loadState());
     expect(state.statusMessage).toBe("LAN server is running.");
@@ -140,5 +140,6 @@ describe("LanServerService", () => {
     expect(state.urls.length).toBeGreaterThan(0);
 
     await run(freshService.shutdown());
+    freshDbService.close();
   });
 });
