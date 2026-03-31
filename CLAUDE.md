@@ -1,6 +1,6 @@
 # OpenInventory
 
-Tauri 2 desktop app (Rust backend, React 19 + Vite frontend) for inventory monitoring and material issue tracking.
+
 
 ## Skill routing
 
