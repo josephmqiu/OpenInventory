@@ -5,6 +5,7 @@ out/
 .vite/
 .claude/
 # Test artifacts
+coverage/
 playwright-report/
 test-results/
 *.log

@@ -1,6 +1,7 @@
 import {
   test as base,
   _electron as electron,
+  type Browser,
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
@@ -14,7 +15,7 @@ const __dirname = path.dirname(__filename);
 
 // Worker-scoped: one Electron app shared across all serial tests
 export const test = base.extend<
-  { page: Page },
+  { page: Page; browserPage: Page },
   { electronApp: ElectronApplication; sharedPage: Page }
 >({
   electronApp: [async ({}, use) => {
@@ -49,6 +50,13 @@ export const test = base.extend<
   // Test-scoped alias so tests receive `page`
   page: async ({ sharedPage }, use) => {
     await use(sharedPage);
+  },
+
+  browserPage: async ({ browser }, use) => {
+    const browserInstance = browser as Browser;
+    const page = await browserInstance.newPage();
+    await use(page);
+    await page.close();
   },
 });
 

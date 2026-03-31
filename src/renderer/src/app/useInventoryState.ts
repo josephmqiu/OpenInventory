@@ -13,7 +13,7 @@ import type {
   UpdateLanAccessInput,
 } from "../domain/models";
 import { dictionaries, localizeBackendMessage, type Dictionary } from "./i18n";
-import { detectRuntime, readIssueRouteItemId, type Runtime } from "./runtime";
+import { detectRuntime, isDevPreviewRuntime, readIssueRouteItemId, type Runtime } from "./runtime";
 import {
   addPersonnel,
   batchIssueMaterial,
@@ -129,7 +129,7 @@ export function useInventoryState(): InventoryState {
   const [reloadKey, setReloadKey] = useState(0);
   const [accessKeyInput, setAccessKeyInput] = useState(() => readPersistedLanAccessKey());
   const dictionary = dictionaries[language];
-  const isDev = typeof window !== "undefined" && window.location.port !== "";
+  const isDev = isDevPreviewRuntime();
   const requiresBrowserAuth = runtime !== "desktop" && !issueRouteItemId && !isDev && !readPersistedLanAccessKey().trim();
 
   useEffect(() => {

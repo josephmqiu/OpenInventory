@@ -17,6 +17,10 @@ export function detectRuntime(): Runtime {
   return "http";
 }
 
+export function isDevPreviewRuntime(): boolean {
+  return import.meta.env.DEV;
+}
+
 export function readIssueRouteItemId(): string | null {
   if (typeof window === "undefined") {
     return null;
