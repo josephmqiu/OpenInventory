@@ -1,4 +1,7 @@
-import { autoUpdater, type UpdateInfo, type ProgressInfo } from "electron-updater";
+import electronUpdater from "electron-updater";
+const { autoUpdater } = electronUpdater;
+type UpdateInfo = electronUpdater.UpdateInfo;
+type ProgressInfo = electronUpdater.ProgressInfo;
 import { is } from "@electron-toolkit/utils";
 
 export type UpdateStatus =
