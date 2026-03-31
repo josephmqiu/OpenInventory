@@ -132,6 +132,12 @@ export function useInventoryState(): InventoryState {
   const requiresBrowserAuth = runtime !== "desktop" && !issueRouteItemId && !readPersistedLanAccessKey().trim();
 
   useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = language;
+    }
+  }, [language]);
+
+  useEffect(() => {
     let cancelled = false;
 
     setLoadError(null);
