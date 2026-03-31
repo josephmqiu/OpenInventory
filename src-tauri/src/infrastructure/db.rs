@@ -11,7 +11,7 @@ use crate::domain::models::{
     CreateInventoryItemInput, InventoryAlert, InventoryItem, Language, PersonnelMember,
     StockMutationInput, StockStatus, UpdateBackupPlanInput, UpdateInventoryItemInput,
 };
-use crate::infrastructure::{migrations, qr, schema};
+use crate::infrastructure::{backup, migrations, qr, schema};
 
 static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -540,6 +540,45 @@ impl InventoryDb {
         write_setting(&transaction, "backup.status", status).map_err(database_error)?;
 
         transaction.commit().map_err(database_error)?;
+        self.load_snapshot()
+    }
+
+    pub fn backup_now(&self) -> AppResult<AppSnapshot> {
+        let target_path = {
+            let connection = self.open_connection()?;
+            read_setting(&connection, "backup.target_path")
+                .map_err(database_error)?
+                .unwrap_or_default()
+        };
+        let target_path = target_path.trim();
+        if target_path.is_empty() {
+            return Err(AppError::ValidationError(
+                "Backup target path is required before running a backup.".into(),
+            ));
+        }
+
+        backup::backup_database(&self.path, Path::new(target_path))?;
+
+        let mut connection = self.open_connection()?;
+        let transaction = connection.transaction().map_err(database_error)?;
+        transaction
+            .execute(
+                r#"
+                INSERT INTO app_settings (key, value)
+                VALUES ('backup.last_successful', datetime('now', 'localtime'))
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                "#,
+                [],
+            )
+            .map_err(database_error)?;
+        write_setting(
+            &transaction,
+            "backup.status",
+            backup_status_key(target_path),
+        )
+        .map_err(database_error)?;
+        transaction.commit().map_err(database_error)?;
+
         self.load_snapshot()
     }
 

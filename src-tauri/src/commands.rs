@@ -105,6 +105,11 @@ pub fn update_backup_plan(
 }
 
 #[tauri::command]
+pub fn backup_now(db: State<'_, InventoryDb>) -> Result<AppSnapshot, AppError> {
+    inventory_service::backup_now(db.inner())
+}
+
+#[tauri::command]
 pub fn update_app_language(language: Language, db: State<'_, InventoryDb>) -> Result<(), AppError> {
     inventory_service::update_language(db.inner(), language)
 }

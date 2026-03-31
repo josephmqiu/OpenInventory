@@ -86,6 +86,10 @@ pub fn update_backup_plan(
     db.update_backup_plan(input)
 }
 
+pub fn backup_now(db: &InventoryDb) -> AppResult<AppSnapshot> {
+    db.backup_now()
+}
+
 pub fn update_language(db: &InventoryDb, language: Language) -> AppResult<()> {
     db.update_language(language)
 }

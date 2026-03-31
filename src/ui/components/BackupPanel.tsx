@@ -7,6 +7,7 @@ interface BackupPanelProps {
   dictionary: Dictionary;
   language: Language;
   backupPlan: BackupPlan;
+  onBackupNow: () => Promise<void>;
   onSave: (input: UpdateBackupPlanInput) => Promise<void>;
 }
 
@@ -25,7 +26,7 @@ function createFormState(backupPlan: BackupPlan): UpdateBackupPlanInput {
   };
 }
 
-export function BackupPanel({ busy, dictionary, language, backupPlan, onSave }: BackupPanelProps) {
+export function BackupPanel({ busy, dictionary, language, backupPlan, onBackupNow, onSave }: BackupPanelProps) {
   const [form, setForm] = useState<UpdateBackupPlanInput>(() => createFormState(backupPlan));
 
   useEffect(() => {
@@ -96,7 +97,15 @@ export function BackupPanel({ busy, dictionary, language, backupPlan, onSave }: 
           <dd>{displayValue(backupPlan.nextScheduledBackup, dictionary.notAvailable)}</dd>
         </div>
       </dl>
-      <div className="action-panel__footer">
+      <div className="action-panel__footer action-panel__footer--spread">
+        <button
+          className="button-secondary"
+          disabled={busy || !backupPlan.targetPath.trim()}
+          onClick={() => void onBackupNow()}
+          type="button"
+        >
+          {busy ? "Backing Up..." : "Backup Now"}
+        </button>
         <button
           className="button-secondary"
           disabled={busy || !hasChanges}

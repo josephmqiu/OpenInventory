@@ -64,6 +64,7 @@ export function App() {
     handleQuickIssueMaterial,
     handleRemoveItem,
     handleBackupPlanSave,
+    handleBackupNow,
     handleAddPersonnel,
     handleRemovePersonnel,
     handleLanguageChange,
@@ -117,6 +118,10 @@ export function App() {
 
   const onBackupPlanSave = async (input: Parameters<typeof handleBackupPlanSave>[0]) => {
     await handleBackupPlanSave(input);
+  };
+
+  const onBackupNow = async () => {
+    await handleBackupNow();
   };
 
   const onAddPersonnel = async (name: string) => {
@@ -338,6 +343,7 @@ export function App() {
                       backupPlan={snapshot.backupPlan}
                       dictionary={dictionary}
                       language={language}
+                      onBackupNow={onBackupNow}
                       onSave={onBackupPlanSave}
                     />
                     {desktopRuntime && lanAccess && (

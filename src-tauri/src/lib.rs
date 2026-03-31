@@ -35,6 +35,7 @@ pub fn run() {
             commands::receive_stock,
             commands::issue_material,
             commands::update_backup_plan,
+            commands::backup_now,
             commands::update_app_language,
             commands::remove_inventory_item,
             commands::add_personnel,

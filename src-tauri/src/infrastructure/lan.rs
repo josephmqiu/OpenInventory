@@ -24,9 +24,9 @@ use tokio::sync::oneshot;
 use crate::application::inventory_service;
 use crate::domain::error::{AppError, AppResult};
 use crate::domain::models::{
-    AddPersonnelInput, AppSnapshot, CreateInventoryItemInput, LanAccessState, LanAccessStatus,
-    Language, PublicIssueContext, StockMutationInput, UpdateBackupPlanInput,
-    UpdateInventoryItemInput, UpdateLanAccessInput,
+    AddPersonnelInput, AppSnapshot, BatchIssueMaterialInput, CreateInventoryItemInput,
+    InventoryMovement, LanAccessState, LanAccessStatus, Language, PublicIssueContext,
+    StockMutationInput, UpdateBackupPlanInput, UpdateInventoryItemInput, UpdateLanAccessInput,
 };
 use crate::infrastructure::db::{InventoryDb, LanAccessSettings};
 
@@ -352,15 +352,18 @@ fn build_router(db: InventoryDb, access_key: String) -> Router {
         .route("/health", get(http_health))
         .route("/snapshot", get(load_snapshot))
         .route("/items", post(create_inventory_item))
+        .route("/items/batch-issue", post(batch_issue_material))
         .route(
             "/items/:item_id",
             put(update_inventory_item).delete(remove_inventory_item),
         )
         .route("/items/:item_id/receive", post(receive_stock))
         .route("/items/:item_id/issue", post(issue_material))
+        .route("/items/:item_id/movements", get(get_item_movements))
         .route("/personnel", post(add_personnel))
         .route("/personnel/:personnel_id", delete(remove_personnel))
         .route("/backup-plan", put(update_backup_plan))
+        .route("/backup-now", post(backup_now))
         .route("/language", put(update_language))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -540,6 +543,15 @@ async fn issue_material(
     Ok(Json(result.snapshot))
 }
 
+async fn batch_issue_material(
+    State(state): State<HttpApiState>,
+    Json(input): Json<BatchIssueMaterialInput>,
+) -> Result<Json<AppSnapshot>, ApiError> {
+    inventory_service::batch_issue_material(&state.db, input)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
 async fn issue_material_public(
     Path(item_id): Path<String>,
     State(state): State<HttpApiState>,
@@ -551,11 +563,26 @@ async fn issue_material_public(
         .map_err(ApiError::from)
 }
 
+async fn get_item_movements(
+    Path(item_id): Path<String>,
+    State(state): State<HttpApiState>,
+) -> Result<Json<Vec<InventoryMovement>>, ApiError> {
+    inventory_service::get_item_movements(&state.db, &item_id)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
 async fn update_backup_plan(
     State(state): State<HttpApiState>,
     Json(input): Json<UpdateBackupPlanInput>,
 ) -> Result<Json<AppSnapshot>, ApiError> {
     inventory_service::update_backup_plan(&state.db, input)
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn backup_now(State(state): State<HttpApiState>) -> Result<Json<AppSnapshot>, ApiError> {
+    inventory_service::backup_now(&state.db)
         .map(Json)
         .map_err(ApiError::from)
 }
@@ -961,5 +988,44 @@ mod tests {
             .load_lan_access_settings()
             .expect("load saved lan settings");
         assert_eq!(saved_settings.primary_url, existing_url);
+    }
+
+    #[tokio::test]
+    async fn backup_now_route_creates_backup_file() {
+        let test_db = setup_test_db();
+        let backup_dir = test_db.root_dir.join("backups");
+        test_db
+            .db
+            .update_backup_plan(UpdateBackupPlanInput {
+                target_path: backup_dir.to_string_lossy().into_owned(),
+                target_type: crate::domain::models::BackupTargetType::LocalFolder,
+                schedule: String::new(),
+                retention: String::new(),
+            })
+            .expect("save backup plan");
+        let router = build_router(test_db.db.clone(), "expected-key".to_string());
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/api/backup-now")
+                    .method("POST")
+                    .header("x-inventory-key", "expected-key")
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("handle request");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert!(body["backupPlan"]["lastSuccessfulBackup"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
+
+        let backup_count = fs::read_dir(&backup_dir)
+            .expect("read backup directory")
+            .count();
+        assert_eq!(backup_count, 1);
     }
 }

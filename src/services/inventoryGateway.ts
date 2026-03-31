@@ -273,6 +273,18 @@ export async function updateBackupPlan(input: UpdateBackupPlanInput): Promise<Ap
   throw unsupportedRuntimeError("Updating the backup plan");
 }
 
+export async function backupNow(): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>("/api/backup-now", {
+      method: "POST",
+    });
+  }
+  if (detectRuntime() === "desktop") {
+    return invokeCommand<AppSnapshot>("backup_now");
+  }
+  throw unsupportedRuntimeError("Running a backup");
+}
+
 export async function removeInventoryItem(itemId: string): Promise<AppSnapshot> {
   if (supportsHttpApi()) {
     return fetchJson<AppSnapshot>(`/api/items/${encodeURIComponent(itemId)}`, {

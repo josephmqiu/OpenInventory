@@ -17,6 +17,7 @@ import {
   addPersonnel,
   clearLanAccessKey,
   createInventoryItem,
+  backupNow,
   isUnauthorizedError,
   issueMaterial,
   issueMaterialPublic,
@@ -68,6 +69,7 @@ export interface InventoryState {
   handleQuickIssueMaterial: (input: StockMutationInput) => Promise<string>;
   handleRemoveItem: (itemId: string) => Promise<boolean>;
   handleBackupPlanSave: (input: UpdateBackupPlanInput) => Promise<boolean>;
+  handleBackupNow: () => Promise<boolean>;
   handleAddPersonnel: (name: string) => Promise<boolean>;
   handleRemovePersonnel: (personnelId: string) => Promise<boolean>;
   handleLanguageChange: (nextLanguage: Language) => void;
@@ -295,6 +297,26 @@ export function useInventoryState(): InventoryState {
   const handleBackupPlanSave = async (input: UpdateBackupPlanInput) =>
     executeMutation(() => updateBackupPlan(input), dictionary.successUpdateBackupPlan);
 
+  const handleBackupNow = async (): Promise<boolean> => {
+    try {
+      setBusy(true);
+      setActionError(null);
+      const nextSnapshot = await backupNow();
+      setLanguage(nextSnapshot.language);
+      setSnapshot(nextSnapshot);
+      setNotice({
+        message: "Backup completed.",
+        tone: "success",
+      });
+      return true;
+    } catch (error) {
+      handleGatewayError(error);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleAddPersonnel = async (name: string) =>
     executeMutation(() => addPersonnel({ name }), dictionary.successAddPersonnel);
 
@@ -403,6 +425,7 @@ export function useInventoryState(): InventoryState {
     handleQuickIssueMaterial,
     handleRemoveItem,
     handleBackupPlanSave,
+    handleBackupNow,
     handleAddPersonnel,
     handleRemovePersonnel,
     handleLanguageChange,
