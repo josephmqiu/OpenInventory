@@ -1,5 +1,5 @@
 ﻿import { formatDate } from "../../app/formatDate";
-import type { Dictionary } from "../../app/i18n";
+import { localizeAlertStatus, type Dictionary } from "../../app/i18n";
 import type { InventoryAlert, Language } from "../../domain/models";
 
 interface AlertsPanelProps {
@@ -14,7 +14,7 @@ export function AlertsPanel({ dictionary, alerts, language }: AlertsPanelProps) 
       <div className="panel__header">
         <div>
           <h2>{dictionary.alerts}</h2>
-          <p>Threshold crossings, acknowledgement status, and quantity at trigger time.</p>
+          <p>{dictionary.alertsPanelHint}</p>
         </div>
       </div>
       {alerts.length === 0 ? (
@@ -33,7 +33,9 @@ export function AlertsPanel({ dictionary, alerts, language }: AlertsPanelProps) 
                 </p>
               </div>
               <div className="alert-card__meta">
-                <span className={`status-pill status-pill--alert-${alert.status}`}>{alert.status}</span>
+                <span className={`status-pill status-pill--alert-${alert.status}`}>
+                  {localizeAlertStatus(alert.status, language)}
+                </span>
                 <small>{formatDate(alert.triggeredAt, language)}</small>
               </div>
             </article>

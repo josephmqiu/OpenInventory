@@ -1,4 +1,4 @@
-﻿import type { ActionKind, BackupTargetType, Language, StockStatus } from "../domain/models";
+﻿import type { ActionKind, AlertStatus, BackupTargetType, Language, StockStatus } from "../domain/models";
 
 export const DEFAULT_CATEGORIES = [
   "Raw Material",
@@ -111,6 +111,17 @@ const stockStatusLabels: Record<Language, Record<StockStatus, string>> = {
   },
 };
 
+const alertStatusLabels: Record<Language, Record<AlertStatus, string>> = {
+  en: {
+    open: "Open",
+    resolved: "Resolved",
+  },
+  "zh-CN": {
+    open: "未处理",
+    resolved: "已解决",
+  },
+};
+
 const languageLabels: Record<Language, string> = {
   en: "English",
   "zh-CN": "简体中文",
@@ -132,6 +143,10 @@ export function localizeStockStatus(value: StockStatus, language: Language): str
   return stockStatusLabels[language][value];
 }
 
+export function localizeAlertStatus(value: AlertStatus, language: Language): string {
+  return alertStatusLabels[language][value];
+}
+
 export function localizeLanguageName(value: Language): string {
   return languageLabels[value];
 }
@@ -145,6 +160,7 @@ export interface Dictionary {
   alerts: string;
   personnel: string;
   settings: string;
+  alertsPanelHint: string;
   currentInventoryLevels: string;
   inventoryOperationsHint: string;
   manageItemsHint: string;
@@ -281,6 +297,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     alerts: "Alerts",
     personnel: "Personnel",
     settings: "Settings",
+    alertsPanelHint: "Threshold crossings, resolution status, and quantity at trigger time.",
     currentInventoryLevels: "Current Inventory Levels",
     inventoryOperationsHint: "Receive and issue stock from the live inventory list.",
     manageItemsHint: "Create, modify, delete, and print item QR labels from this page.",
@@ -428,6 +445,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     alerts: "预警",
     personnel: "人员管理",
     settings: "设置",
+    alertsPanelHint: "显示达到阈值的预警、处理状态以及触发时的数量。",
     currentInventoryLevels: "当前库存水平",
     inventoryOperationsHint: "在当前库存列表中执行入库和出库操作。",
     manageItemsHint: "在此页面创建、修改、删除物料，并打印二维码标签。",
