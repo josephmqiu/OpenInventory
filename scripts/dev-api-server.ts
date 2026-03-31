@@ -202,6 +202,38 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Audit movements
+    if (pathname === "/api/audit/movements" && method === "GET") {
+      const filters = {
+        dateFrom: url.searchParams.get("dateFrom") || undefined,
+        dateTo: url.searchParams.get("dateTo") || undefined,
+        movementType: (url.searchParams.get("movementType") as "receive" | "issue") || undefined,
+        itemId: url.searchParams.get("itemId") || undefined,
+        itemSearch: url.searchParams.get("itemSearch") || undefined,
+        performedBy: url.searchParams.get("performedBy") || undefined,
+        textSearch: url.searchParams.get("textSearch") || undefined,
+        page: parseInt(url.searchParams.get("page") ?? "1", 10),
+        pageSize: Math.min(parseInt(url.searchParams.get("pageSize") ?? "50", 10), 10000),
+      };
+      sendJson(res, 200, await runEffect(dbService.getAuditMovements(filters)));
+      return;
+    }
+
+    // Audit analytics
+    if (pathname === "/api/audit/analytics" && method === "GET") {
+      const filters = {
+        dateFrom: url.searchParams.get("dateFrom") || undefined,
+        dateTo: url.searchParams.get("dateTo") || undefined,
+        movementType: (url.searchParams.get("movementType") as "receive" | "issue") || undefined,
+        itemId: url.searchParams.get("itemId") || undefined,
+        itemSearch: url.searchParams.get("itemSearch") || undefined,
+        performedBy: url.searchParams.get("performedBy") || undefined,
+        textSearch: url.searchParams.get("textSearch") || undefined,
+      };
+      sendJson(res, 200, await runEffect(dbService.getAuditAnalytics(filters)));
+      return;
+    }
+
     sendJson(res, 404, { message: "Not found" });
   } catch (error: unknown) {
     if (error && typeof error === "object" && "_tag" in error) {
