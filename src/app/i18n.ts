@@ -293,6 +293,8 @@ export interface Dictionary {
   personnelRequiredForIssue: string;
   inventoryDesktop: string;
   inventoryLan: string;
+  darkMode: string;
+  lightMode: string;
 }
 
 export const dictionaries: Record<Language, Dictionary> = {
@@ -451,6 +453,8 @@ export const dictionaries: Record<Language, Dictionary> = {
     personnelRequiredForIssue: "No personnel configured. Add personnel in the desktop app before issuing material.",
     inventoryDesktop: "Inventory Desktop",
     inventoryLan: "Inventory LAN",
+    darkMode: "Dark",
+    lightMode: "Light",
   },
   "zh-CN": {
     appName: "库存监控",
@@ -607,5 +611,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     personnelRequiredForIssue: "未配置人员。请在桌面应用中添加人员后再发放物料。",
     inventoryDesktop: "库存桌面端",
     inventoryLan: "库存局域网",
+    darkMode: "深色",
+    lightMode: "浅色",
   },
 };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { buildDashboardMetrics } from "../domain/inventory";
 import type { ActionKind, Language } from "../domain/models";
 import { dictionaries, localizeLanguageName, localizeUnit } from "./i18n";
@@ -74,6 +74,22 @@ export function App() {
     handleLanAccessSave,
     handleLanAccessKeyRegenerate,
   } = useInventoryState();
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof localStorage !== "undefined") {
+      return (localStorage.getItem("oi-theme") as "dark" | "light") || "dark";
+    }
+    return "dark";
+  });
+
+  useEffect(() => {
+    if (theme === "light") {
+      document.documentElement.setAttribute("data-theme", "light");
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    localStorage.setItem("oi-theme", theme);
+  }, [theme]);
+
   const desktopRuntime = runtime === "desktop";
   const browserRuntime = runtime !== "desktop";
   const dictionary = dictionaries[language];
@@ -260,6 +276,13 @@ export function App() {
                 {dictionary.disconnect}
               </button>
             )}
+            <button
+              className="button-secondary button-inline"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              type="button"
+            >
+              {theme === "dark" ? dictionary.lightMode : dictionary.darkMode}
+            </button>
             <label className="language-switch">
               <span>{dictionary.language}</span>
               <select value={language} onChange={(event) => handleLanguageChange(event.target.value as Language)}>

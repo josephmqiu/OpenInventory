@@ -42,6 +42,9 @@ export function printQrLabels(items: InventoryItem[], dictionary: Dictionary): v
       <head>
         <meta charset="utf-8" />
         <title>${escapeHtml(dictionary.printSelectedQrs)}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
         <style>
           @page { margin: 12mm; }
           * {
@@ -49,22 +52,22 @@ export function printQrLabels(items: InventoryItem[], dictionary: Dictionary): v
           }
           body {
             margin: 0;
-            font-family: "Segoe UI", sans-serif;
-            color: #12233a;
+            font-family: "IBM Plex Sans", -apple-system, sans-serif;
+            color: #1A1A1E;
             background: #fff;
           }
           .label-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 12px;
+            gap: 10px;
             align-items: start;
           }
           .label-card {
             page-break-inside: avoid;
             break-inside: avoid;
             min-height: 88mm;
-            border: 1px solid #d7e2ee;
-            border-radius: 14px;
+            border: 1px solid #E2E0DC;
+            border-radius: 3px;
             padding: 12px;
             display: grid;
             gap: 10px;
@@ -88,7 +91,7 @@ export function printQrLabels(items: InventoryItem[], dictionary: Dictionary): v
           }
           .label-card__text span,
           .label-card__text small {
-            color: #5c6e82;
+            color: #6B6966;
             line-height: 1.3;
           }
           @media (max-width: 900px) {
