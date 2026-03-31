@@ -14,19 +14,18 @@ interface QuickIssuePageProps {
 export function QuickIssuePage({ busy, dictionary, item, language, personnel, onIssue }: QuickIssuePageProps) {
   const [quantityInput, setQuantityInput] = useState("");
   const [performedBy, setPerformedBy] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [feedbackType, setFeedbackType] = useState<"success" | "error">("success");
 
   useEffect(() => {
     setQuantityInput("");
     setPerformedBy(personnel[0]?.name ?? "");
+    setFeedback("");
+    setFeedbackType("success");
   }, [item.id, personnel]);
 
   const quantity = Number.parseInt(quantityInput, 10);
   const quantityIsValid = Number.isInteger(quantity) && quantity > 0 && quantity <= item.currentQuantity;
-  const notify = (message: string) => {
-    if (typeof window !== "undefined") {
-      window.alert(message);
-    }
-  };
 
   const handleIssueClick = async () => {
     try {
@@ -37,9 +36,11 @@ export function QuickIssuePage({ busy, dictionary, item, language, personnel, on
         reason: "QR issue",
       });
       setQuantityInput("");
-      notify(message);
+      setFeedback(message);
+      setFeedbackType("success");
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Unable to complete the requested action.");
+      setFeedback(error instanceof Error ? error.message : "Unable to complete the requested action.");
+      setFeedbackType("error");
     }
   };
 
@@ -51,6 +52,7 @@ export function QuickIssuePage({ busy, dictionary, item, language, personnel, on
           <p>{dictionary.actionPanelHint.issueMaterial}</p>
         </div>
       </div>
+      {feedback && <div className={`feedback-banner feedback-banner--${feedbackType}`}>{feedback}</div>}
 
       <div className="item-details-layout quick-issue-layout">
         <dl className="item-details-grid">
@@ -91,6 +93,12 @@ export function QuickIssuePage({ busy, dictionary, item, language, personnel, on
         </dl>
 
         <div className="quick-issue-form">
+          {personnel.length === 0 && (
+            <div className="empty-state">
+              <h3>{dictionary.performedBy}</h3>
+              <p>{dictionary.personnelRequiredForIssue}</p>
+            </div>
+          )}
           <label>
             <span>{dictionary.quantity}</span>
             <div className="quick-issue-quantity-row">
@@ -109,7 +117,7 @@ export function QuickIssuePage({ busy, dictionary, item, language, personnel, on
           </label>
           <label>
             <span>{dictionary.performedBy}</span>
-            <select value={performedBy} onChange={(event) => setPerformedBy(event.target.value)}>
+            <select disabled={personnel.length === 0} value={performedBy} onChange={(event) => setPerformedBy(event.target.value)}>
               {!performedBy && <option value="">{dictionary.selectPersonnel}</option>}
               {personnel.map((member) => (
                 <option key={member.id} value={member.name}>
@@ -130,4 +138,3 @@ export function QuickIssuePage({ busy, dictionary, item, language, personnel, on
     </section>
   );
 }
-

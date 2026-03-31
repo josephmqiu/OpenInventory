@@ -9,7 +9,9 @@ interface ItemManagementTableProps {
   dictionary: Dictionary;
   language: Language;
   items: InventoryItem[];
+  onBatchIssue: (itemIds: string[]) => void;
   onCreateItem: () => void;
+  onError: (message: string) => void;
   onModifyItem: (itemId: string) => void;
   onRemoveItem: (itemId: string) => void;
 }
@@ -19,7 +21,9 @@ export function ItemManagementTable({
   dictionary,
   language,
   items,
+  onBatchIssue,
   onCreateItem,
+  onError,
   onModifyItem,
   onRemoveItem,
 }: ItemManagementTableProps) {
@@ -55,7 +59,11 @@ export function ItemManagementTable({
   };
 
   const handlePrint = (itemsToPrint: InventoryItem[]) => {
-    printQrLabels(itemsToPrint, dictionary);
+    try {
+      printQrLabels(itemsToPrint, dictionary);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Unable to complete the requested action.");
+    }
   };
 
   return (
@@ -84,6 +92,14 @@ export function ItemManagementTable({
               type="button"
             >
               {dictionary.printSelectedQrs}
+            </button>
+            <button
+              className="button-secondary"
+              disabled={busy || selectedItems.length === 0}
+              onClick={() => onBatchIssue(selectedIds)}
+              type="button"
+            >
+              {dictionary.batchIssue}
             </button>
             <button disabled={busy} onClick={onCreateItem} type="button">
               {dictionary.createItem}

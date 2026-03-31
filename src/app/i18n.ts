@@ -1,4 +1,4 @@
-﻿import type { ActionKind, BackupTargetType, Language, StockStatus } from "../domain/models";
+﻿import type { ActionKind, AlertStatus, BackupTargetType, Language, StockStatus } from "../domain/models";
 
 export const DEFAULT_CATEGORIES = [
   "Raw Material",
@@ -111,6 +111,17 @@ const stockStatusLabels: Record<Language, Record<StockStatus, string>> = {
   },
 };
 
+const alertStatusLabels: Record<Language, Record<AlertStatus, string>> = {
+  en: {
+    open: "Open",
+    resolved: "Resolved",
+  },
+  "zh-CN": {
+    open: "未处理",
+    resolved: "已解决",
+  },
+};
+
 const languageLabels: Record<Language, string> = {
   en: "English",
   "zh-CN": "简体中文",
@@ -132,6 +143,10 @@ export function localizeStockStatus(value: StockStatus, language: Language): str
   return stockStatusLabels[language][value];
 }
 
+export function localizeAlertStatus(value: AlertStatus, language: Language): string {
+  return alertStatusLabels[language][value];
+}
+
 export function localizeLanguageName(value: Language): string {
   return languageLabels[value];
 }
@@ -145,6 +160,7 @@ export interface Dictionary {
   alerts: string;
   personnel: string;
   settings: string;
+  alertsPanelHint: string;
   currentInventoryLevels: string;
   inventoryOperationsHint: string;
   manageItemsHint: string;
@@ -178,8 +194,10 @@ export interface Dictionary {
   modifyItem: string;
   receiveStock: string;
   issueMaterial: string;
+  batchIssue: string;
   removeItem: string;
   manage: string;
+  actions: string;
   loadingWorkspace: string;
   noInventoryItems: string;
   noInventoryItemsHint: string;
@@ -187,6 +205,28 @@ export interface Dictionary {
   noAlertsHint: string;
   backupStorageHint: string;
   backupNotConfigured: string;
+  lanAccess: string;
+  lanEnabled: string;
+  lanDisabled: string;
+  lanPort: string;
+  lanAccessKey: string;
+  lanStatus: string;
+  lanStatusRunning: string;
+  lanStatusStopped: string;
+  lanStatusError: string;
+  lanOpenOnDevice: string;
+  lanRegenerateKey: string;
+  lanSaveSettings: string;
+  lanNetworkHint: string;
+  lanEnableHint: string;
+  lanUrlsUnavailable: string;
+  lanCopy: string;
+  lanCopySuccess: string;
+  lanCopyError: string;
+  authTitle: string;
+  authDescription: string;
+  authAccessKeyLabel: string;
+  authConnect: string;
   managePersonnelHint: string;
   personnelName: string;
   addPersonnel: string;
@@ -218,20 +258,43 @@ export interface Dictionary {
   qrCodeUnavailable: string;
   printQrLabel: string;
   printSelectedQrs: string;
+  printLocation: string;
   selectAllItems: string;
   selectedItemsCount: (count: number) => string;
+  issueCartTitle: string;
+  issueCartHint: string;
+  issueCartSelectedItems: string;
+  issueCartNoSelection: string;
+  issueCartInlineHint: string;
+  movementHistory: string;
+  movementHistoryHint: string;
+  loadingMovements: string;
+  noMovements: string;
+  date: string;
+  type: string;
   actionPanelTitle: Record<ActionKind, string>;
   actionPanelHint: Record<ActionKind, string>;
   successCreateItem: string;
   successUpdateItem: string;
   successReceiveStock: string;
   successIssueMaterial: string;
+  successBatchIssueMaterial: string;
   successUpdateBackupPlan: string;
   successRemoveItem: string;
   successAddPersonnel: string;
   successRemovePersonnel: string;
   lowStockAlertIssued: (itemName: string, sku: string, currentQuantity: number, thresholdQuantity: number) => string;
   formValidationError: string;
+  backupNow: string;
+  backupNowInProgress: string;
+  backupCompleted: string;
+  disconnect: string;
+  qrItemNotFound: string;
+  personnelRequiredForIssue: string;
+  inventoryDesktop: string;
+  inventoryLan: string;
+  darkMode: string;
+  lightMode: string;
 }
 
 export const dictionaries: Record<Language, Dictionary> = {
@@ -244,6 +307,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     alerts: "Alerts",
     personnel: "Personnel",
     settings: "Settings",
+    alertsPanelHint: "Threshold crossings, resolution status, and quantity at trigger time.",
     currentInventoryLevels: "Current Inventory Levels",
     inventoryOperationsHint: "Receive and issue stock from the live inventory list.",
     manageItemsHint: "Create, modify, delete, and print item QR labels from this page.",
@@ -277,8 +341,10 @@ export const dictionaries: Record<Language, Dictionary> = {
     modifyItem: "Modify Item",
     receiveStock: "Receive Stock",
     issueMaterial: "Issue Material",
+    batchIssue: "Batch Issue",
     removeItem: "Remove Item",
     manage: "Manage",
+    actions: "Actions",
     loadingWorkspace: "Loading inventory workspace...",
     noInventoryItems: "No inventory records yet.",
     noInventoryItemsHint: "Create the first item to start tracking on-hand quantity and low-stock rules.",
@@ -286,6 +352,28 @@ export const dictionaries: Record<Language, Dictionary> = {
     noAlertsHint: "Alerts will appear when an item reaches or drops below its reorder level.",
     backupStorageHint: "Local database backups can be stored on LAN shares or cloud-synced folders.",
     backupNotConfigured: "Backup destination not configured yet.",
+    lanAccess: "LAN Access",
+    lanEnabled: "Enabled",
+    lanDisabled: "Disabled",
+    lanPort: "Port",
+    lanAccessKey: "Access Key",
+    lanStatus: "Status",
+    lanStatusRunning: "Running",
+    lanStatusStopped: "Stopped",
+    lanStatusError: "Error",
+    lanOpenOnDevice: "Open On Another Device",
+    lanRegenerateKey: "Regenerate Access Key",
+    lanSaveSettings: "Save LAN Settings",
+    lanNetworkHint: "Devices must be on the same local network and use the access key shown below.",
+    lanEnableHint: "Serve the inventory app on your local network so phones and tablets can look up and manage items.",
+    lanUrlsUnavailable: "Enable LAN access to see device URLs.",
+    lanCopy: "Copy",
+    lanCopySuccess: "Access key copied to clipboard.",
+    lanCopyError: "Unable to copy the access key on this device.",
+    authTitle: "LAN Inventory Access",
+    authDescription: "Enter the access key from the desktop app to open the inventory workspace on this device.",
+    authAccessKeyLabel: "Access Key",
+    authConnect: "Connect",
     managePersonnelHint: "Manage the operator list used by stock movement forms.",
     personnelName: "Personnel Name",
     addPersonnel: "Add Personnel",
@@ -317,8 +405,20 @@ export const dictionaries: Record<Language, Dictionary> = {
     qrCodeUnavailable: "QR code unavailable.",
     printQrLabel: "Print QR Label",
     printSelectedQrs: "Print Selected QR Codes",
+    printLocation: "Location",
     selectAllItems: "Select All",
     selectedItemsCount: (count: number) => `${count} selected`,
+    issueCartTitle: "Issue Cart",
+    issueCartHint: "Issue multiple selected items in one transaction. Rows with zero quantity are skipped.",
+    issueCartSelectedItems: "Selected Items",
+    issueCartNoSelection: "Select at least one item to open the Issue Cart.",
+    issueCartInlineHint: "Enter issue quantities for the items you want to issue. Blank or zero quantities will be ignored.",
+    movementHistory: "Movement History",
+    movementHistoryHint: "Latest 50 stock movements for this item.",
+    loadingMovements: "Loading movement history...",
+    noMovements: "No movements recorded yet.",
+    date: "Date",
+    type: "Type",
     actionPanelTitle: {
       createItem: "Create Inventory Item",
       modifyItem: "Modify Inventory Item",
@@ -337,6 +437,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     successUpdateItem: "Inventory item updated.",
     successReceiveStock: "Stock receipt recorded.",
     successIssueMaterial: "Material issue recorded.",
+    successBatchIssueMaterial: "Batch material issue recorded.",
     successUpdateBackupPlan: "Backup settings updated.",
     successRemoveItem: "Inventory item removed.",
     successAddPersonnel: "Personnel added.",
@@ -344,6 +445,16 @@ export const dictionaries: Record<Language, Dictionary> = {
     lowStockAlertIssued: (itemName: string, sku: string, currentQuantity: number, thresholdQuantity: number) =>
       `Low-stock alert issued for ${itemName} (${sku}). Current quantity is ${currentQuantity}, reorder level is ${thresholdQuantity}.`,
     formValidationError: "Check the required fields and quantity values.",
+    backupNow: "Backup Now",
+    backupNowInProgress: "Backing Up...",
+    backupCompleted: "Backup completed.",
+    disconnect: "Disconnect",
+    qrItemNotFound: "This QR code points to an item that is not available in the current inventory database.",
+    personnelRequiredForIssue: "No personnel configured. Add personnel in the desktop app before issuing material.",
+    inventoryDesktop: "Inventory Desktop",
+    inventoryLan: "Inventory LAN",
+    darkMode: "Dark",
+    lightMode: "Light",
   },
   "zh-CN": {
     appName: "库存监控",
@@ -354,6 +465,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     alerts: "预警",
     personnel: "人员管理",
     settings: "设置",
+    alertsPanelHint: "显示达到阈值的预警、处理状态以及触发时的数量。",
     currentInventoryLevels: "当前库存水平",
     inventoryOperationsHint: "在当前库存列表中执行入库和出库操作。",
     manageItemsHint: "在此页面创建、修改、删除物料，并打印二维码标签。",
@@ -387,8 +499,10 @@ export const dictionaries: Record<Language, Dictionary> = {
     modifyItem: "修改物料",
     receiveStock: "入库",
     issueMaterial: "出库",
+    batchIssue: "批量出库",
     removeItem: "移除物料",
     manage: "管理",
+    actions: "操作",
     loadingWorkspace: "正在加载库存工作区...",
     noInventoryItems: "还没有库存记录。",
     noInventoryItemsHint: "先创建第一个物料，再开始跟踪现存数量和低库存规则。",
@@ -396,6 +510,28 @@ export const dictionaries: Record<Language, Dictionary> = {
     noAlertsHint: "当物料数量降到或低于补货量时，预警会出现在这里。",
     backupStorageHint: "本地数据库备份可以保存到 LAN 共享或云同步文件夹。",
     backupNotConfigured: "还未配置备份目标。",
+    lanAccess: "LAN 访问",
+    lanEnabled: "启用",
+    lanDisabled: "禁用",
+    lanPort: "端口",
+    lanAccessKey: "访问密钥",
+    lanStatus: "状态",
+    lanStatusRunning: "运行中",
+    lanStatusStopped: "已停止",
+    lanStatusError: "错误",
+    lanOpenOnDevice: "在其他设备上打开",
+    lanRegenerateKey: "重新生成访问密钥",
+    lanSaveSettings: "保存 LAN 设置",
+    lanNetworkHint: "设备必须连接到同一本地网络，并使用下方显示的访问密钥。",
+    lanEnableHint: "在本地网络上提供库存应用，让手机和平板也能查询和管理物料。",
+    lanUrlsUnavailable: "启用 LAN 访问后即可查看设备访问链接。",
+    lanCopy: "复制",
+    lanCopySuccess: "访问密钥已复制到剪贴板。",
+    lanCopyError: "当前设备无法复制访问密钥。",
+    authTitle: "LAN 库存访问",
+    authDescription: "输入桌面应用中显示的访问密钥，即可在此设备上打开库存工作区。",
+    authAccessKeyLabel: "访问密钥",
+    authConnect: "连接",
     managePersonnelHint: "管理库存操作表单使用的人员列表。",
     personnelName: "人员姓名",
     addPersonnel: "新增人员",
@@ -427,8 +563,20 @@ export const dictionaries: Record<Language, Dictionary> = {
     qrCodeUnavailable: "二维码不可用。",
     printQrLabel: "打印二维码标签",
     printSelectedQrs: "打印已选二维码",
+    printLocation: "库位",
     selectAllItems: "全选",
     selectedItemsCount: (count: number) => `已选择 ${count} 项`,
+    issueCartTitle: "出库车",
+    issueCartHint: "在一次事务中批量出库多个已选物料。数量为空或为 0 的行会被跳过。",
+    issueCartSelectedItems: "已选物料",
+    issueCartNoSelection: "请至少选择一个物料后再打开批量出库。",
+    issueCartInlineHint: "只需为要出库的物料输入数量。为空或为 0 的数量将被忽略。",
+    movementHistory: "出入库记录",
+    movementHistoryHint: "显示该物料最近 50 条库存变动。",
+    loadingMovements: "正在加载出入库记录...",
+    noMovements: "暂无库存变动记录。",
+    date: "日期",
+    type: "类型",
     actionPanelTitle: {
       createItem: "新增库存物料",
       modifyItem: "修改库存物料",
@@ -447,6 +595,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     successUpdateItem: "已更新库存物料。",
     successReceiveStock: "已记录入库。",
     successIssueMaterial: "已记录出库。",
+    successBatchIssueMaterial: "已记录批量出库。",
     successUpdateBackupPlan: "已更新备份设置。",
     successRemoveItem: "已移除库存物料。",
     successAddPersonnel: "已新增人员。",
@@ -454,5 +603,15 @@ export const dictionaries: Record<Language, Dictionary> = {
     lowStockAlertIssued: (itemName: string, sku: string, currentQuantity: number, thresholdQuantity: number) =>
       `${itemName} (${sku}) 已触发低库存预警。当前数量为 ${currentQuantity}，补货量为 ${thresholdQuantity}。`,
     formValidationError: "请检查必填项和数量输入。",
+    backupNow: "立即备份",
+    backupNowInProgress: "正在备份...",
+    backupCompleted: "备份完成。",
+    disconnect: "断开连接",
+    qrItemNotFound: "此二维码指向的物品在当前库存数据库中不可用。",
+    personnelRequiredForIssue: "未配置人员。请在桌面应用中添加人员后再发放物料。",
+    inventoryDesktop: "库存桌面端",
+    inventoryLan: "库存局域网",
+    darkMode: "深色",
+    lightMode: "浅色",
   },
 };

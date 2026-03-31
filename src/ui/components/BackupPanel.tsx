@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { formatDate } from "../../app/formatDate";
 import { localizeBackupTargetType, type Dictionary } from "../../app/i18n";
 import type { BackupPlan, BackupTargetType, Language, UpdateBackupPlanInput } from "../../domain/models";
 
@@ -7,6 +8,7 @@ interface BackupPanelProps {
   dictionary: Dictionary;
   language: Language;
   backupPlan: BackupPlan;
+  onBackupNow: () => Promise<void>;
   onSave: (input: UpdateBackupPlanInput) => Promise<void>;
 }
 
@@ -25,7 +27,7 @@ function createFormState(backupPlan: BackupPlan): UpdateBackupPlanInput {
   };
 }
 
-export function BackupPanel({ busy, dictionary, language, backupPlan, onSave }: BackupPanelProps) {
+export function BackupPanel({ busy, dictionary, language, backupPlan, onBackupNow, onSave }: BackupPanelProps) {
   const [form, setForm] = useState<UpdateBackupPlanInput>(() => createFormState(backupPlan));
 
   useEffect(() => {
@@ -89,14 +91,22 @@ export function BackupPanel({ busy, dictionary, language, backupPlan, onSave }: 
       <dl className="backup-grid">
         <div>
           <dt>{dictionary.lastBackup}</dt>
-          <dd>{displayValue(backupPlan.lastSuccessfulBackup, dictionary.notAvailable)}</dd>
+          <dd>{displayValue(formatDate(backupPlan.lastSuccessfulBackup, language), dictionary.notAvailable)}</dd>
         </div>
         <div>
           <dt>{dictionary.nextBackup}</dt>
-          <dd>{displayValue(backupPlan.nextScheduledBackup, dictionary.notAvailable)}</dd>
+          <dd>{displayValue(formatDate(backupPlan.nextScheduledBackup, language), dictionary.notAvailable)}</dd>
         </div>
       </dl>
-      <div className="action-panel__footer">
+      <div className="action-panel__footer action-panel__footer--spread">
+        <button
+          className="button-secondary"
+          disabled={busy || !backupPlan.targetPath.trim()}
+          onClick={() => void onBackupNow()}
+          type="button"
+        >
+          {busy ? dictionary.backupNowInProgress : dictionary.backupNow}
+        </button>
         <button
           className="button-secondary"
           disabled={busy || !hasChanges}

@@ -1,18 +1,20 @@
-﻿import type { Dictionary } from "../../app/i18n";
-import type { InventoryAlert } from "../../domain/models";
+﻿import { formatDate } from "../../app/formatDate";
+import { localizeAlertStatus, type Dictionary } from "../../app/i18n";
+import type { InventoryAlert, Language } from "../../domain/models";
 
 interface AlertsPanelProps {
   dictionary: Dictionary;
   alerts: InventoryAlert[];
+  language: Language;
 }
 
-export function AlertsPanel({ dictionary, alerts }: AlertsPanelProps) {
+export function AlertsPanel({ dictionary, alerts, language }: AlertsPanelProps) {
   return (
     <section className="panel">
       <div className="panel__header">
         <div>
           <h2>{dictionary.alerts}</h2>
-          <p>Threshold crossings, acknowledgement status, and quantity at trigger time.</p>
+          <p>{dictionary.alertsPanelHint}</p>
         </div>
       </div>
       {alerts.length === 0 ? (
@@ -31,8 +33,10 @@ export function AlertsPanel({ dictionary, alerts }: AlertsPanelProps) {
                 </p>
               </div>
               <div className="alert-card__meta">
-                <span className={`status-pill status-pill--alert-${alert.status}`}>{alert.status}</span>
-                <small>{alert.triggeredAt}</small>
+                <span className={`status-pill status-pill--alert-${alert.status}`}>
+                  {localizeAlertStatus(alert.status, language)}
+                </span>
+                <small>{formatDate(alert.triggeredAt, language)}</small>
               </div>
             </article>
           ))}

@@ -1,18 +1,6 @@
 import { useEffect, useState } from "react";
 import { buildDashboardMetrics } from "../domain/inventory";
-import type {
-  ActionKind,
-  AppSnapshot,
-  CreateInventoryItemInput,
-  InventoryAlert,
-  Language,
-  LanAccessState,
-  PublicIssueContext,
-  StockMutationInput,
-  UpdateBackupPlanInput,
-  UpdateInventoryItemInput,
-  UpdateLanAccessInput,
-} from "../domain/models";
+import type { ActionKind, Language } from "../domain/models";
 import { dictionaries, localizeLanguageName, localizeUnit } from "./i18n";
 import { AlertsPanel } from "../ui/components/AlertsPanel";
 import { BackupPanel } from "../ui/components/BackupPanel";
@@ -21,89 +9,15 @@ import { ItemManagementTable } from "../ui/components/ItemManagementTable";
 import { MetricCard } from "../ui/components/MetricCard";
 import { PersonnelPanel } from "../ui/components/PersonnelPanel";
 import { ActionPanel } from "../ui/components/ActionPanel";
+import { BatchIssuePanel } from "../ui/components/BatchIssuePanel";
 import { LanAccessPanel } from "../ui/components/LanAccessPanel";
 import { QuickIssuePage } from "../ui/components/QuickIssuePage";
-import {
-  addPersonnel,
-  clearLanAccessKey,
-  createInventoryItem,
-  isBrowserRuntime,
-  isDesktopRuntime,
-  isUnauthorizedError,
-  issueMaterial,
-  issueMaterialPublic,
-  loadAppSnapshot,
-  loadLanAccessState,
-  loadPublicIssueContext,
-  persistLanAccessKey,
-  readPersistedLanAccessKey,
-  readPersistedLanguage,
-  receiveStock,
-  regenerateLanAccessKey,
-  removeInventoryItem,
-  removePersonnel,
-  updateAppLanguage,
-  updateBackupPlan,
-  updateInventoryItem,
-  updateLanAccess,
-} from "../services/inventoryGateway";
 import type { Dictionary } from "./i18n";
+import { useInventoryState } from "./useInventoryState";
 
 type Section = "dashboard" | "inventory" | "itemManagement" | "alerts" | "personnel" | "settings";
-type NoticeTone = "success" | "warning";
 
 const navOrder: Section[] = ["dashboard", "inventory", "itemManagement", "alerts", "personnel", "settings"];
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unable to complete the requested action.";
-}
-
-function readIssueRouteItemId(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const match = /^\/issue\/([^/]+)\/?$/i.exec(window.location.pathname);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-function readIssueRouteAccessKey(): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  return new URLSearchParams(window.location.search).get("key")?.trim() ?? "";
-}
-
-function findNewOpenAlert(previous: AppSnapshot, next: AppSnapshot): InventoryAlert | null {
-  const previousOpenIds = new Set(
-    previous.alerts.filter((alert) => alert.status === "open").map((alert) => alert.id),
-  );
-
-  return next.alerts.find((alert) => alert.status === "open" && !previousOpenIds.has(alert.id)) ?? null;
-}
-
-function buildMutationNotice(
-  previous: AppSnapshot,
-  next: AppSnapshot,
-  dictionary: Dictionary,
-  successMessage: string,
-): { message: string; tone: NoticeTone } {
-  const newAlert = findNewOpenAlert(previous, next);
-  if (!newAlert) {
-    return { message: successMessage, tone: "success" };
-  }
-
-  return {
-    message: `${successMessage} ${dictionary.lowStockAlertIssued(
-      newAlert.itemName,
-      newAlert.sku,
-      newAlert.currentQuantity,
-      newAlert.thresholdQuantity,
-    )}`,
-    tone: "warning",
-  };
-}
 
 function sectionSubtitle(section: Section, dictionary: Dictionary): string {
   switch (section) {
@@ -123,129 +37,68 @@ function sectionSubtitle(section: Section, dictionary: Dictionary): string {
 }
 
 export function App() {
-  const desktopRuntime = isDesktopRuntime();
-  const browserRuntime = isBrowserRuntime();
-  const issueRouteItemId = browserRuntime ? readIssueRouteItemId() : null;
-  const issueRouteAccessKey = browserRuntime ? readIssueRouteAccessKey() : "";
-  const [language, setLanguage] = useState<Language>(() => readPersistedLanguage());
   const [section, setSection] = useState<Section>("dashboard");
-  const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
-  const [issueContext, setIssueContext] = useState<PublicIssueContext | null>(null);
-  const [lanAccess, setLanAccess] = useState<LanAccessState | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ message: string; tone: NoticeTone } | null>(null);
-  const [busy, setBusy] = useState(false);
   const [action, setAction] = useState<ActionKind | null>(null);
   const [activeItemId, setActiveItemId] = useState<string>("");
-  const [reloadKey, setReloadKey] = useState(0);
-  const [accessKeyInput, setAccessKeyInput] = useState(() => readPersistedLanAccessKey());
-  const dictionary = dictionaries[language];
+  const [batchIssueItemIds, setBatchIssueItemIds] = useState<string[]>([]);
+  const {
+    runtime,
+    issueRouteItemId,
+    language,
+    snapshot,
+    issueContext,
+    lanAccess,
+    loadError,
+    actionError,
+    notice,
+    busy,
+    accessKeyInput,
+    setAccessKeyInput,
+    requiresBrowserAuth,
+    connectBrowser,
+    disconnectBrowser,
+    clearFeedback,
+    reportActionError,
+    handleCreateItem,
+    handleUpdateItem,
+    handleReceiveStock,
+    handleIssueMaterial,
+    handleBatchIssueMaterial,
+    handleQuickIssueMaterial,
+    handleRemoveItem,
+    handleBackupPlanSave,
+    handleBackupNow,
+    handleAddPersonnel,
+    handleRemovePersonnel,
+    handleLanguageChange,
+    handleLanAccessSave,
+    handleLanAccessKeyRegenerate,
+  } = useInventoryState();
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof localStorage !== "undefined") {
+      return (localStorage.getItem("oi-theme") as "dark" | "light") || "dark";
+    }
+    return "dark";
+  });
 
   useEffect(() => {
-    let cancelled = false;
-
-    if (browserRuntime && issueRouteAccessKey) {
-      persistLanAccessKey(issueRouteAccessKey);
-      setAccessKeyInput(issueRouteAccessKey);
-    }
-
-    setLoadError(null);
-
-    if (browserRuntime && issueRouteItemId) {
-      setSnapshot(null);
-      loadPublicIssueContext(issueRouteItemId)
-        .then((result) => {
-          if (!cancelled) {
-            setLanguage(result.language);
-            setIssueContext(result);
-          }
-        })
-        .catch((loadErrorValue: unknown) => {
-          if (!cancelled) {
-            setIssueContext(null);
-            setLoadError(toErrorMessage(loadErrorValue));
-          }
-        });
+    if (theme === "light") {
+      document.documentElement.setAttribute("data-theme", "light");
     } else {
-      setIssueContext(null);
-
-      if (browserRuntime && !readPersistedLanAccessKey().trim()) {
-        setSnapshot(null);
-        return () => {
-          cancelled = true;
-        };
-      }
-
-      loadAppSnapshot()
-        .then((result) => {
-          if (!cancelled) {
-            setLanguage(result.language);
-            setSnapshot(result);
-          }
-        })
-        .catch((loadErrorValue: unknown) => {
-          if (cancelled) {
-            return;
-          }
-
-          if (browserRuntime && isUnauthorizedError(loadErrorValue)) {
-            clearLanAccessKey();
-            setAccessKeyInput("");
-            setSnapshot(null);
-            setLoadError(null);
-            return;
-          }
-
-          setLoadError(toErrorMessage(loadErrorValue));
-        });
+      document.documentElement.removeAttribute("data-theme");
     }
+    localStorage.setItem("oi-theme", theme);
+  }, [theme]);
 
-    if (desktopRuntime) {
-      loadLanAccessState()
-        .then((result) => {
-          if (!cancelled) {
-            setLanAccess(result);
-          }
-        })
-        .catch((error: unknown) => {
-          if (!cancelled) {
-            setActionError(toErrorMessage(error));
-          }
-        });
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [browserRuntime, desktopRuntime, issueRouteAccessKey, issueRouteItemId, reloadKey]);
-
-  useEffect(() => {
-    if (!desktopRuntime || issueRouteItemId || action || busy) {
-      return;
-    }
-
-    const refreshInterval = window.setInterval(() => {
-      loadAppSnapshot()
-        .then((result) => {
-          setLanguage(result.language);
-          setSnapshot(result);
-        })
-        .catch(() => {
-          // Keep the last successful desktop snapshot if a background refresh fails.
-        });
-    }, 2000);
-
-    return () => {
-      window.clearInterval(refreshInterval);
-    };
-  }, [action, busy, desktopRuntime, issueRouteItemId]);
+  const desktopRuntime = runtime === "desktop";
+  const browserRuntime = runtime !== "desktop";
+  const dictionary = dictionaries[language];
 
   const openAction = (nextAction: ActionKind, itemId?: string) => {
     setAction(nextAction);
     setActiveItemId(itemId ?? "");
-    setActionError(null);
-    setNotice(null);
+    setBatchIssueItemIds([]);
+    clearFeedback();
   };
 
   const closeAction = () => {
@@ -253,148 +106,79 @@ export function App() {
     setActiveItemId("");
   };
 
-  const handleGatewayError = (error: unknown) => {
-    if (browserRuntime && !issueRouteItemId && isUnauthorizedError(error)) {
-      clearLanAccessKey();
-      setAccessKeyInput("");
-      setSnapshot(null);
-      setAction(null);
-      setLoadError(null);
-      setActionError(null);
-      return;
-    }
-
-    setActionError(toErrorMessage(error));
+  const openBatchIssue = (itemIds: string[]) => {
+    setAction(null);
+    setActiveItemId("");
+    setBatchIssueItemIds(itemIds);
+    clearFeedback();
   };
 
-  const runMutation = async (work: () => Promise<AppSnapshot>, successMessage: string) => {
-    if (!snapshot) {
-      return;
-    }
+  const closeBatchIssue = () => {
+    setBatchIssueItemIds([]);
+  };
 
-    try {
-      setBusy(true);
-      setActionError(null);
-      const previousSnapshot = snapshot;
-      const nextSnapshot = await work();
-      setSnapshot(nextSnapshot);
+  const onCreateItem = async (input: Parameters<typeof handleCreateItem>[0]) => {
+    if (await handleCreateItem(input)) {
       closeAction();
-      setNotice(buildMutationNotice(previousSnapshot, nextSnapshot, dictionary, successMessage));
-    } catch (error) {
-      handleGatewayError(error);
-    } finally {
-      setBusy(false);
     }
   };
 
-  const handleCreateItem = async (input: CreateInventoryItemInput) =>
-    runMutation(() => createInventoryItem(input), dictionary.successCreateItem);
-
-  const handleUpdateItem = async (input: UpdateInventoryItemInput) =>
-    runMutation(() => updateInventoryItem(input), dictionary.successUpdateItem);
-
-  const handleReceiveStock = async (input: StockMutationInput) =>
-    runMutation(() => receiveStock(input), dictionary.successReceiveStock);
-
-  const handleIssueMaterial = async (input: StockMutationInput) =>
-    runMutation(() => issueMaterial(input), dictionary.successIssueMaterial);
-
-  const handleQuickIssueMaterial = async (input: StockMutationInput): Promise<string> => {
-    try {
-      setBusy(true);
-      setActionError(null);
-      const nextContext = await issueMaterialPublic(input);
-      setIssueContext(nextContext);
-      setLanguage(nextContext.language);
-      setNotice({
-        message: dictionary.successIssueMaterial,
-        tone: "success",
-      });
-      return dictionary.successIssueMaterial;
-    } catch (error) {
-      handleGatewayError(error);
-      throw new Error(toErrorMessage(error));
-    } finally {
-      setBusy(false);
+  const onUpdateItem = async (input: Parameters<typeof handleUpdateItem>[0]) => {
+    if (await handleUpdateItem(input)) {
+      closeAction();
     }
   };
 
-  const handleUpdateBackupPlan = async (input: UpdateBackupPlanInput) =>
-    runMutation(() => updateBackupPlan(input), dictionary.successUpdateBackupPlan);
-
-  const handleRemoveItem = async (itemId: string) =>
-    runMutation(() => removeInventoryItem(itemId), dictionary.successRemoveItem);
-
-  const handleAddPersonnel = async (name: string) =>
-    runMutation(() => addPersonnel({ name }), dictionary.successAddPersonnel);
-
-  const handleRemovePersonnel = async (personnelId: string) =>
-    runMutation(() => removePersonnel(personnelId), dictionary.successRemovePersonnel);
-
-  const handleLanguageChange = (nextLanguage: Language) => {
-    setLanguage(nextLanguage);
-    void updateAppLanguage(nextLanguage).catch((error: unknown) => {
-      handleGatewayError(error);
-    });
-  };
-
-  const handleLanAccessSave = async (input: UpdateLanAccessInput) => {
-    try {
-      setBusy(true);
-      setActionError(null);
-      const nextState = await updateLanAccess(input);
-      const nextSnapshot = await loadAppSnapshot();
-      setLanAccess(nextState);
-      setSnapshot(nextSnapshot);
-      setNotice({
-        message: nextState.enabled ? "LAN access settings updated." : "LAN access disabled.",
-        tone: nextState.status === "error" ? "warning" : "success",
-      });
-    } catch (error) {
-      handleGatewayError(error);
-    } finally {
-      setBusy(false);
+  const onReceiveStock = async (input: Parameters<typeof handleReceiveStock>[0]) => {
+    if (await handleReceiveStock(input)) {
+      closeAction();
     }
   };
 
-  const handleLanAccessKeyRegenerate = async () => {
-    try {
-      setBusy(true);
-      setActionError(null);
-      const nextState = await regenerateLanAccessKey();
-      setLanAccess(nextState);
-      setNotice({
-        message: "LAN access key regenerated.",
-        tone: "success",
-      });
-    } catch (error) {
-      handleGatewayError(error);
-    } finally {
-      setBusy(false);
+  const onIssueMaterial = async (input: Parameters<typeof handleIssueMaterial>[0]) => {
+    if (await handleIssueMaterial(input)) {
+      closeAction();
     }
   };
 
-  const handleBrowserSignIn = () => {
-    const trimmedKey = accessKeyInput.trim();
-    if (!trimmedKey) {
-      setLoadError("Enter the LAN access key shown in the desktop app.");
-      return;
-    }
+  const onBatchIssueMaterial = async (input: Parameters<typeof handleBatchIssueMaterial>[0]) =>
+    handleBatchIssueMaterial(input);
 
-    persistLanAccessKey(trimmedKey);
-    setLoadError(null);
-    setReloadKey((current) => current + 1);
+  const onRemoveItem = async (itemId: string) => {
+    if (await handleRemoveItem(itemId)) {
+      closeAction();
+    }
   };
 
-  if (browserRuntime && !issueRouteItemId && !readPersistedLanAccessKey().trim()) {
+  const onBackupPlanSave = async (input: Parameters<typeof handleBackupPlanSave>[0]) => {
+    await handleBackupPlanSave(input);
+  };
+
+  const onBackupNow = async () => {
+    await handleBackupNow();
+  };
+
+  const onAddPersonnel = async (name: string) => {
+    await handleAddPersonnel(name);
+  };
+
+  const onRemovePersonnel = async (personnelId: string) => {
+    await handleRemovePersonnel(personnelId);
+  };
+
+  const onLanAccessSave = async (input: Parameters<typeof handleLanAccessSave>[0]) => {
+    await handleLanAccessSave(input);
+  };
+
+  if (requiresBrowserAuth) {
     return (
       <main className="state-screen state-screen--auth">
         <div className="auth-card">
-          <span className="sidebar__eyebrow">LAN Inventory Access</span>
+          <span className="sidebar__eyebrow">{dictionary.authTitle}</span>
           <h1>{dictionary.appName}</h1>
-          <p>Enter the access key from the desktop app to open the inventory workspace on this device.</p>
+          <p>{dictionary.authDescription}</p>
           <label className="auth-card__field">
-            <span>Access Key</span>
+            <span>{dictionary.authAccessKeyLabel}</span>
             <input
               autoFocus
               type="password"
@@ -403,8 +187,8 @@ export function App() {
             />
           </label>
           {loadError && <div className="feedback-banner feedback-banner--error">{loadError}</div>}
-          <button onClick={handleBrowserSignIn} type="button">
-            Connect
+          <button onClick={connectBrowser} type="button">
+            {dictionary.authConnect}
           </button>
         </div>
       </main>
@@ -440,6 +224,8 @@ export function App() {
 
   const issueRouteItem = issueContext?.item ?? null;
   const metrics = snapshot ? buildDashboardMetrics(snapshot.items, snapshot.alerts) : null;
+  const selectedBatchItems =
+    snapshot?.items.filter((item) => batchIssueItemIds.includes(item.id)) ?? [];
   const headerTitle = issueRouteItem
     ? `${dictionary.issueMaterial}: ${issueRouteItem.name}`
     : issueRouteItemId
@@ -455,7 +241,7 @@ export function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar__brand">
-          <span className="sidebar__eyebrow">{browserRuntime ? "Inventory LAN" : "Inventory Desktop"}</span>
+          <span className="sidebar__eyebrow">{browserRuntime ? dictionary.inventoryLan : dictionary.inventoryDesktop}</span>
           <h1>{dictionary.appName}</h1>
           <p>{dictionary.tagline}</p>
         </div>
@@ -465,7 +251,7 @@ export function App() {
               <button
                 key={item}
                 className={section === item ? "nav-item nav-item--active" : "nav-item"}
-                onClick={() => setSection(item)}
+                onClick={() => { closeAction(); closeBatchIssue(); setSection(item); }}
                 type="button"
               >
                 {dictionary[item]}
@@ -484,16 +270,19 @@ export function App() {
             {browserRuntime && !issueRouteItemId && (
               <button
                 className="button-secondary button-inline"
-                onClick={() => {
-                  clearLanAccessKey();
-                  setAccessKeyInput("");
-                  setSnapshot(null);
-                }}
+                onClick={disconnectBrowser}
                 type="button"
               >
-                Disconnect
+                {dictionary.disconnect}
               </button>
             )}
+            <button
+              className="button-secondary button-inline"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              type="button"
+            >
+              {theme === "dark" ? dictionary.lightMode : dictionary.darkMode}
+            </button>
             <label className="language-switch">
               <span>{dictionary.language}</span>
               <select value={language} onChange={(event) => handleLanguageChange(event.target.value as Language)}>
@@ -508,25 +297,37 @@ export function App() {
         {actionError && <div className="feedback-banner feedback-banner--error">{actionError}</div>}
 
         {!issueRouteItemId && snapshot && (
-          <ActionPanel
-            action={action}
-            activeItemId={activeItemId}
-            busy={busy}
-            dictionary={dictionary}
-            language={language}
-            items={snapshot.items}
-            personnel={snapshot.personnel}
-            onClose={closeAction}
-            onCreateItem={handleCreateItem}
-            onUpdateItem={handleUpdateItem}
-            onReceiveStock={handleReceiveStock}
-            onIssueMaterial={handleIssueMaterial}
-            onRemoveItem={handleRemoveItem}
-            onError={(message) => {
-              setNotice(null);
-              setActionError(message);
-            }}
-          />
+          <>
+            {batchIssueItemIds.length > 0 && (
+              <BatchIssuePanel
+                busy={busy}
+                dictionary={dictionary}
+                errorMessage={actionError}
+                items={selectedBatchItems}
+                language={language}
+                personnel={snapshot.personnel}
+                onClose={closeBatchIssue}
+                onSubmit={onBatchIssueMaterial}
+              />
+            )}
+            <ActionPanel
+              action={action}
+              activeItemId={activeItemId}
+              preSelectedItemId={activeItemId || undefined}
+              busy={busy}
+              dictionary={dictionary}
+              language={language}
+              items={snapshot.items}
+              personnel={snapshot.personnel}
+              onClose={closeAction}
+              onCreateItem={onCreateItem}
+              onUpdateItem={onUpdateItem}
+              onReceiveStock={onReceiveStock}
+              onIssueMaterial={onIssueMaterial}
+              onRemoveItem={onRemoveItem}
+              onError={reportActionError}
+            />
+          </>
         )}
 
         {issueRouteItemId ? (
@@ -543,7 +344,7 @@ export function App() {
             <section className="panel">
               <div className="empty-state">
                 <h3>{dictionary.issueMaterial}</h3>
-                <p>This QR code points to an item that is not available in the current inventory database.</p>
+                <p>{dictionary.qrItemNotFound}</p>
               </div>
             </section>
           )
@@ -567,8 +368,8 @@ export function App() {
                     dictionary={dictionary}
                     language={language}
                     items={snapshot.items}
-                    onIssueMaterial={() => openAction("issueMaterial")}
-                    onReceiveStock={() => openAction("receiveStock")}
+                    onIssueMaterial={(itemId) => openAction("issueMaterial", itemId)}
+                    onReceiveStock={(itemId) => openAction("receiveStock", itemId)}
                   />
                 )}
                 {section === "itemManagement" && (
@@ -577,36 +378,42 @@ export function App() {
                     dictionary={dictionary}
                     language={language}
                     items={snapshot.items}
+                    onBatchIssue={openBatchIssue}
                     onCreateItem={() => openAction("createItem")}
+                    onError={reportActionError}
                     onModifyItem={(itemId) => openAction("modifyItem", itemId)}
                     onRemoveItem={(itemId) => openAction("removeItem", itemId)}
                   />
                 )}
-                {section === "alerts" && <AlertsPanel dictionary={dictionary} alerts={snapshot.alerts} />}
+                {section === "alerts" && (
+                  <AlertsPanel dictionary={dictionary} alerts={snapshot.alerts} language={language} />
+                )}
                 {section === "personnel" && (
                   <PersonnelPanel
                     busy={busy}
                     dictionary={dictionary}
                     personnel={snapshot.personnel}
-                    onAddPersonnel={handleAddPersonnel}
-                    onRemovePersonnel={handleRemovePersonnel}
+                    onAddPersonnel={onAddPersonnel}
+                    onRemovePersonnel={onRemovePersonnel}
                   />
                 )}
                 {section === "settings" && (
                   <>
                     <BackupPanel
                       busy={busy}
+                      backupPlan={snapshot.backupPlan}
                       dictionary={dictionary}
                       language={language}
-                      backupPlan={snapshot.backupPlan}
-                      onSave={handleUpdateBackupPlan}
+                      onBackupNow={onBackupNow}
+                      onSave={onBackupPlanSave}
                     />
                     {desktopRuntime && lanAccess && (
                       <LanAccessPanel
                         busy={busy}
+                        dictionary={dictionary}
                         lanAccess={lanAccess}
                         onRegenerateKey={handleLanAccessKeyRegenerate}
-                        onSave={handleLanAccessSave}
+                        onSave={onLanAccessSave}
                       />
                     )}
                   </>
@@ -619,5 +426,3 @@ export function App() {
     </div>
   );
 }
-
-

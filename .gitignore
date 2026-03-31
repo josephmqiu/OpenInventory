@@ -11,3 +11,4 @@ src-tauri/data/
 data/
 *.db-shm
 *.db-wal
+.gstack/

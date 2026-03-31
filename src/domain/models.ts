@@ -1,7 +1,7 @@
 export type Language = "en" | "zh-CN";
 
 export type StockStatus = "in_stock" | "low_stock" | "out_of_stock";
-export type AlertStatus = "open" | "acknowledged" | "resolved";
+export type AlertStatus = "open" | "resolved";
 export type BackupTargetType = "local_folder" | "lan_share" | "cloud_folder";
 export type BackupStatus = "healthy" | "warning";
 export type LanAccessStatus = "running" | "stopped" | "error";
@@ -29,6 +29,16 @@ export interface InventoryAlert {
   thresholdQuantity: number;
   status: AlertStatus;
   triggeredAt: string;
+}
+
+export interface InventoryMovement {
+  id: string;
+  itemId: string;
+  movementType: string;
+  quantity: number;
+  performedBy: string | null;
+  reason: string | null;
+  createdAt: string;
 }
 
 export interface PersonnelMember {
@@ -118,6 +128,17 @@ export interface StockMutationInput {
   performedBy: string;
 }
 
+export interface BatchIssueItem {
+  itemId: string;
+  quantity: number;
+}
+
+export interface BatchIssueMaterialInput {
+  items: BatchIssueItem[];
+  performedBy: string;
+  reason: string;
+}
+
 export interface AddPersonnelInput {
   name: string;
 }
@@ -128,4 +149,3 @@ export type ActionKind =
   | "receiveStock"
   | "issueMaterial"
   | "removeItem";
-

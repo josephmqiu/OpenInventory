@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
+import { formatDate } from "../../app/formatDate";
 import { localizeCategory, localizeUnit, type Dictionary } from "../../app/i18n";
-import type { InventoryItem, Language } from "../../domain/models";
+import type { InventoryItem, InventoryMovement, Language } from "../../domain/models";
+import { getItemMovements } from "../../services/inventoryGateway";
 
 interface ItemDetailsPanelProps {
   dictionary: Dictionary;
@@ -10,6 +13,40 @@ interface ItemDetailsPanelProps {
 }
 
 export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }: ItemDetailsPanelProps) {
+  const [movements, setMovements] = useState<InventoryMovement[]>([]);
+  const [loadingMovements, setLoadingMovements] = useState(true);
+  const [movementError, setMovementError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setLoadingMovements(true);
+    setMovementError(null);
+
+    getItemMovements(item.id)
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setMovements(result);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        setMovementError(error instanceof Error ? error.message : dictionary.noMovements);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingMovements(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dictionary.noMovements, item.id]);
+
   return (
     <section className="panel item-details-panel">
       <div className="panel__header">
@@ -62,7 +99,7 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
           </div>
           <div>
             <dt>{dictionary.lastUpdated}</dt>
-            <dd>{item.lastUpdated}</dd>
+            <dd>{formatDate(item.lastUpdated, language)}</dd>
           </div>
         </dl>
         <div className="item-details-qr">
@@ -73,6 +110,50 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
             <p>{dictionary.qrCodeUnavailable}</p>
           )}
         </div>
+      </div>
+      <div className="item-movements-section">
+        <div className="panel__header">
+          <div>
+            <h3>{dictionary.movementHistory}</h3>
+            <p>{dictionary.movementHistoryHint}</p>
+          </div>
+        </div>
+        {loadingMovements ? (
+          <div className="empty-state">
+            <h3>{dictionary.loadingMovements}</h3>
+          </div>
+        ) : movementError ? (
+          <div className="feedback-banner feedback-banner--error">{movementError}</div>
+        ) : movements.length === 0 ? (
+          <div className="empty-state">
+            <h3>{dictionary.noMovements}</h3>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{dictionary.date}</th>
+                  <th>{dictionary.type}</th>
+                  <th>{dictionary.quantity}</th>
+                  <th>{dictionary.performedBy}</th>
+                  <th>{dictionary.reason}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map((movement) => (
+                  <tr key={movement.id}>
+                    <td>{formatDate(movement.createdAt, language)}</td>
+                    <td>{movement.movementType === "receive" ? dictionary.receiveStock : dictionary.issueMaterial}</td>
+                    <td>{movement.quantity}</td>
+                    <td>{movement.performedBy || dictionary.notAvailable}</td>
+                    <td>{movement.reason || dictionary.notAvailable}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </section>
   );
