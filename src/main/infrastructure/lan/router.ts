@@ -2,9 +2,19 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { RateLimiter, getClientIp } from "./auth";
-import type { DatabaseServiceApi, LanAccessSettings } from "../../services/DatabaseService";
-
-type Json = Record<string, unknown>;
+import type {
+  AddPersonnelInput,
+  BatchIssueMaterialInput,
+  CreateInventoryItemInput,
+  DatabaseServiceApi,
+  StockMutationInput,
+  UpdateInventoryItemInput,
+} from "../../services/DatabaseService";
+import {
+  backendMessages,
+  normalizeBackendLanguage,
+  ValidationError,
+} from "../../domain/errors";
 
 interface LanRouterDeps {
   dbService: DatabaseServiceApi;
@@ -17,19 +27,20 @@ export function createLanRouter(deps: LanRouterDeps): http.RequestListener {
   const rateLimiter = new RateLimiter();
 
   return async (req, res) => {
+    const messages = await resolveMessages(dbService);
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
     const pathname = url.pathname;
     const method = req.method ?? "GET";
 
     // ─── Public routes (no auth) ─────────────────────────────────────
     if (pathname.startsWith("/public/")) {
-      await handlePublicRoute(pathname, method, req, res, dbService);
+      await handlePublicRoute(pathname, method, req, res, dbService, messages);
       return;
     }
 
     // ─── Static files (no auth for frontend assets) ──────────────────
     if (!pathname.startsWith("/api/")) {
-      serveStaticFile(pathname, res, rendererDir);
+      serveStaticFile(pathname, res, rendererDir, messages);
       return;
     }
 
@@ -40,13 +51,16 @@ export function createLanRouter(deps: LanRouterDeps): http.RequestListener {
     const authError = rateLimiter.authorize(ip, providedKey, accessKey);
 
     if (authError) {
-      const status = authError.includes("Too many") ? 429 : 401;
-      sendJson(res, status, { message: authError });
+      const status = authError === "too_many_failed_attempts" ? 429 : 401;
+      sendJson(res, status, {
+        message:
+          status === 429 ? messages.tooManyFailedAccessKeyAttempts : messages.invalidAccessKey,
+      });
       return;
     }
 
     // ─── API routes ──────────────────────────────────────────────────
-    await handleApiRoute(pathname, method, req, res, dbService);
+    await handleApiRoute(pathname, method, req, res, dbService, messages);
   };
 }
 
@@ -56,6 +70,7 @@ async function handleApiRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   db: DatabaseServiceApi,
+  messages: ReturnType<typeof backendMessages>,
 ): Promise<void> {
   try {
     // GET /api/snapshot
@@ -67,7 +82,7 @@ async function handleApiRoute(
 
     // POST /api/items
     if (pathname === "/api/items" && method === "POST") {
-      const body = await readBody(req);
+      const body = await readBody<CreateInventoryItemInput>(req, messages);
       const result = await runEffect(db.createInventoryItem(body));
       sendJson(res, 201, result.snapshot);
       return;
@@ -76,7 +91,7 @@ async function handleApiRoute(
     // PUT /api/items/:id
     const itemPutMatch = pathname.match(/^\/api\/items\/([^/]+)$/);
     if (itemPutMatch && method === "PUT") {
-      const body = await readBody(req);
+      const body = await readBody<UpdateInventoryItemInput>(req, messages);
       body.itemId = itemPutMatch[1];
       const result = await runEffect(db.updateInventoryItem(body));
       sendJson(res, 200, result.snapshot);
@@ -93,7 +108,7 @@ async function handleApiRoute(
     // POST /api/items/:id/receive
     const receiveMatch = pathname.match(/^\/api\/items\/([^/]+)\/receive$/);
     if (receiveMatch && method === "POST") {
-      const body = await readBody(req);
+      const body = await readBody<StockMutationInput>(req, messages);
       body.itemId = receiveMatch[1];
       const result = await runEffect(db.receiveStock(body));
       sendJson(res, 200, result.snapshot);
@@ -103,7 +118,7 @@ async function handleApiRoute(
     // POST /api/items/:id/issue
     const issueMatch = pathname.match(/^\/api\/items\/([^/]+)\/issue$/);
     if (issueMatch && method === "POST") {
-      const body = await readBody(req);
+      const body = await readBody<StockMutationInput>(req, messages);
       body.itemId = issueMatch[1];
       const result = await runEffect(db.issueMaterial(body));
       sendJson(res, 200, result.snapshot);
@@ -120,7 +135,7 @@ async function handleApiRoute(
 
     // POST /api/items/batch-issue
     if (pathname === "/api/items/batch-issue" && method === "POST") {
-      const body = await readBody(req);
+      const body = await readBody<BatchIssueMaterialInput>(req, messages);
       const result = await runEffect(db.batchIssueMaterial(body));
       sendJson(res, 200, result.snapshot);
       return;
@@ -128,7 +143,7 @@ async function handleApiRoute(
 
     // POST /api/personnel
     if (pathname === "/api/personnel" && method === "POST") {
-      const body = await readBody(req);
+      const body = await readBody<AddPersonnelInput>(req, messages);
       const result = await runEffect(db.addPersonnel(body));
       sendJson(res, 201, result);
       return;
@@ -148,8 +163,8 @@ async function handleApiRoute(
 
     // PUT /api/language
     if (pathname === "/api/language" && method === "PUT") {
-      const body = await readBody(req);
-      await runEffect(db.updateLanguage(body.language as string));
+      const body = await readBody<{ language: string }>(req, messages);
+      await runEffect(db.updateLanguage(body.language));
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -160,9 +175,9 @@ async function handleApiRoute(
       return;
     }
 
-    sendJson(res, 404, { message: "Not found" });
+    sendJson(res, 404, { message: messages.notFound });
   } catch (error: unknown) {
-    handleApiError(res, error);
+    handleApiError(res, error, messages);
   }
 }
 
@@ -172,6 +187,7 @@ async function handlePublicRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   db: DatabaseServiceApi,
+  messages: ReturnType<typeof backendMessages>,
 ): Promise<void> {
   try {
     // GET /public/items/:id/context
@@ -181,7 +197,7 @@ async function handlePublicRoute(
       const snapshot = await runEffect(db.loadSnapshot());
       const item = snapshot.items.find((i) => i.id === itemId);
       if (!item) {
-        sendJson(res, 404, { message: "Item not found" });
+        sendJson(res, 404, { message: messages.itemNotFound });
         return;
       }
       sendJson(res, 200, {
@@ -195,7 +211,7 @@ async function handlePublicRoute(
     // POST /public/items/:id/issue
     const issueMatch = pathname.match(/^\/public\/items\/([^/]+)\/issue$/);
     if (issueMatch && method === "POST") {
-      const body = await readBody(req);
+      const body = await readBody<StockMutationInput>(req, messages);
       body.itemId = issueMatch[1];
       const result = await runEffect(db.issueMaterial(body));
       // Return PublicIssueContext shape (not the full snapshot) so the
@@ -209,9 +225,9 @@ async function handlePublicRoute(
       return;
     }
 
-    sendJson(res, 404, { message: "Not found" });
+    sendJson(res, 404, { message: messages.notFound });
   } catch (error: unknown) {
-    handleApiError(res, error);
+    handleApiError(res, error, messages);
   }
 }
 
@@ -224,13 +240,26 @@ async function runEffect<A>(effect: Effect.Effect<A, AppError>): Promise<A> {
   return Effect.runPromise(effect);
 }
 
-function handleApiError(res: http.ServerResponse, error: unknown): void {
+async function resolveMessages(db: DatabaseServiceApi): Promise<ReturnType<typeof backendMessages>> {
+  try {
+    const snapshot = await runEffect(db.loadSnapshot());
+    return backendMessages(normalizeBackendLanguage(snapshot.language));
+  } catch {
+    return backendMessages("en");
+  }
+}
+
+function handleApiError(
+  res: http.ServerResponse,
+  error: unknown,
+  messages: ReturnType<typeof backendMessages>,
+): void {
   if (error && typeof error === "object" && "_tag" in error) {
     const appError = error as AppError;
     const status = errorToHttpStatus(appError);
     sendJson(res, status, { message: appError.message });
   } else {
-    sendJson(res, 500, { message: String(error) });
+    sendJson(res, 500, { message: messages.unexpectedError });
   }
 }
 
@@ -241,7 +270,10 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
-function readBody(req: http.IncomingMessage): Promise<Json> {
+function readBody<T>(
+  req: http.IncomingMessage,
+  messages: ReturnType<typeof backendMessages>,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     let data = "";
     let bytes = 0;
@@ -249,26 +281,31 @@ function readBody(req: http.IncomingMessage): Promise<Json> {
       bytes += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
       if (bytes > MAX_BODY_BYTES) {
         req.destroy();
-        reject(new Error("Request body too large"));
+        reject(new ValidationError({ message: messages.requestBodyTooLarge }));
         return;
       }
       data += chunk;
     });
     req.on("end", () => {
       try {
-        resolve(data ? JSON.parse(data) : {});
+        resolve((data ? JSON.parse(data) : {}) as T);
       } catch {
-        reject(new Error("Invalid JSON body"));
+        reject(new ValidationError({ message: messages.invalidJsonBody }));
       }
     });
     req.on("error", reject);
   });
 }
 
-function serveStaticFile(pathname: string, res: http.ServerResponse, rendererDir: string): void {
+function serveStaticFile(
+  pathname: string,
+  res: http.ServerResponse,
+  rendererDir: string,
+  messages: ReturnType<typeof backendMessages>,
+): void {
   if (!rendererDir) {
     res.writeHead(404);
-    res.end("Not found");
+    res.end(messages.notFound);
     return;
   }
 
@@ -279,7 +316,7 @@ function serveStaticFile(pathname: string, res: http.ServerResponse, rendererDir
   // Block path traversal: resolved path must stay inside rendererDir.
   if (!filePath.startsWith(resolvedBase)) {
     res.writeHead(403);
-    res.end("Forbidden");
+    res.end(messages.forbidden);
     return;
   }
 
@@ -291,7 +328,7 @@ function serveStaticFile(pathname: string, res: http.ServerResponse, rendererDir
   if (!fs.existsSync(filePath)) {
     console.error(`[LAN] Static file not found: rendererDir=${rendererDir}, pathname=${pathname}`);
     res.writeHead(404);
-    res.end("Not found");
+    res.end(messages.notFound);
     return;
   }
 

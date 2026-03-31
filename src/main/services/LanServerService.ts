@@ -5,7 +5,7 @@ import path from "path";
 import { createLanRouter } from "../infrastructure/lan/router";
 import { generateAccessKey } from "../infrastructure/lan/auth";
 import type { DatabaseServiceApi, LanAccessSettings } from "./DatabaseService";
-import { ServerError, type AppError } from "../domain/errors";
+import { backendMessages, normalizeBackendLanguage, ServerError, type AppError } from "../domain/errors";
 
 export interface LanAccessState {
   enabled: boolean;
@@ -115,10 +115,21 @@ export function makeLanServerService(
     });
   }
 
+  async function resolveMessages() {
+    try {
+      const snapshot = await Effect.runPromise(dbService.loadSnapshot());
+      return backendMessages(normalizeBackendLanguage(snapshot.language));
+    } catch {
+      return backendMessages("en");
+    }
+  }
+
   return {
-    loadState: () =>
-      Effect.tryPromise({
+    loadState: () => {
+      let messages = backendMessages("en");
+      return Effect.tryPromise({
         try: async () => {
+          messages = await resolveMessages();
           const settings = await Effect.runPromise(dbService.loadLanAccessSettings());
           currentSettings = settings;
 
@@ -136,20 +147,26 @@ export function makeLanServerService(
                 currentSettings.primaryUrl = urls[0];
                 await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
               }
-              return buildState("running");
-            } catch (err) {
-              return buildState("error", String(err));
+              return buildState("running", messages.lanServerRunning);
+            } catch {
+              return buildState("error", messages.lanServerError);
             }
           }
 
-          return buildState(server ? "running" : "stopped");
+          return buildState(
+            server ? "running" : "stopped",
+            server ? messages.lanServerRunning : messages.lanServerStopped,
+          );
         },
-        catch: (e) => new ServerError({ message: String(e) }),
-      }),
+        catch: () => new ServerError({ message: messages.serverError }),
+      });
+    },
 
-    updateAccess: (input) =>
-      Effect.tryPromise({
+    updateAccess: (input) => {
+      let messages = backendMessages("en");
+      return Effect.tryPromise({
         try: async () => {
+          messages = await resolveMessages();
           currentSettings.enabled = input.enabled;
           currentSettings.port = input.port;
 
@@ -159,24 +176,27 @@ export function makeLanServerService(
               const urls = buildUrls(input.port);
               currentSettings.primaryUrl = urls[0] ?? "";
               await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
-              return buildState("running");
-            } catch (err) {
+              return buildState("running", messages.lanServerRunning);
+            } catch {
               await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
-              return buildState("error", String(err));
+              return buildState("error", messages.lanServerError);
             }
-          } else {
-            await stopServer();
-            currentSettings.primaryUrl = "";
-            await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
-            return buildState("stopped");
           }
-        },
-        catch: (e) => new ServerError({ message: String(e) }),
-      }),
 
-    regenerateAccessKey: () =>
-      Effect.tryPromise({
+          await stopServer();
+          currentSettings.primaryUrl = "";
+          await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
+          return buildState("stopped", messages.lanServerStopped);
+        },
+        catch: () => new ServerError({ message: messages.serverError }),
+      });
+    },
+
+    regenerateAccessKey: () => {
+      let messages = backendMessages("en");
+      return Effect.tryPromise({
         try: async () => {
+          messages = await resolveMessages();
           const newKey = generateAccessKey();
           currentSettings.accessKey = newKey;
           await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
@@ -187,17 +207,23 @@ export function makeLanServerService(
             await startServer();
           }
 
-          return buildState(server ? "running" : "stopped");
+          return buildState(
+            server ? "running" : "stopped",
+            server ? messages.lanServerRunning : messages.lanServerStopped,
+          );
         },
-        catch: (e) => new ServerError({ message: String(e) }),
-      }),
+        catch: () => new ServerError({ message: messages.serverError }),
+      });
+    },
 
-    shutdown: () =>
-      Effect.tryPromise({
+    shutdown: () => {
+      const messages = backendMessages("en");
+      return Effect.tryPromise({
         try: async () => {
           await stopServer();
         },
-        catch: (e) => new ServerError({ message: String(e) }),
-      }),
+        catch: () => new ServerError({ message: messages.serverError }),
+      });
+    },
   };
 }

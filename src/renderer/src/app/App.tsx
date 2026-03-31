@@ -108,7 +108,6 @@ export function App() {
 
   const cycleTheme = () => setTheme(theme === "auto" ? "light" : theme === "light" ? "dark" : "auto");
 
-  const desktopRuntime = runtime === "desktop";
   const browserRuntime = runtime !== "desktop";
   const dictionary = dictionaries[language];
 
@@ -336,13 +335,13 @@ export function App() {
         {notice && (
           <div className={`feedback-banner feedback-banner--${notice.tone}`}>
             <span>{notice.message}</span>
-            <button className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label="Dismiss">&times;</button>
+            <button className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label={dictionary.dismiss}>&times;</button>
           </div>
         )}
         {actionError && (
           <div className="feedback-banner feedback-banner--error">
             <span>{actionError}</span>
-            <button className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label="Dismiss">&times;</button>
+            <button className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label={dictionary.dismiss}>&times;</button>
           </div>
         )}
 

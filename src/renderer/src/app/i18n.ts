@@ -151,6 +151,52 @@ export function localizeLanguageName(value: Language): string {
   return languageLabels[value];
 }
 
+export function localizeBackendMessage(message: string, dictionary: Dictionary): string {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return dictionary.genericActionError;
+  }
+
+  const exactMatches: Record<string, string> = {
+    "SKU already exists.": dictionary.duplicateSkuError,
+    "Item not found.": dictionary.itemNotFound,
+    "Receive quantity must be greater than zero.": dictionary.quantityMustBeGreaterThanZero,
+    "Issue quantity must be greater than zero.": dictionary.quantityMustBeGreaterThanZero,
+    "Batch issue must include at least one item.": dictionary.batchIssueRequiresAtLeastOneItem,
+    "Backup target path is required before running a backup.": dictionary.backupTargetPathRequired,
+    "Unable to complete the requested action.": dictionary.genericActionError,
+    "LAN server management is only available in the desktop app.": dictionary.lanDesktopOnly,
+    "LAN access settings updated.": dictionary.lanAccessUpdated,
+    "LAN access disabled.": dictionary.lanAccessDisabled,
+    "LAN access key regenerated.": dictionary.lanAccessKeyRegenerated,
+    "Enter the LAN access key shown in the desktop app.": dictionary.enterLanAccessKey,
+    "Dev preview - LAN server runs only in Electron.": dictionary.devPreviewLanStatus,
+    "Dev preview — LAN server runs only in Electron.": dictionary.devPreviewLanStatus,
+  };
+
+  if (trimmed in exactMatches) {
+    return exactMatches[trimmed];
+  }
+
+  if (trimmed.endsWith(" is required.")) {
+    return dictionary.formValidationError;
+  }
+
+  const insufficientStockMatch = trimmed.match(/^Cannot issue (\d+) units\. Current available stock is (\d+)\.$/);
+  if (insufficientStockMatch) {
+    return dictionary.insufficientStockError(
+      Number(insufficientStockMatch[1]),
+      Number(insufficientStockMatch[2]),
+    );
+  }
+
+  if (trimmed.startsWith("Batch issue failed for ")) {
+    return dictionary.batchIssueFailed;
+  }
+
+  return trimmed;
+}
+
 export interface Dictionary {
   appName: string;
   tagline: string;
@@ -190,6 +236,7 @@ export interface Dictionary {
   language: string;
   backupReady: string;
   needsAttention: string;
+  genericActionError: string;
   createItem: string;
   modifyItem: string;
   receiveStock: string;
@@ -223,6 +270,12 @@ export interface Dictionary {
   lanCopy: string;
   lanCopySuccess: string;
   lanCopyError: string;
+  lanDesktopOnly: string;
+  lanAccessUpdated: string;
+  lanAccessDisabled: string;
+  lanAccessKeyRegenerated: string;
+  enterLanAccessKey: string;
+  devPreviewLanStatus: string;
   authTitle: string;
   authDescription: string;
   authAccessKeyLabel: string;
@@ -235,7 +288,7 @@ export interface Dictionary {
   noPersonnelHint: string;
   selectPersonnel: string;
   personnelRequiredHint: string;
-  notAvailable: string;
+  notProvided: string;
   cancel: string;
   save: string;
   quantity: string;
@@ -285,11 +338,19 @@ export interface Dictionary {
   successRemovePersonnel: string;
   lowStockAlertIssued: (itemName: string, sku: string, currentQuantity: number, thresholdQuantity: number) => string;
   formValidationError: string;
+  duplicateSkuError: string;
+  itemNotFound: string;
+  quantityMustBeGreaterThanZero: string;
+  batchIssueRequiresAtLeastOneItem: string;
+  batchIssueFailed: string;
+  backupTargetPathRequired: string;
+  insufficientStockError: (requested: number, available: number) => string;
   backupNow: string;
   backupNowInProgress: string;
   backupCompleted: string;
   disconnect: string;
   qrItemNotFound: string;
+  qrIssueReason: string;
   personnelRequiredForIssue: string;
   inventoryDesktop: string;
   inventoryLan: string;
@@ -303,7 +364,7 @@ export interface Dictionary {
   updateDownload: string;
   updateRestart: string;
   updateLater: string;
-  updateDismiss: string;
+  dismiss: string;
 }
 
 export const dictionaries: Record<Language, Dictionary> = {
@@ -322,7 +383,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     manageItemsHint: "Create, modify, delete, and print item QR labels from this page.",
     currentQuantityManagedHint: "Current quantity is managed through Receive Stock and Issue Material, not through item editing.",
     totalItems: "Total Items",
-    totalUnits: "Total Units",
+    totalUnits: "Combined Quantity",
     lowStock: "Low Stock",
     outOfStock: "Out Of Stock",
     openAlerts: "Open Alerts",
@@ -344,8 +405,9 @@ export const dictionaries: Record<Language, Dictionary> = {
     lastBackup: "Last Backup",
     nextBackup: "Next Backup",
     language: "Language",
-    backupReady: "Backup target validated",
+    backupReady: "Configured",
     needsAttention: "Needs attention",
+    genericActionError: "Unable to complete the requested action.",
     createItem: "Create Item",
     modifyItem: "Modify Item",
     receiveStock: "Receive Stock",
@@ -379,6 +441,12 @@ export const dictionaries: Record<Language, Dictionary> = {
     lanCopy: "Copy",
     lanCopySuccess: "Access key copied to clipboard.",
     lanCopyError: "Unable to copy the access key on this device.",
+    lanDesktopOnly: "LAN server management is only available in the desktop app.",
+    lanAccessUpdated: "LAN access settings updated.",
+    lanAccessDisabled: "LAN access disabled.",
+    lanAccessKeyRegenerated: "LAN access key regenerated.",
+    enterLanAccessKey: "Enter the LAN access key shown in the desktop app.",
+    devPreviewLanStatus: "Dev preview - LAN server runs only in Electron.",
     authTitle: "LAN Inventory Access",
     authDescription: "Enter the access key from the desktop app to open the inventory workspace on this device.",
     authAccessKeyLabel: "Access Key",
@@ -391,7 +459,6 @@ export const dictionaries: Record<Language, Dictionary> = {
     noPersonnelHint: "Add personnel before recording stock movements so Performed By can be selected from a list.",
     selectPersonnel: "Select Personnel",
     personnelRequiredHint: "Add at least one personnel record before receiving or issuing stock.",
-    notAvailable: "Not configured",
     cancel: "Cancel",
     save: "Save",
     quantity: "Quantity",
@@ -402,6 +469,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     selectItemToRemove: "Select Item To Remove",
     optionalField: "Optional",
     autoGeneratedIfBlank: "Auto-generated if blank",
+    notProvided: "Not provided",
     addNewCategory: "Add New Category",
     newCategoryName: "New Category Name",
     deleteItemWarning: "This permanently removes the item from inventory management.",
@@ -454,11 +522,20 @@ export const dictionaries: Record<Language, Dictionary> = {
     lowStockAlertIssued: (itemName: string, sku: string, currentQuantity: number, thresholdQuantity: number) =>
       `Low-stock alert issued for ${itemName} (${sku}). Current quantity is ${currentQuantity}, reorder level is ${thresholdQuantity}.`,
     formValidationError: "Check the required fields and quantity values.",
+    duplicateSkuError: "That SKU already exists.",
+    itemNotFound: "Item not found.",
+    quantityMustBeGreaterThanZero: "Quantity must be greater than zero.",
+    batchIssueRequiresAtLeastOneItem: "Batch issue must include at least one item.",
+    batchIssueFailed: "Batch issue could not be completed.",
+    backupTargetPathRequired: "Backup target path is required before running a backup.",
+    insufficientStockError: (requested: number, available: number) =>
+      `Cannot issue ${requested} units. Current available stock is ${available}.`,
     backupNow: "Backup Now",
     backupNowInProgress: "Backing Up...",
     backupCompleted: "Backup completed.",
     disconnect: "Disconnect",
     qrItemNotFound: "This QR code points to an item that is not available in the current inventory database.",
+    qrIssueReason: "QR issue",
     personnelRequiredForIssue: "No personnel configured. Add personnel in the desktop app before issuing material.",
     inventoryDesktop: "Desktop",
     inventoryLan: "LAN Access",
@@ -472,7 +549,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     updateDownload: "Download",
     updateRestart: "Restart Now",
     updateLater: "Later",
-    updateDismiss: "Dismiss",
+    dismiss: "Dismiss",
   },
   "zh-CN": {
     appName: "OpenInventory",
@@ -489,7 +566,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     manageItemsHint: "在此页面创建、修改、删除物料，并打印二维码标签。",
     currentQuantityManagedHint: "当前数量通过入库和出库管理，不在物料编辑中修改。",
     totalItems: "物料总数",
-    totalUnits: "库存总量",
+    totalUnits: "合计数量",
     lowStock: "低库存",
     outOfStock: "缺货",
     openAlerts: "未处理预警",
@@ -499,7 +576,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     location: "位置",
     currentQuantity: "当前数量",
     unit: "单位",
-    reorderLevel: "补货量",
+    reorderLevel: "补货阈值",
     status: "状态",
     lastUpdated: "最后更新",
     supplier: "供应商",
@@ -511,8 +588,9 @@ export const dictionaries: Record<Language, Dictionary> = {
     lastBackup: "上次备份",
     nextBackup: "下次备份",
     language: "语言",
-    backupReady: "备份目标已验证",
+    backupReady: "已配置",
     needsAttention: "需要处理",
+    genericActionError: "无法完成请求的操作。",
     createItem: "新增物料",
     modifyItem: "修改物料",
     receiveStock: "入库",
@@ -546,6 +624,12 @@ export const dictionaries: Record<Language, Dictionary> = {
     lanCopy: "复制",
     lanCopySuccess: "访问密钥已复制到剪贴板。",
     lanCopyError: "当前设备无法复制访问密钥。",
+    lanDesktopOnly: "LAN 服务器管理仅可在桌面应用中使用。",
+    lanAccessUpdated: "已更新 LAN 访问设置。",
+    lanAccessDisabled: "已禁用 LAN 访问。",
+    lanAccessKeyRegenerated: "已重新生成 LAN 访问密钥。",
+    enterLanAccessKey: "请输入桌面应用中显示的 LAN 访问密钥。",
+    devPreviewLanStatus: "开发预览 - LAN 服务器仅在 Electron 中运行。",
     authTitle: "LAN 库存访问",
     authDescription: "输入桌面应用中显示的访问密钥，即可在此设备上打开库存工作区。",
     authAccessKeyLabel: "访问密钥",
@@ -558,7 +642,6 @@ export const dictionaries: Record<Language, Dictionary> = {
     noPersonnelHint: "先新增人员，再记录入库或出库，这样“操作人”可以从列表选择。",
     selectPersonnel: "选择人员",
     personnelRequiredHint: "请先新增至少一名人员，再进行入库或出库。",
-    notAvailable: "未配置",
     cancel: "取消",
     save: "保存",
     quantity: "数量",
@@ -569,6 +652,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     selectItemToRemove: "选择要移除的物料",
     optionalField: "可选",
     autoGeneratedIfBlank: "留空时自动生成",
+    notProvided: "未填写",
     addNewCategory: "新增类别",
     newCategoryName: "新类别名称",
     deleteItemWarning: "这会将该物料从库存管理中永久移除。",
@@ -619,13 +703,22 @@ export const dictionaries: Record<Language, Dictionary> = {
     successAddPersonnel: "已新增人员。",
     successRemovePersonnel: "已移除人员。",
     lowStockAlertIssued: (itemName: string, sku: string, currentQuantity: number, thresholdQuantity: number) =>
-      `${itemName} (${sku}) 已触发低库存预警。当前数量为 ${currentQuantity}，补货量为 ${thresholdQuantity}。`,
+      `${itemName} (${sku}) 已触发低库存预警。当前数量为 ${currentQuantity}，补货阈值为 ${thresholdQuantity}。`,
     formValidationError: "请检查必填项和数量输入。",
+    duplicateSkuError: "该 SKU 已存在。",
+    itemNotFound: "未找到物料。",
+    quantityMustBeGreaterThanZero: "数量必须大于 0。",
+    batchIssueRequiresAtLeastOneItem: "批量出库至少需要一项物料。",
+    batchIssueFailed: "批量出库无法完成。",
+    backupTargetPathRequired: "运行备份前必须设置目标路径。",
+    insufficientStockError: (requested: number, available: number) =>
+      `无法出库 ${requested} 件。当前可用库存为 ${available}。`,
     backupNow: "立即备份",
     backupNowInProgress: "正在备份...",
     backupCompleted: "备份完成。",
     disconnect: "断开连接",
     qrItemNotFound: "此二维码指向的物品在当前库存数据库中不可用。",
+    qrIssueReason: "二维码出库",
     personnelRequiredForIssue: "未配置人员。请在桌面应用中添加人员后再发放物料。",
     inventoryDesktop: "桌面端",
     inventoryLan: "局域网访问",
@@ -639,6 +732,6 @@ export const dictionaries: Record<Language, Dictionary> = {
     updateDownload: "下载",
     updateRestart: "立即重启",
     updateLater: "稍后",
-    updateDismiss: "关闭",
+    dismiss: "关闭",
   },
 };

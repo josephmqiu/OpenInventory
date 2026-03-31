@@ -20,7 +20,7 @@ export function UpdateBanner({ status, dictionary, onDownload, onInstall, onDism
         <span>{dictionary.updateAvailable.replace("{version}", status.version)}</span>
         <div className="update-banner__actions">
           <button className="button-secondary" onClick={onDownload} type="button">{dictionary.updateDownload}</button>
-          <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={dictionary.updateDismiss}>&times;</button>
+          <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={dictionary.dismiss}>&times;</button>
         </div>
       </div>
     );
@@ -44,7 +44,7 @@ export function UpdateBanner({ status, dictionary, onDownload, onInstall, onDism
         <span>{dictionary.updateReady}</span>
         <div className="update-banner__actions">
           <button className="button-secondary" onClick={onInstall} type="button">{dictionary.updateRestart}</button>
-          <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={dictionary.updateLater}>&times;</button>
+          <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={dictionary.dismiss}>&times;</button>
         </div>
       </div>
     );
@@ -54,7 +54,7 @@ export function UpdateBanner({ status, dictionary, onDownload, onInstall, onDism
     return (
       <div className="update-banner update-banner--error">
         <span>{dictionary.updateError}</span>
-        <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={dictionary.updateDismiss}>&times;</button>
+        <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={dictionary.dismiss}>&times;</button>
       </div>
     );
   }

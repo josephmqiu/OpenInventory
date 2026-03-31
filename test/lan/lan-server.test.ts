@@ -132,7 +132,7 @@ describe("LanServerService", () => {
     const freshService = makeLanServerService(dbService, "");
 
     const state = await run(freshService.loadState());
-    expect(state.statusMessage).toBe("");
+    expect(state.statusMessage).toBe("LAN server is running.");
     expect(state.status).toBe("running");
     expect(state.enabled).toBe(true);
     expect(state.urls.length).toBeGreaterThan(0);

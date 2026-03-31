@@ -9,6 +9,8 @@ import {
   InsufficientStockError,
   ValidationError,
   DatabaseError,
+  backendMessages,
+  normalizeBackendLanguage,
   type AppError,
 } from "../domain/errors";
 
@@ -161,10 +163,14 @@ function stockStatusKey(currentQuantity: number, reorderQuantity: number): strin
   return "in_stock";
 }
 
-function requireText(value: string, label: string): string {
+function currentLanguage(db: Database.Database): "en" | "zh-CN" {
+  return normalizeBackendLanguage(readSetting(db, "app.language"));
+}
+
+function requireText(value: string, errorMessage: string): string {
   const trimmed = value.trim();
   if (trimmed === "") {
-    throw new ValidationError({ message: `${label} is required.` });
+    throw new ValidationError({ message: errorMessage });
   }
   return trimmed;
 }
@@ -176,6 +182,10 @@ function optionalText(value: string): string | null {
 
 function backupStatusKey(targetPath: string): string {
   return targetPath.trim() === "" ? "warning" : "healthy";
+}
+
+function localizedDatabaseError(db: Database.Database): DatabaseError {
+  return new DatabaseError({ message: backendMessages(currentLanguage(db)).databaseError });
 }
 
 // ─── Service Interface ───────────────────────────────────────────────────────
@@ -263,6 +273,7 @@ function writeSetting(
 function getItemRecord(
   db: Database.Database,
   itemId: string,
+  messages = backendMessages(currentLanguage(db)),
 ): ItemRecord {
   const row = db
     .prepare(
@@ -280,7 +291,7 @@ function getItemRecord(
     | undefined;
 
   if (!row) {
-    throw new NotFoundError({ message: "Item not found." });
+    throw new NotFoundError({ message: messages.itemNotFound });
   }
 
   return {
@@ -332,7 +343,11 @@ function ensureLocation(
   return locationId;
 }
 
-function resolveSku(db: Database.Database, requestedSku: string): string {
+function resolveSku(
+  db: Database.Database,
+  requestedSku: string,
+  messages = backendMessages(currentLanguage(db)),
+): string {
   if (requestedSku !== "") {
     const existing = db
       .prepare(
@@ -340,7 +355,7 @@ function resolveSku(db: Database.Database, requestedSku: string): string {
       )
       .get(requestedSku) as { id: string } | undefined;
     if (existing) {
-      throw new DuplicateSkuError({ message: "SKU already exists." });
+      throw new DuplicateSkuError({ message: messages.skuAlreadyExists });
     }
     return requestedSku;
   }
@@ -360,6 +375,7 @@ function resolveUpdatedSku(
   itemId: string,
   requestedSku: string,
   currentSku: string,
+  messages = backendMessages(currentLanguage(db)),
 ): string {
   const candidate = requestedSku === "" ? currentSku : requestedSku;
 
@@ -370,7 +386,7 @@ function resolveUpdatedSku(
     .get(candidate, itemId) as { id: string } | undefined;
 
   if (existing) {
-    throw new DuplicateSkuError({ message: "SKU already exists." });
+    throw new DuplicateSkuError({ message: messages.skuAlreadyExists });
   }
 
   return candidate;
@@ -531,7 +547,7 @@ export function makeDatabaseService(
     const lastSuccessful = readSetting(db, "backup.last_successful") ?? "";
     const nextScheduled = readSetting(db, "backup.next_scheduled") ?? "";
     const bkStatus = readSetting(db, "backup.status") ?? "warning";
-    const language = readSetting(db, "app.language") ?? "en";
+    const language = normalizeBackendLanguage(readSetting(db, "app.language"));
 
     return {
       items: mappedItems,
@@ -554,27 +570,28 @@ export function makeDatabaseService(
     loadSnapshot: () =>
       Effect.try({
         try: () => loadSnapshotSync(),
-        catch: (e) => new DatabaseError({ message: String(e) }),
+        catch: () => localizedDatabaseError(db),
       }),
 
     createInventoryItem: (input) =>
       Effect.try({
         try: () => {
+          const messages = backendMessages(currentLanguage(db));
           const requestedSku = input.sku.trim();
-          const name = requireText(input.name, "Item name");
-          const category = requireText(input.category, "Category");
-          const unit = requireText(input.unit, "Unit");
-          const location = requireText(input.location, "Location");
+          const name = requireText(input.name, messages.requiredField(messages.itemName));
+          const category = requireText(input.category, messages.requiredField(messages.category));
+          const unit = requireText(input.unit, messages.requiredField(messages.unit));
+          const location = requireText(input.location, messages.requiredField(messages.location));
           const supplier = input.supplier.trim();
 
           if (input.reorderQuantity < 0 || input.initialQuantity < 0) {
             throw new ValidationError({
-              message: "Quantity values must be zero or greater.",
+              message: messages.quantityValuesMustBeZeroOrGreater,
             });
           }
 
           const createFn = db.transaction(() => {
-            const sku = resolveSku(db, requestedSku);
+            const sku = resolveSku(db, requestedSku, messages);
             const supplierId = ensureSupplier(db, supplier);
             const locationId = ensureLocation(db, location);
             const itemId = generateId("item");
@@ -634,28 +651,29 @@ export function makeDatabaseService(
             e instanceof InsufficientStockError
           )
             return e;
-          return new DatabaseError({ message: String(e) });
+          return localizedDatabaseError(db);
         },
       }),
 
     updateInventoryItem: (input) =>
       Effect.try({
         try: () => {
-          const name = requireText(input.name, "Item name");
-          const category = requireText(input.category, "Category");
-          const unit = requireText(input.unit, "Unit");
-          const location = requireText(input.location, "Location");
+          const messages = backendMessages(currentLanguage(db));
+          const name = requireText(input.name, messages.requiredField(messages.itemName));
+          const category = requireText(input.category, messages.requiredField(messages.category));
+          const unit = requireText(input.unit, messages.requiredField(messages.unit));
+          const location = requireText(input.location, messages.requiredField(messages.location));
           const supplier = input.supplier.trim();
 
           if (input.reorderQuantity < 0) {
             throw new ValidationError({
-              message: "Reorder level must be zero or greater.",
+              message: messages.reorderLevelMustBeZeroOrGreater,
             });
           }
 
           const updateFn = db.transaction(() => {
-            const item = getItemRecord(db, input.itemId);
-            const sku = resolveUpdatedSku(db, input.itemId, input.sku.trim(), item.sku);
+            const item = getItemRecord(db, input.itemId, messages);
+            const sku = resolveUpdatedSku(db, input.itemId, input.sku.trim(), item.sku, messages);
             const supplierId = ensureSupplier(db, supplier);
             const locationId = ensureLocation(db, location);
             const status = stockStatusKey(item.currentQuantity, input.reorderQuantity);
@@ -707,22 +725,23 @@ export function makeDatabaseService(
             e instanceof NotFoundError
           )
             return e;
-          return new DatabaseError({ message: String(e) });
+          return localizedDatabaseError(db);
         },
       }),
 
     receiveStock: (input) =>
       Effect.try({
         try: () => {
+          const messages = backendMessages(currentLanguage(db));
           if (input.quantity <= 0) {
             throw new ValidationError({
-              message: "Receive quantity must be greater than zero.",
+              message: messages.receiveQuantityMustBeGreaterThanZero,
             });
           }
-          const performedBy = requireText(input.performedBy, "Performed by");
+          const performedBy = requireText(input.performedBy, messages.requiredField(messages.performedBy));
 
           const receiveFn = db.transaction(() => {
-            const item = getItemRecord(db, input.itemId);
+            const item = getItemRecord(db, input.itemId, messages);
             const newQuantity = item.currentQuantity + input.quantity;
             const status = stockStatusKey(newQuantity, item.reorderQuantity);
 
@@ -766,27 +785,29 @@ export function makeDatabaseService(
         },
         catch: (e) => {
           if (e instanceof ValidationError || e instanceof NotFoundError) return e;
-          return new DatabaseError({ message: String(e) });
+          return localizedDatabaseError(db);
         },
       }),
 
     issueMaterial: (input) =>
       Effect.try({
         try: () => {
+          const messages = backendMessages(currentLanguage(db));
           if (input.quantity <= 0) {
             throw new ValidationError({
-              message: "Issue quantity must be greater than zero.",
+              message: messages.issueQuantityMustBeGreaterThanZero,
             });
           }
-          const performedBy = requireText(input.performedBy, "Performed by");
+          const performedBy = requireText(input.performedBy, messages.requiredField(messages.performedBy));
 
           const issueFn = db.transaction(() => {
-            const item = getItemRecord(db, input.itemId);
+            const item = getItemRecord(db, input.itemId, messages);
 
             if (input.quantity > item.currentQuantity) {
               throw new InsufficientStockError({
                 available: item.currentQuantity,
                 requested: input.quantity,
+                language: currentLanguage(db),
               });
             }
 
@@ -838,19 +859,20 @@ export function makeDatabaseService(
             e instanceof InsufficientStockError
           )
             return e;
-          return new DatabaseError({ message: String(e) });
+          return localizedDatabaseError(db);
         },
       }),
 
     batchIssueMaterial: (input) =>
       Effect.try({
         try: () => {
+          const messages = backendMessages(currentLanguage(db));
           if (input.items.length === 0) {
             throw new ValidationError({
-              message: "Batch issue must include at least one item.",
+              message: messages.batchIssueMustIncludeAtLeastOneItem,
             });
           }
-          const performedBy = requireText(input.performedBy, "Performed by");
+          const performedBy = requireText(input.performedBy, messages.requiredField(messages.performedBy));
 
           const batchFn = db.transaction(() => {
             let lowStockNotification: LowStockNotification | null = null;
@@ -858,17 +880,17 @@ export function makeDatabaseService(
             for (const batchItem of input.items) {
               if (batchItem.quantity <= 0) {
                 throw new ValidationError({
-                  message: `Batch issue failed for item ${batchItem.itemId}: quantity must be greater than zero.`,
+                  message: messages.batchIssueQuantityMustBeGreaterThanZero(batchItem.itemId),
                 });
               }
 
               let item: ItemRecord;
               try {
-                item = getItemRecord(db, batchItem.itemId);
+                item = getItemRecord(db, batchItem.itemId, messages);
               } catch (e) {
                 if (e instanceof NotFoundError) {
                   throw new ValidationError({
-                    message: `Batch issue failed for item ${batchItem.itemId}: item not found.`,
+                    message: messages.batchIssueItemNotFound(batchItem.itemId),
                   });
                 }
                 throw e;
@@ -876,7 +898,12 @@ export function makeDatabaseService(
 
               if (batchItem.quantity > item.currentQuantity) {
                 throw new ValidationError({
-                  message: `Batch issue failed for ${item.name} (${item.sku}): cannot issue ${batchItem.quantity} units because only ${item.currentQuantity} are available.`,
+                  message: messages.batchIssueInsufficientStock(
+                    item.name,
+                    item.sku,
+                    batchItem.quantity,
+                    item.currentQuantity,
+                  ),
                 });
               }
 
@@ -917,18 +944,19 @@ export function makeDatabaseService(
         },
         catch: (e) => {
           if (e instanceof ValidationError) return e;
-          return new DatabaseError({ message: String(e) });
+          return localizedDatabaseError(db);
         },
       }),
 
     getItemMovements: (itemId) =>
       Effect.try({
         try: () => {
+          const messages = backendMessages(currentLanguage(db));
           const exists = db
             .prepare("SELECT id FROM inventory_items WHERE id = ?")
             .get(itemId);
           if (!exists) {
-            throw new NotFoundError({ message: "Item not found." });
+            throw new NotFoundError({ message: messages.itemNotFound });
           }
 
           const rows = db
@@ -961,7 +989,7 @@ export function makeDatabaseService(
         },
         catch: (e) => {
           if (e instanceof NotFoundError) return e;
-          return new DatabaseError({ message: String(e) });
+          return localizedDatabaseError(db);
         },
       }),
 
@@ -984,16 +1012,17 @@ export function makeDatabaseService(
 
           return loadSnapshotSync();
         },
-        catch: (e) => new DatabaseError({ message: String(e) }),
+        catch: () => localizedDatabaseError(db),
       }),
 
     backupNow: () =>
       Effect.tryPromise({
         try: async () => {
+          const messages = backendMessages(currentLanguage(db));
           const targetPath = (readSetting(db, "backup.target_path") ?? "").trim();
           if (targetPath === "") {
             throw new ValidationError({
-              message: "Backup target path is required before running a backup.",
+              message: messages.backupTargetPathRequired,
             });
           }
 
@@ -1031,7 +1060,7 @@ export function makeDatabaseService(
         },
         catch: (e) => {
           if (e instanceof ValidationError) return e;
-          return new DatabaseError({ message: String(e) });
+          return localizedDatabaseError(db);
         },
       }),
 
@@ -1044,7 +1073,7 @@ export function makeDatabaseService(
           });
           updateFn();
         },
-        catch: (e) => new DatabaseError({ message: String(e) }),
+        catch: () => localizedDatabaseError(db),
       }),
 
     removeInventoryItem: (itemId) =>
@@ -1062,14 +1091,15 @@ export function makeDatabaseService(
         },
         catch: (e) => {
           if (e instanceof NotFoundError) return e;
-          return new DatabaseError({ message: String(e) });
+          return localizedDatabaseError(db);
         },
       }),
 
     addPersonnel: (input) =>
       Effect.try({
         try: () => {
-          const name = requireText(input.name, "Personnel name");
+          const messages = backendMessages(currentLanguage(db));
+          const name = requireText(input.name, messages.requiredField(messages.personnelName));
 
           const addFn = db.transaction(() => {
             const existing = db
@@ -1077,7 +1107,7 @@ export function makeDatabaseService(
               .get(name) as { id: string } | undefined;
             if (existing) {
               throw new ValidationError({
-                message: "Personnel name already exists.",
+                message: messages.personnelNameAlreadyExists,
               });
             }
 
@@ -1092,7 +1122,7 @@ export function makeDatabaseService(
         },
         catch: (e) => {
           if (e instanceof ValidationError) return e;
-          return new DatabaseError({ message: String(e) });
+          return localizedDatabaseError(db);
         },
       }),
 
@@ -1104,14 +1134,14 @@ export function makeDatabaseService(
             .run(personnelId);
           if (result.changes === 0) {
             throw new NotFoundError({
-              message: "Personnel record not found.",
+              message: backendMessages(currentLanguage(db)).personnelNotFound,
             });
           }
           return loadSnapshotSync();
         },
         catch: (e) => {
           if (e instanceof NotFoundError) return e;
-          return new DatabaseError({ message: String(e) });
+          return localizedDatabaseError(db);
         },
       }),
 
@@ -1133,7 +1163,7 @@ export function makeDatabaseService(
             primaryUrl: primaryUrl ?? "",
           };
         },
-        catch: (e) => new DatabaseError({ message: String(e) }),
+        catch: () => localizedDatabaseError(db),
       }),
 
     saveLanAccessSettings: (settings) =>
@@ -1147,7 +1177,7 @@ export function makeDatabaseService(
           });
           saveFn();
         },
-        catch: (e) => new DatabaseError({ message: String(e) }),
+        catch: () => localizedDatabaseError(db),
       }),
   };
 }

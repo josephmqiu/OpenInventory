@@ -63,7 +63,7 @@ export function InventoryTable({
                   <td>{item.sku}</td>
                   <td>
                     <div className="cell-title">{item.name}</div>
-                    <div className="cell-subtitle">{item.supplier}</div>
+                    <div className="cell-subtitle">{item.supplier || dictionary.notProvided}</div>
                   </td>
                   <td>{localizeCategory(item.category, language)}</td>
                   <td>{item.location}</td>

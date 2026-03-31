@@ -10,14 +10,16 @@ interface FailedAttempt {
   recordedAt: number;
 }
 
+export type AuthorizationFailure = "invalid_access_key" | "too_many_failed_attempts";
+
 export class RateLimiter {
   private attempts = new Map<string, FailedAttempt>();
 
   /**
    * Check auth and record attempt.
-   * Returns null on success, or an error message string on failure.
+   * Returns null on success, or a stable failure code on failure.
    */
-  authorize(ip: string, providedKey: string, validKey: string): string | null {
+  authorize(ip: string, providedKey: string, validKey: string): AuthorizationFailure | null {
     const now = Date.now();
     const entry = this.attempts.get(ip);
 
@@ -27,7 +29,7 @@ export class RateLimiter {
         entry.count >= MAX_FAILED_ATTEMPTS &&
         now - entry.recordedAt < LOCKOUT_DURATION_MS
       ) {
-        return "Too many failed access key attempts from this device. Try again in 15 minutes.";
+        return "too_many_failed_attempts";
       }
 
       // Reset if window expired
@@ -50,7 +52,7 @@ export class RateLimiter {
       this.attempts.set(ip, { count: 1, recordedAt: now });
     }
 
-    return "Invalid access key";
+    return "invalid_access_key";
   }
 }
 

@@ -41,7 +41,7 @@ export async function printQrLabels(items: InventoryItem[], dictionary: Dictiona
           <div class="label-card__text">
             <strong>${escapeHtml(item.name)}</strong>
             <span>${escapeHtml(item.sku)}</span>
-            <small>${escapeHtml(dictionary.printLocation)}: ${escapeHtml(item.location || dictionary.notAvailable)}</small>
+            <small>${escapeHtml(dictionary.printLocation)}: ${escapeHtml(item.location || dictionary.notProvided)}</small>
           </div>
         </article>
       `,
