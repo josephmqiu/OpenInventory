@@ -35,9 +35,25 @@ export function createTestDb(): TestDb {
     dbPath,
     cleanup: () => {
       db.close();
-      fs.rmSync(dir, { recursive: true, force: true });
+      tryRemoveDir(dir);
     },
   };
+}
+
+/** On Windows, SQLite file handles may not release immediately after db.close().
+ *  Retry rmSync a few times to avoid EBUSY failures in CI. */
+function tryRemoveDir(dir: string, retries = 3): void {
+  for (let i = 0; i < retries; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (err: unknown) {
+      if (i === retries - 1) throw err;
+      // Small sync delay before retry — only needed on Windows
+      const start = Date.now();
+      while (Date.now() - start < 50) { /* spin */ }
+    }
+  }
 }
 
 /** Create a test DB with the legacy schema (includes dead columns for migration testing) */
@@ -146,7 +162,7 @@ export function createLegacyTestDb(): TestDb {
     dbPath,
     cleanup: () => {
       db.close();
-      fs.rmSync(dir, { recursive: true, force: true });
+      tryRemoveDir(dir);
     },
   };
 }
