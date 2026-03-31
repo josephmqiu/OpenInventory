@@ -77,6 +77,7 @@ impl From<AppError> for ApiError {
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::DuplicateSku(_) | AppError::InsufficientStock { .. } => StatusCode::CONFLICT,
             AppError::ValidationError(_) => StatusCode::BAD_REQUEST,
+            AppError::IoError(_) | AppError::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
@@ -163,7 +164,7 @@ impl LanServerController {
             let mut runtime = self
                 .runtime
                 .lock()
-                .map_err(|_| AppError::DatabaseError("LAN server state is unavailable.".into()))?;
+                .map_err(|_| AppError::ServerError("LAN server state is unavailable.".into()))?;
             runtime.status = LanAccessStatus::Stopped;
             runtime.status_message = "LAN access is disabled.".into();
             runtime.urls.clear();
@@ -188,7 +189,7 @@ impl LanServerController {
                 self.db.save_lan_access_settings(&updated_settings)?;
                 self.db.refresh_qr_assets()?;
                 let mut runtime = self.runtime.lock().map_err(|_| {
-                    AppError::DatabaseError("LAN server state is unavailable.".into())
+                    AppError::ServerError("LAN server state is unavailable.".into())
                 })?;
                 runtime.status = LanAccessStatus::Running;
                 runtime.status_message = "LAN access is running on your local network.".into();
@@ -199,7 +200,7 @@ impl LanServerController {
             }
             Err(error) => {
                 let mut runtime = self.runtime.lock().map_err(|_| {
-                    AppError::DatabaseError("LAN server state is unavailable.".into())
+                    AppError::ServerError("LAN server state is unavailable.".into())
                 })?;
                 runtime.status = LanAccessStatus::Error;
                 runtime.status_message = error.to_string();
@@ -277,12 +278,17 @@ fn start_server(settings: &LanAccessSettings, db: InventoryDb) -> AppResult<Star
 
 fn bind_listener(port: u16) -> AppResult<StdTcpListener> {
     let std_listener = StdTcpListener::bind(("0.0.0.0", port)).map_err(|error| {
-        AppError::DatabaseError(format!(
+        AppError::ServerError(format!(
             "Unable to start LAN access on port {}. Check whether another app is already using it. {}",
             port, error
         ))
     })?;
-    std_listener.set_nonblocking(true).map_err(AppError::from)?;
+    std_listener.set_nonblocking(true).map_err(|error| {
+        AppError::ServerError(format!(
+            "Unable to prepare LAN access on port {} for async serving. {}",
+            port, error
+        ))
+    })?;
     Ok(std_listener)
 }
 

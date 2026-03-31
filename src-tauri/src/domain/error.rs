@@ -10,6 +10,8 @@ pub enum AppError {
     DuplicateSku(String),
     InsufficientStock { available: i64, requested: i64 },
     ValidationError(String),
+    IoError(String),
+    ServerError(String),
     DatabaseError(String),
 }
 
@@ -19,6 +21,8 @@ impl Display for AppError {
             Self::NotFound(message)
             | Self::DuplicateSku(message)
             | Self::ValidationError(message)
+            | Self::IoError(message)
+            | Self::ServerError(message)
             | Self::DatabaseError(message) => write!(f, "{message}"),
             Self::InsufficientStock {
                 available,
@@ -47,7 +51,7 @@ impl From<AppError> for InvokeError {
 
 impl From<std::io::Error> for AppError {
     fn from(value: std::io::Error) -> Self {
-        Self::DatabaseError(value.to_string())
+        Self::IoError(value.to_string())
     }
 }
 

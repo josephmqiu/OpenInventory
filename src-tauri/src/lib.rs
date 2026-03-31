@@ -51,7 +51,7 @@ fn resolve_database_path<R: tauri::Runtime>(app: &tauri::App<R>) -> AppResult<Pa
         .path()
         .app_local_data_dir()
         .or_else(|_| app.path().app_data_dir())
-        .map_err(|error| AppError::DatabaseError(error.to_string()))?;
+        .map_err(|error| AppError::IoError(error.to_string()))?;
     let runtime_data_dir = app_data_dir.join("data");
 
     migrate_legacy_runtime_data(&current_dir.join("data"), &runtime_data_dir)?;
