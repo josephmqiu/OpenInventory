@@ -6,7 +6,7 @@ declare global {
   }
 }
 
-export type Runtime = "desktop" | "browser" | "http";
+export type Runtime = "desktop" | "http";
 
 function getTauriInvoke() {
   return typeof window === "undefined" ? undefined : window.__TAURI_INTERNALS__?.invoke;
@@ -17,11 +17,7 @@ export function detectRuntime(): Runtime {
     return "desktop";
   }
 
-  if (typeof window !== "undefined" && window.location.protocol.startsWith("http")) {
-    return "http";
-  }
-
-  return "browser";
+  return "http";
 }
 
 export function readIssueRouteItemId(): string | null {

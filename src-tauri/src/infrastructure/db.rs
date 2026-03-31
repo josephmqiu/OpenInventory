@@ -520,7 +520,7 @@ impl InventoryDb {
         })
     }
 
-    pub fn batch_issue_material(&self, input: BatchIssueMaterialInput) -> AppResult<AppSnapshot> {
+    pub fn batch_issue_material(&self, input: BatchIssueMaterialInput) -> AppResult<MutationResult> {
         if input.items.is_empty() {
             return Err(AppError::ValidationError(
                 "Batch issue must include at least one item.".into(),
@@ -533,6 +533,8 @@ impl InventoryDb {
 
         let mut connection = self.open_connection()?;
         let transaction = connection.transaction().map_err(database_error)?;
+
+        let mut low_stock_notification: Option<LowStockNotification> = None;
 
         for batch_item in items {
             if batch_item.quantity <= 0 {
@@ -586,12 +588,25 @@ impl InventoryDb {
             )
             .map_err(database_error)?;
 
-            sync_low_stock_alert(&transaction, &item.id, item.reorder_quantity, new_quantity)
-                .map_err(database_error)?;
+            let alert_created =
+                sync_low_stock_alert(&transaction, &item.id, item.reorder_quantity, new_quantity)
+                    .map_err(database_error)?;
+
+            if alert_created {
+                low_stock_notification = Some(LowStockNotification {
+                    item_name: item.name,
+                    sku: item.sku,
+                    current_quantity: new_quantity,
+                    threshold_quantity: item.reorder_quantity,
+                });
+            }
         }
 
         transaction.commit().map_err(database_error)?;
-        self.load_snapshot()
+        Ok(MutationResult {
+            snapshot: self.load_snapshot()?,
+            low_stock_notification,
+        })
     }
 
     pub fn get_item_movements(&self, item_id: &str) -> AppResult<Vec<InventoryMovement>> {

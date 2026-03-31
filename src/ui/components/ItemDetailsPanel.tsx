@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatDate } from "../../app/formatDate";
 import { localizeCategory, localizeUnit, type Dictionary } from "../../app/i18n";
 import type { InventoryItem, InventoryMovement, Language } from "../../domain/models";
 import { getItemMovements } from "../../services/inventoryGateway";
@@ -98,7 +99,7 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
           </div>
           <div>
             <dt>{dictionary.lastUpdated}</dt>
-            <dd>{item.lastUpdated}</dd>
+            <dd>{formatDate(item.lastUpdated, language)}</dd>
           </div>
         </dl>
         <div className="item-details-qr">
@@ -142,7 +143,7 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
               <tbody>
                 {movements.map((movement) => (
                   <tr key={movement.id}>
-                    <td>{movement.createdAt}</td>
+                    <td>{formatDate(movement.createdAt, language)}</td>
                     <td>{movement.movementType === "receive" ? dictionary.receiveStock : dictionary.issueMaterial}</td>
                     <td>{movement.quantity}</td>
                     <td>{movement.performedBy || dictionary.notAvailable}</td>

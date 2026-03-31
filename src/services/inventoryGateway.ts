@@ -139,7 +139,7 @@ async function fetchJson<T>(path: string, init?: RequestInit, includeAccessKey =
 }
 
 function supportsHttpApi(): boolean {
-  return detectRuntime() === "http";
+  return typeof window !== "undefined" && detectRuntime() === "http";
 }
 
 function unsupportedRuntimeError(action: string): GatewayError {

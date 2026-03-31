@@ -105,7 +105,7 @@ export function BackupPanel({ busy, dictionary, language, backupPlan, onBackupNo
           onClick={() => void onBackupNow()}
           type="button"
         >
-          {busy ? "Backing Up..." : "Backup Now"}
+          {busy ? dictionary.backupNowInProgress : dictionary.backupNow}
         </button>
         <button
           className="button-secondary"

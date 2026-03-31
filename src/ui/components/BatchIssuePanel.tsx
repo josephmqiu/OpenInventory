@@ -178,6 +178,12 @@ export function BatchIssuePanel({
                 <span>{dictionary.reason}</span>
                 <input value={reason} onChange={(event) => setReason(event.target.value)} />
               </label>
+              {personnel.length === 0 && (
+                <div className="empty-state">
+                  <h3>{dictionary.performedBy}</h3>
+                  <p>{dictionary.personnelRequiredForIssue}</p>
+                </div>
+              )}
               <div className="action-panel__footer action-panel__footer--spread">
                 <button className="button-secondary" onClick={onClose} type="button">
                   {dictionary.cancel}

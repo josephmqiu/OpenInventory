@@ -59,7 +59,7 @@ pub fn issue_material(db: &InventoryDb, input: StockMutationInput) -> AppResult<
 pub fn batch_issue_material(
     db: &InventoryDb,
     input: BatchIssueMaterialInput,
-) -> AppResult<AppSnapshot> {
+) -> AppResult<MutationResult> {
     db.batch_issue_material(input)
 }
 

@@ -96,7 +96,7 @@ export function QuickIssuePage({ busy, dictionary, item, language, personnel, on
           {personnel.length === 0 && (
             <div className="empty-state">
               <h3>{dictionary.performedBy}</h3>
-              <p>No personnel configured. Add personnel in the desktop app before issuing material.</p>
+              <p>{dictionary.personnelRequiredForIssue}</p>
             </div>
           )}
           <label>

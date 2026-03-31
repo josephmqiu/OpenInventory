@@ -285,6 +285,14 @@ export interface Dictionary {
   successRemovePersonnel: string;
   lowStockAlertIssued: (itemName: string, sku: string, currentQuantity: number, thresholdQuantity: number) => string;
   formValidationError: string;
+  backupNow: string;
+  backupNowInProgress: string;
+  backupCompleted: string;
+  disconnect: string;
+  qrItemNotFound: string;
+  personnelRequiredForIssue: string;
+  inventoryDesktop: string;
+  inventoryLan: string;
 }
 
 export const dictionaries: Record<Language, Dictionary> = {
@@ -435,6 +443,14 @@ export const dictionaries: Record<Language, Dictionary> = {
     lowStockAlertIssued: (itemName: string, sku: string, currentQuantity: number, thresholdQuantity: number) =>
       `Low-stock alert issued for ${itemName} (${sku}). Current quantity is ${currentQuantity}, reorder level is ${thresholdQuantity}.`,
     formValidationError: "Check the required fields and quantity values.",
+    backupNow: "Backup Now",
+    backupNowInProgress: "Backing Up...",
+    backupCompleted: "Backup completed.",
+    disconnect: "Disconnect",
+    qrItemNotFound: "This QR code points to an item that is not available in the current inventory database.",
+    personnelRequiredForIssue: "No personnel configured. Add personnel in the desktop app before issuing material.",
+    inventoryDesktop: "Inventory Desktop",
+    inventoryLan: "Inventory LAN",
   },
   "zh-CN": {
     appName: "库存监控",
@@ -583,5 +599,13 @@ export const dictionaries: Record<Language, Dictionary> = {
     lowStockAlertIssued: (itemName: string, sku: string, currentQuantity: number, thresholdQuantity: number) =>
       `${itemName} (${sku}) 已触发低库存预警。当前数量为 ${currentQuantity}，补货量为 ${thresholdQuantity}。`,
     formValidationError: "请检查必填项和数量输入。",
+    backupNow: "立即备份",
+    backupNowInProgress: "正在备份...",
+    backupCompleted: "备份完成。",
+    disconnect: "断开连接",
+    qrItemNotFound: "此二维码指向的物品在当前库存数据库中不可用。",
+    personnelRequiredForIssue: "未配置人员。请在桌面应用中添加人员后再发放物料。",
+    inventoryDesktop: "库存桌面端",
+    inventoryLan: "库存局域网",
   },
 };

@@ -374,7 +374,7 @@ export function useInventoryState(): InventoryState {
       setLanguage(nextSnapshot.language);
       setSnapshot(nextSnapshot);
       setNotice({
-        message: "Backup completed.",
+        message: dictionary.backupCompleted,
         tone: "success",
       });
       return true;

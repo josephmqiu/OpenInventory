@@ -557,7 +557,7 @@ async fn batch_issue_material(
     Json(input): Json<BatchIssueMaterialInput>,
 ) -> Result<Json<AppSnapshot>, ApiError> {
     inventory_service::batch_issue_material(&state.db, input)
-        .map(Json)
+        .map(|result| Json(result.snapshot))
         .map_err(ApiError::from)
 }
 

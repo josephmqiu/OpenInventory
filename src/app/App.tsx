@@ -225,7 +225,7 @@ export function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar__brand">
-          <span className="sidebar__eyebrow">{browserRuntime ? "Inventory LAN" : "Inventory Desktop"}</span>
+          <span className="sidebar__eyebrow">{browserRuntime ? dictionary.inventoryLan : dictionary.inventoryDesktop}</span>
           <h1>{dictionary.appName}</h1>
           <p>{dictionary.tagline}</p>
         </div>
@@ -257,7 +257,7 @@ export function App() {
                 onClick={disconnectBrowser}
                 type="button"
               >
-                Disconnect
+                {dictionary.disconnect}
               </button>
             )}
             <label className="language-switch">
@@ -321,7 +321,7 @@ export function App() {
             <section className="panel">
               <div className="empty-state">
                 <h3>{dictionary.issueMaterial}</h3>
-                <p>This QR code points to an item that is not available in the current inventory database.</p>
+                <p>{dictionary.qrItemNotFound}</p>
               </div>
             </section>
           )

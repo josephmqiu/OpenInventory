@@ -99,10 +99,13 @@ pub fn issue_material(
 
 #[tauri::command]
 pub fn batch_issue_material(
+    app: AppHandle,
     input: BatchIssueMaterialInput,
     db: State<'_, InventoryDb>,
 ) -> Result<AppSnapshot, AppError> {
-    inventory_service::batch_issue_material(db.inner(), input)
+    let result = inventory_service::batch_issue_material(db.inner(), input)?;
+    notify_low_stock_if_needed(&app, result.low_stock_notification.as_ref());
+    Ok(result.snapshot)
 }
 
 #[tauri::command]
