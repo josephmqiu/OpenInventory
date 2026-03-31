@@ -8,7 +8,7 @@ pub enum Language {
     ZhCn,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StockStatus {
     InStock,
@@ -50,6 +50,18 @@ pub struct InventoryAlert {
     pub threshold_quantity: i64,
     pub status: AlertStatus,
     pub triggered_at: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InventoryMovement {
+    pub id: String,
+    pub item_id: String,
+    pub movement_type: String,
+    pub quantity: i64,
+    pub performed_by: Option<String>,
+    pub reason: Option<String>,
+    pub created_at: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -165,6 +177,21 @@ pub struct StockMutationInput {
     pub quantity: i64,
     pub reason: String,
     pub performed_by: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchIssueItem {
+    pub item_id: String,
+    pub quantity: i64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchIssueMaterialInput {
+    pub items: Vec<BatchIssueItem>,
+    pub performed_by: String,
+    pub reason: String,
 }
 
 #[derive(Deserialize)]

@@ -1,7 +1,8 @@
 use crate::domain::error::{AppError, AppResult};
 use crate::domain::models::{
-    AddPersonnelInput, AppSnapshot, CreateInventoryItemInput, Language, PublicIssueContext,
-    StockMutationInput, UpdateBackupPlanInput, UpdateInventoryItemInput,
+    AddPersonnelInput, AppSnapshot, BatchIssueMaterialInput, CreateInventoryItemInput,
+    InventoryMovement, Language, PublicIssueContext, StockMutationInput, UpdateBackupPlanInput,
+    UpdateInventoryItemInput,
 };
 use crate::infrastructure::db::{InventoryDb, MutationResult};
 
@@ -55,6 +56,13 @@ pub fn issue_material(db: &InventoryDb, input: StockMutationInput) -> AppResult<
     db.issue_material(input)
 }
 
+pub fn batch_issue_material(
+    db: &InventoryDb,
+    input: BatchIssueMaterialInput,
+) -> AppResult<AppSnapshot> {
+    db.batch_issue_material(input)
+}
+
 pub fn issue_material_public(
     db: &InventoryDb,
     input: StockMutationInput,
@@ -88,6 +96,10 @@ pub fn update_backup_plan(
 
 pub fn backup_now(db: &InventoryDb) -> AppResult<AppSnapshot> {
     db.backup_now()
+}
+
+pub fn get_item_movements(db: &InventoryDb, item_id: &str) -> AppResult<Vec<InventoryMovement>> {
+    db.get_item_movements(item_id)
 }
 
 pub fn update_language(db: &InventoryDb, language: Language) -> AppResult<()> {

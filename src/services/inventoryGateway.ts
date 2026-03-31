@@ -1,7 +1,9 @@
 import type {
   AddPersonnelInput,
   AppSnapshot,
+  BatchIssueMaterialInput,
   CreateInventoryItemInput,
+  InventoryMovement,
   Language,
   LanAccessState,
   PublicIssueContext,
@@ -249,6 +251,19 @@ export async function issueMaterial(input: StockMutationInput): Promise<AppSnaps
   throw unsupportedRuntimeError("Issuing material");
 }
 
+export async function batchIssueMaterial(input: BatchIssueMaterialInput): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>("/api/items/batch-issue", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
+  if (detectRuntime() === "desktop") {
+    return invokeCommand<AppSnapshot>("batch_issue_material", { input });
+  }
+  throw unsupportedRuntimeError("Issuing materials");
+}
+
 export async function issueMaterialPublic(input: StockMutationInput): Promise<PublicIssueContext> {
   if (!supportsHttpApi()) {
     throw new GatewayError("Public issue pages are only available through LAN browser access.");
@@ -295,6 +310,18 @@ export async function removeInventoryItem(itemId: string): Promise<AppSnapshot> 
     return invokeCommand<AppSnapshot>("remove_inventory_item", { itemId });
   }
   throw unsupportedRuntimeError("Removing an inventory item");
+}
+
+export async function getItemMovements(itemId: string): Promise<InventoryMovement[]> {
+  if (supportsHttpApi()) {
+    return fetchJson<InventoryMovement[]>(`/api/items/${encodeURIComponent(itemId)}/movements`, {
+      method: "GET",
+    });
+  }
+  if (detectRuntime() === "desktop") {
+    return invokeCommand<InventoryMovement[]>("get_item_movements", { itemId });
+  }
+  throw unsupportedRuntimeError("Loading item movement history");
 }
 
 export async function addPersonnel(input: AddPersonnelInput): Promise<AppSnapshot> {

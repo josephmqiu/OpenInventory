@@ -9,6 +9,7 @@ import { ItemManagementTable } from "../ui/components/ItemManagementTable";
 import { MetricCard } from "../ui/components/MetricCard";
 import { PersonnelPanel } from "../ui/components/PersonnelPanel";
 import { ActionPanel } from "../ui/components/ActionPanel";
+import { BatchIssuePanel } from "../ui/components/BatchIssuePanel";
 import { LanAccessPanel } from "../ui/components/LanAccessPanel";
 import { QuickIssuePage } from "../ui/components/QuickIssuePage";
 import type { Dictionary } from "./i18n";
@@ -39,6 +40,7 @@ export function App() {
   const [section, setSection] = useState<Section>("dashboard");
   const [action, setAction] = useState<ActionKind | null>(null);
   const [activeItemId, setActiveItemId] = useState<string>("");
+  const [batchIssueItemIds, setBatchIssueItemIds] = useState<string[]>([]);
   const {
     runtime,
     issueRouteItemId,
@@ -61,6 +63,7 @@ export function App() {
     handleUpdateItem,
     handleReceiveStock,
     handleIssueMaterial,
+    handleBatchIssueMaterial,
     handleQuickIssueMaterial,
     handleRemoveItem,
     handleBackupPlanSave,
@@ -78,12 +81,24 @@ export function App() {
   const openAction = (nextAction: ActionKind, itemId?: string) => {
     setAction(nextAction);
     setActiveItemId(itemId ?? "");
+    setBatchIssueItemIds([]);
     clearFeedback();
   };
 
   const closeAction = () => {
     setAction(null);
     setActiveItemId("");
+  };
+
+  const openBatchIssue = (itemIds: string[]) => {
+    setAction(null);
+    setActiveItemId("");
+    setBatchIssueItemIds(itemIds);
+    clearFeedback();
+  };
+
+  const closeBatchIssue = () => {
+    setBatchIssueItemIds([]);
   };
 
   const onCreateItem = async (input: Parameters<typeof handleCreateItem>[0]) => {
@@ -109,6 +124,9 @@ export function App() {
       closeAction();
     }
   };
+
+  const onBatchIssueMaterial = async (input: Parameters<typeof handleBatchIssueMaterial>[0]) =>
+    handleBatchIssueMaterial(input);
 
   const onRemoveItem = async (itemId: string) => {
     if (await handleRemoveItem(itemId)) {
@@ -190,6 +208,8 @@ export function App() {
 
   const issueRouteItem = issueContext?.item ?? null;
   const metrics = snapshot ? buildDashboardMetrics(snapshot.items, snapshot.alerts) : null;
+  const selectedBatchItems =
+    snapshot?.items.filter((item) => batchIssueItemIds.includes(item.id)) ?? [];
   const headerTitle = issueRouteItem
     ? `${dictionary.issueMaterial}: ${issueRouteItem.name}`
     : issueRouteItemId
@@ -254,22 +274,37 @@ export function App() {
         {actionError && <div className="feedback-banner feedback-banner--error">{actionError}</div>}
 
         {!issueRouteItemId && snapshot && (
-          <ActionPanel
-            action={action}
-            activeItemId={activeItemId}
-            busy={busy}
-            dictionary={dictionary}
-            language={language}
-            items={snapshot.items}
-            personnel={snapshot.personnel}
-            onClose={closeAction}
-            onCreateItem={onCreateItem}
-            onUpdateItem={onUpdateItem}
-            onReceiveStock={onReceiveStock}
-            onIssueMaterial={onIssueMaterial}
-            onRemoveItem={onRemoveItem}
-            onError={reportActionError}
-          />
+          <>
+            {batchIssueItemIds.length > 0 && (
+              <BatchIssuePanel
+                busy={busy}
+                dictionary={dictionary}
+                errorMessage={actionError}
+                items={selectedBatchItems}
+                language={language}
+                personnel={snapshot.personnel}
+                onClose={closeBatchIssue}
+                onSubmit={onBatchIssueMaterial}
+              />
+            )}
+            <ActionPanel
+              action={action}
+              activeItemId={activeItemId}
+              preSelectedItemId={activeItemId || undefined}
+              busy={busy}
+              dictionary={dictionary}
+              language={language}
+              items={snapshot.items}
+              personnel={snapshot.personnel}
+              onClose={closeAction}
+              onCreateItem={onCreateItem}
+              onUpdateItem={onUpdateItem}
+              onReceiveStock={onReceiveStock}
+              onIssueMaterial={onIssueMaterial}
+              onRemoveItem={onRemoveItem}
+              onError={reportActionError}
+            />
+          </>
         )}
 
         {issueRouteItemId ? (
@@ -310,8 +345,8 @@ export function App() {
                     dictionary={dictionary}
                     language={language}
                     items={snapshot.items}
-                    onIssueMaterial={() => openAction("issueMaterial")}
-                    onReceiveStock={() => openAction("receiveStock")}
+                    onIssueMaterial={(itemId) => openAction("issueMaterial", itemId)}
+                    onReceiveStock={(itemId) => openAction("receiveStock", itemId)}
                   />
                 )}
                 {section === "itemManagement" && (
@@ -320,6 +355,7 @@ export function App() {
                     dictionary={dictionary}
                     language={language}
                     items={snapshot.items}
+                    onBatchIssue={openBatchIssue}
                     onCreateItem={() => openAction("createItem")}
                     onError={reportActionError}
                     onModifyItem={(itemId) => openAction("modifyItem", itemId)}

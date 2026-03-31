@@ -8,8 +8,9 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use crate::domain::error::{AppError, AppResult};
 use crate::domain::models::{
     AddPersonnelInput, AlertStatus, AppSnapshot, BackupPlan, BackupStatus, BackupTargetType,
-    CreateInventoryItemInput, InventoryAlert, InventoryItem, Language, PersonnelMember,
-    StockMutationInput, StockStatus, UpdateBackupPlanInput, UpdateInventoryItemInput,
+    BatchIssueMaterialInput, CreateInventoryItemInput, InventoryAlert, InventoryItem,
+    InventoryMovement, Language, PersonnelMember, StockMutationInput, StockStatus,
+    UpdateBackupPlanInput, UpdateInventoryItemInput,
 };
 use crate::infrastructure::{backup, migrations, qr, schema};
 
@@ -519,6 +520,126 @@ impl InventoryDb {
         })
     }
 
+    pub fn batch_issue_material(&self, input: BatchIssueMaterialInput) -> AppResult<AppSnapshot> {
+        if input.items.is_empty() {
+            return Err(AppError::ValidationError(
+                "Batch issue must include at least one item.".into(),
+            ));
+        }
+
+        let performed_by = require_text(&input.performed_by, "Performed by")?.to_string();
+        let reason = input.reason;
+        let items = input.items;
+
+        let mut connection = self.open_connection()?;
+        let transaction = connection.transaction().map_err(database_error)?;
+
+        for batch_item in items {
+            if batch_item.quantity <= 0 {
+                return Err(AppError::ValidationError(format!(
+                    "Batch issue failed for item {}: quantity must be greater than zero.",
+                    batch_item.item_id
+                )));
+            }
+
+            let item = match get_item_record(&transaction, &batch_item.item_id) {
+                Ok(item) => item,
+                Err(AppError::NotFound(_)) => {
+                    return Err(AppError::ValidationError(format!(
+                        "Batch issue failed for item {}: item not found.",
+                        batch_item.item_id
+                    )));
+                }
+                Err(error) => return Err(error),
+            };
+
+            if batch_item.quantity > item.current_quantity {
+                return Err(AppError::ValidationError(format!(
+                    "Batch issue failed for {}: cannot issue {} units because only {} are available.",
+                    item_label(&item),
+                    batch_item.quantity,
+                    item.current_quantity
+                )));
+            }
+
+            let new_quantity = item.current_quantity - batch_item.quantity;
+            let status = stock_status_key(new_quantity, item.reorder_quantity);
+
+            transaction
+                .execute(
+                    "UPDATE inventory_items SET current_quantity = ?1, status = ?2, updated_at = datetime('now', 'localtime') WHERE id = ?3",
+                    params![new_quantity, status, item.id],
+                )
+                .map_err(database_error)?;
+
+            insert_movement(
+                &transaction,
+                &item.id,
+                "issue",
+                batch_item.quantity,
+                item.current_quantity,
+                new_quantity,
+                optional_text(&reason),
+                None,
+                None,
+                Some(performed_by.as_str()),
+            )
+            .map_err(database_error)?;
+
+            sync_low_stock_alert(&transaction, &item.id, item.reorder_quantity, new_quantity)
+                .map_err(database_error)?;
+        }
+
+        transaction.commit().map_err(database_error)?;
+        self.load_snapshot()
+    }
+
+    pub fn get_item_movements(&self, item_id: &str) -> AppResult<Vec<InventoryMovement>> {
+        let connection = self.open_connection()?;
+        let exists: Option<String> = connection
+            .query_row(
+                "SELECT id FROM inventory_items WHERE id = ?1",
+                params![item_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(database_error)?;
+
+        if exists.is_none() {
+            return Err(AppError::NotFound("Item not found.".into()));
+        }
+
+        let mut statement = connection
+            .prepare(
+                r#"
+                SELECT id, item_id, movement_type, quantity, performed_by, reason, performed_at
+                FROM inventory_movements
+                WHERE item_id = ?1
+                ORDER BY performed_at DESC
+                LIMIT 50
+                "#,
+            )
+            .map_err(database_error)?;
+
+        let movements = statement
+            .query_map(params![item_id], |row| {
+                Ok(InventoryMovement {
+                    id: row.get(0)?,
+                    item_id: row.get(1)?,
+                    movement_type: row.get(2)?,
+                    quantity: row.get(3)?,
+                    performed_by: row.get(4)?,
+                    reason: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })
+            .map_err(database_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(database_error)?;
+
+        Ok(movements)
+    }
+
     pub fn update_backup_plan(&self, input: UpdateBackupPlanInput) -> AppResult<AppSnapshot> {
         let target_path = input.target_path.trim();
         let schedule = input.schedule.trim();
@@ -951,6 +1072,10 @@ fn get_item_record(transaction: &Transaction<'_>, item_id: &str) -> AppResult<It
         })
 }
 
+fn item_label(item: &ItemRecord) -> String {
+    format!("{} ({})", item.name, item.sku)
+}
+
 fn insert_movement(
     transaction: &Transaction<'_>,
     item_id: &str,
@@ -1177,8 +1302,10 @@ fn delete_file_if_exists(path: &Path) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::models::BatchIssueItem;
     use std::path::PathBuf;
     use std::process;
+    use std::time::Duration;
 
     use rusqlite::{params, Connection, OptionalExtension};
 
@@ -1441,6 +1568,148 @@ mod tests {
     }
 
     #[test]
+    fn batch_issue_happy_path() {
+        let test_db = setup_test_db();
+        let item_id_1 = create_item(&test_db, "SKU-BATCH-1", "Batch Widget One", 5, 10);
+        let item_id_2 = create_item(&test_db, "SKU-BATCH-2", "Batch Widget Two", 2, 8);
+        let item_id_3 = create_item(&test_db, "SKU-BATCH-3", "Batch Widget Three", 1, 2);
+
+        let snapshot = test_db
+            .db
+            .batch_issue_material(BatchIssueMaterialInput {
+                items: vec![
+                    BatchIssueItem {
+                        item_id: item_id_1.clone(),
+                        quantity: 6,
+                    },
+                    BatchIssueItem {
+                        item_id: item_id_2.clone(),
+                        quantity: 1,
+                    },
+                    BatchIssueItem {
+                        item_id: item_id_3.clone(),
+                        quantity: 2,
+                    },
+                ],
+                performed_by: "Morgan".to_string(),
+                reason: "WO-42".to_string(),
+            })
+            .expect("batch issue materials");
+
+        let item_1 = snapshot
+            .items
+            .iter()
+            .find(|item| item.id == item_id_1)
+            .expect("find first item");
+        let item_2 = snapshot
+            .items
+            .iter()
+            .find(|item| item.id == item_id_2)
+            .expect("find second item");
+        let item_3 = snapshot
+            .items
+            .iter()
+            .find(|item| item.id == item_id_3)
+            .expect("find third item");
+        assert_eq!(item_1.current_quantity, 4);
+        assert_eq!(item_1.status, StockStatus::LowStock);
+        assert_eq!(item_2.current_quantity, 7);
+        assert_eq!(item_2.status, StockStatus::InStock);
+        assert_eq!(item_3.current_quantity, 0);
+        assert_eq!(item_3.status, StockStatus::OutOfStock);
+
+        let connection = test_db.connection();
+        assert_eq!(
+            count_rows(&connection, "inventory_movements", &item_id_1),
+            2
+        );
+        assert_eq!(
+            count_rows(&connection, "inventory_movements", &item_id_2),
+            2
+        );
+        assert_eq!(
+            count_rows(&connection, "inventory_movements", &item_id_3),
+            2
+        );
+        assert_eq!(count_rows(&connection, "low_stock_alerts", &item_id_1), 1);
+        assert_eq!(count_rows(&connection, "low_stock_alerts", &item_id_2), 0);
+        assert_eq!(count_rows(&connection, "low_stock_alerts", &item_id_3), 1);
+
+        let movement_1 = query_latest_movement(&connection, &item_id_1);
+        let movement_2 = query_latest_movement(&connection, &item_id_2);
+        let movement_3 = query_latest_movement(&connection, &item_id_3);
+        assert_eq!(movement_1.movement_type, "issue");
+        assert_eq!(movement_2.movement_type, "issue");
+        assert_eq!(movement_3.movement_type, "issue");
+        assert_eq!(movement_1.performed_by.as_deref(), Some("Morgan"));
+        assert_eq!(movement_2.performed_by.as_deref(), Some("Morgan"));
+        assert_eq!(movement_3.performed_by.as_deref(), Some("Morgan"));
+    }
+
+    #[test]
+    fn batch_issue_partial_failure_rolls_back() {
+        let test_db = setup_test_db();
+        let item_id_1 = create_item(&test_db, "SKU-BATCH-ROLL-1", "Rollback Widget One", 2, 6);
+        let item_id_2 = create_item(&test_db, "SKU-BATCH-ROLL-2", "Rollback Widget Two", 2, 3);
+        let item_id_3 = create_item(&test_db, "SKU-BATCH-ROLL-3", "Rollback Widget Three", 2, 7);
+
+        let error = err_string(test_db.db.batch_issue_material(BatchIssueMaterialInput {
+            items: vec![
+                BatchIssueItem {
+                    item_id: item_id_1.clone(),
+                    quantity: 1,
+                },
+                BatchIssueItem {
+                    item_id: item_id_2.clone(),
+                    quantity: 10,
+                },
+                BatchIssueItem {
+                    item_id: item_id_3.clone(),
+                    quantity: 2,
+                },
+            ],
+            performed_by: "Morgan".to_string(),
+            reason: "Rollback test".to_string(),
+        }));
+
+        assert!(error.contains("Rollback Widget Two"));
+        assert!(error.contains("only 3 are available"));
+
+        let connection = test_db.connection();
+        assert_eq!(query_item_quantity_and_status(&connection, &item_id_1).0, 6);
+        assert_eq!(query_item_quantity_and_status(&connection, &item_id_2).0, 3);
+        assert_eq!(query_item_quantity_and_status(&connection, &item_id_3).0, 7);
+        assert_eq!(
+            count_rows(&connection, "inventory_movements", &item_id_1),
+            1
+        );
+        assert_eq!(
+            count_rows(&connection, "inventory_movements", &item_id_2),
+            1
+        );
+        assert_eq!(
+            count_rows(&connection, "inventory_movements", &item_id_3),
+            1
+        );
+        assert_eq!(count_rows(&connection, "low_stock_alerts", &item_id_1), 0);
+        assert_eq!(count_rows(&connection, "low_stock_alerts", &item_id_2), 0);
+        assert_eq!(count_rows(&connection, "low_stock_alerts", &item_id_3), 0);
+    }
+
+    #[test]
+    fn batch_issue_empty_input_rejected() {
+        let test_db = setup_test_db();
+
+        let error = err_string(test_db.db.batch_issue_material(BatchIssueMaterialInput {
+            items: Vec::new(),
+            performed_by: "Morgan".to_string(),
+            reason: "Empty".to_string(),
+        }));
+
+        assert!(error.contains("at least one item"));
+    }
+
+    #[test]
     fn low_stock_alert_triggers_once_when_quantity_reaches_threshold() {
         let test_db = setup_test_db();
         let item_id = create_item(&test_db, "SKU-ALERT", "Alert Widget", 10, 12);
@@ -1514,6 +1783,45 @@ mod tests {
             .expect("alert should still exist");
         assert_eq!(resolved_alert.status, "resolved");
         assert!(resolved_alert.resolved_at.is_some());
+    }
+
+    #[test]
+    fn get_item_movements_returns_latest_first_with_created_at() {
+        let test_db = setup_test_db();
+        let item_id = create_item(&test_db, "SKU-MOVES", "Movement Widget", 2, 5);
+
+        test_db
+            .db
+            .issue_material(StockMutationInput {
+                item_id: item_id.clone(),
+                quantity: 1,
+                reason: "Issue first".to_string(),
+                performed_by: "Jamie".to_string(),
+            })
+            .expect("issue material");
+
+        std::thread::sleep(Duration::from_millis(1100));
+
+        test_db
+            .db
+            .receive_stock(StockMutationInput {
+                item_id: item_id.clone(),
+                quantity: 3,
+                reason: "Receive second".to_string(),
+                performed_by: "Jamie".to_string(),
+            })
+            .expect("receive stock");
+
+        let movements = test_db
+            .db
+            .get_item_movements(&item_id)
+            .expect("get item movements");
+
+        assert_eq!(movements.len(), 3);
+        assert_eq!(movements[0].movement_type, "receive");
+        assert_eq!(movements[0].created_at.len() > 0, true);
+        assert_eq!(movements[1].movement_type, "issue");
+        assert_eq!(movements[1].reason.as_deref(), Some("Issue first"));
     }
 
     #[test]

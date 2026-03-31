@@ -19,6 +19,7 @@ import type {
 interface ActionPanelProps {
   action: ActionKind | null;
   activeItemId: string;
+  preSelectedItemId?: string;
   busy: boolean;
   dictionary: Dictionary;
   language: Language;
@@ -52,6 +53,7 @@ function FieldLabel({ label, required, optionalText }: { label: string; required
 export function ActionPanel({
   action,
   activeItemId,
+  preSelectedItemId,
   busy,
   dictionary,
   language,
@@ -105,7 +107,7 @@ export function ActionPanel({
 
   useEffect(() => {
     const firstCategory = categoryOptions[0] ?? DEFAULT_CATEGORIES[0];
-    const preferredItemId = activeItemId || items[0]?.id || "";
+    const preferredItemId = preSelectedItemId || activeItemId || items[0]?.id || "";
     const preferredPersonnel = personnel[0]?.name ?? "";
     const managedItem = items.find((item) => item.id === activeItemId) ?? null;
     const initialCategory = managedItem?.category ?? firstCategory;

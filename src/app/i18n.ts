@@ -178,8 +178,10 @@ export interface Dictionary {
   modifyItem: string;
   receiveStock: string;
   issueMaterial: string;
+  batchIssue: string;
   removeItem: string;
   manage: string;
+  actions: string;
   loadingWorkspace: string;
   noInventoryItems: string;
   noInventoryItemsHint: string;
@@ -240,14 +242,27 @@ export interface Dictionary {
   qrCodeUnavailable: string;
   printQrLabel: string;
   printSelectedQrs: string;
+  printLocation: string;
   selectAllItems: string;
   selectedItemsCount: (count: number) => string;
+  issueCartTitle: string;
+  issueCartHint: string;
+  issueCartSelectedItems: string;
+  issueCartNoSelection: string;
+  issueCartInlineHint: string;
+  movementHistory: string;
+  movementHistoryHint: string;
+  loadingMovements: string;
+  noMovements: string;
+  date: string;
+  type: string;
   actionPanelTitle: Record<ActionKind, string>;
   actionPanelHint: Record<ActionKind, string>;
   successCreateItem: string;
   successUpdateItem: string;
   successReceiveStock: string;
   successIssueMaterial: string;
+  successBatchIssueMaterial: string;
   successUpdateBackupPlan: string;
   successRemoveItem: string;
   successAddPersonnel: string;
@@ -299,8 +314,10 @@ export const dictionaries: Record<Language, Dictionary> = {
     modifyItem: "Modify Item",
     receiveStock: "Receive Stock",
     issueMaterial: "Issue Material",
+    batchIssue: "Batch Issue",
     removeItem: "Remove Item",
     manage: "Manage",
+    actions: "Actions",
     loadingWorkspace: "Loading inventory workspace...",
     noInventoryItems: "No inventory records yet.",
     noInventoryItemsHint: "Create the first item to start tracking on-hand quantity and low-stock rules.",
@@ -361,8 +378,20 @@ export const dictionaries: Record<Language, Dictionary> = {
     qrCodeUnavailable: "QR code unavailable.",
     printQrLabel: "Print QR Label",
     printSelectedQrs: "Print Selected QR Codes",
+    printLocation: "Location",
     selectAllItems: "Select All",
     selectedItemsCount: (count: number) => `${count} selected`,
+    issueCartTitle: "Issue Cart",
+    issueCartHint: "Issue multiple selected items in one transaction. Rows with zero quantity are skipped.",
+    issueCartSelectedItems: "Selected Items",
+    issueCartNoSelection: "Select at least one item to open the Issue Cart.",
+    issueCartInlineHint: "Enter issue quantities for the items you want to issue. Blank or zero quantities will be ignored.",
+    movementHistory: "Movement History",
+    movementHistoryHint: "Latest 50 stock movements for this item.",
+    loadingMovements: "Loading movement history...",
+    noMovements: "No movements recorded yet.",
+    date: "Date",
+    type: "Type",
     actionPanelTitle: {
       createItem: "Create Inventory Item",
       modifyItem: "Modify Inventory Item",
@@ -381,6 +410,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     successUpdateItem: "Inventory item updated.",
     successReceiveStock: "Stock receipt recorded.",
     successIssueMaterial: "Material issue recorded.",
+    successBatchIssueMaterial: "Batch material issue recorded.",
     successUpdateBackupPlan: "Backup settings updated.",
     successRemoveItem: "Inventory item removed.",
     successAddPersonnel: "Personnel added.",
@@ -431,8 +461,10 @@ export const dictionaries: Record<Language, Dictionary> = {
     modifyItem: "修改物料",
     receiveStock: "入库",
     issueMaterial: "出库",
+    batchIssue: "批量出库",
     removeItem: "移除物料",
     manage: "管理",
+    actions: "操作",
     loadingWorkspace: "正在加载库存工作区...",
     noInventoryItems: "还没有库存记录。",
     noInventoryItemsHint: "先创建第一个物料，再开始跟踪现存数量和低库存规则。",
@@ -493,8 +525,20 @@ export const dictionaries: Record<Language, Dictionary> = {
     qrCodeUnavailable: "二维码不可用。",
     printQrLabel: "打印二维码标签",
     printSelectedQrs: "打印已选二维码",
+    printLocation: "库位",
     selectAllItems: "全选",
     selectedItemsCount: (count: number) => `已选择 ${count} 项`,
+    issueCartTitle: "出库车",
+    issueCartHint: "在一次事务中批量出库多个已选物料。数量为空或为 0 的行会被跳过。",
+    issueCartSelectedItems: "已选物料",
+    issueCartNoSelection: "请至少选择一个物料后再打开批量出库。",
+    issueCartInlineHint: "只需为要出库的物料输入数量。为空或为 0 的数量将被忽略。",
+    movementHistory: "出入库记录",
+    movementHistoryHint: "显示该物料最近 50 条库存变动。",
+    loadingMovements: "正在加载出入库记录...",
+    noMovements: "暂无库存变动记录。",
+    date: "日期",
+    type: "类型",
     actionPanelTitle: {
       createItem: "新增库存物料",
       modifyItem: "修改库存物料",
@@ -513,6 +557,7 @@ export const dictionaries: Record<Language, Dictionary> = {
     successUpdateItem: "已更新库存物料。",
     successReceiveStock: "已记录入库。",
     successIssueMaterial: "已记录出库。",
+    successBatchIssueMaterial: "已记录批量出库。",
     successUpdateBackupPlan: "已更新备份设置。",
     successRemoveItem: "已移除库存物料。",
     successAddPersonnel: "已新增人员。",

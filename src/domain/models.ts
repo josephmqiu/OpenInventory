@@ -31,6 +31,16 @@ export interface InventoryAlert {
   triggeredAt: string;
 }
 
+export interface InventoryMovement {
+  id: string;
+  itemId: string;
+  movementType: string;
+  quantity: number;
+  performedBy: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
 export interface PersonnelMember {
   id: string;
   name: string;
@@ -116,6 +126,17 @@ export interface StockMutationInput {
   quantity: number;
   reason: string;
   performedBy: string;
+}
+
+export interface BatchIssueItem {
+  itemId: string;
+  quantity: number;
+}
+
+export interface BatchIssueMaterialInput {
+  items: BatchIssueItem[];
+  performedBy: string;
+  reason: string;
 }
 
 export interface AddPersonnelInput {

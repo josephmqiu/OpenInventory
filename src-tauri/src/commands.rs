@@ -5,8 +5,9 @@ use tauri_plugin_notification::NotificationExt;
 use crate::application::inventory_service;
 use crate::domain::error::AppError;
 use crate::domain::models::{
-    AddPersonnelInput, AppSnapshot, CreateInventoryItemInput, LanAccessState, Language,
-    StockMutationInput, UpdateBackupPlanInput, UpdateInventoryItemInput, UpdateLanAccessInput,
+    AddPersonnelInput, AppSnapshot, BatchIssueMaterialInput, CreateInventoryItemInput,
+    InventoryMovement, LanAccessState, Language, StockMutationInput, UpdateBackupPlanInput,
+    UpdateInventoryItemInput, UpdateLanAccessInput,
 };
 use crate::infrastructure::db::{InventoryDb, LowStockNotification};
 use crate::infrastructure::lan::LanServerController;
@@ -97,6 +98,14 @@ pub fn issue_material(
 }
 
 #[tauri::command]
+pub fn batch_issue_material(
+    input: BatchIssueMaterialInput,
+    db: State<'_, InventoryDb>,
+) -> Result<AppSnapshot, AppError> {
+    inventory_service::batch_issue_material(db.inner(), input)
+}
+
+#[tauri::command]
 pub fn update_backup_plan(
     input: UpdateBackupPlanInput,
     db: State<'_, InventoryDb>,
@@ -107,6 +116,14 @@ pub fn update_backup_plan(
 #[tauri::command]
 pub fn backup_now(db: State<'_, InventoryDb>) -> Result<AppSnapshot, AppError> {
     inventory_service::backup_now(db.inner())
+}
+
+#[tauri::command]
+pub fn get_item_movements(
+    item_id: String,
+    db: State<'_, InventoryDb>,
+) -> Result<Vec<InventoryMovement>, AppError> {
+    inventory_service::get_item_movements(db.inner(), &item_id)
 }
 
 #[tauri::command]

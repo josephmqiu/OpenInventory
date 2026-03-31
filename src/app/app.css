@@ -535,6 +535,59 @@ td input[type="checkbox"] {
   flex-wrap: wrap;
 }
 
+.row-actions--compact {
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.button-icon {
+  min-width: 0;
+}
+
+.batch-issue-panel {
+  margin-bottom: 1rem;
+}
+
+.batch-issue-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.batch-issue-input {
+  width: 100%;
+  min-width: 7rem;
+  border: 1px solid #c9d4e1;
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  background: #fff;
+}
+
+.batch-issue-sidebar {
+  display: grid;
+  gap: 1rem;
+}
+
+.batch-issue-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.batch-issue-field span {
+  color: #4d5f73;
+  font-size: 0.92rem;
+}
+
+.batch-issue-field input,
+.batch-issue-field select {
+  min-width: 0;
+  border: 1px solid #c9d4e1;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  background: #fff;
+}
+
 .item-details-panel {
   margin-bottom: 1rem;
 }
@@ -592,6 +645,10 @@ td input[type="checkbox"] {
   border-radius: 16px;
   padding: 0.75rem;
   border: 1px solid #dbe7f3;
+}
+
+.item-movements-section {
+  margin-top: 1.5rem;
 }
 
 .topbar__controls {
@@ -713,6 +770,7 @@ td input[type="checkbox"] {
   .form-grid,
   .backup-grid,
   .lan-access-grid,
+  .batch-issue-layout,
   .item-details-layout,
   .item-details-grid {
     grid-template-columns: 1fr;

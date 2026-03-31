@@ -1,6 +1,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type {
   AppSnapshot,
+  BatchIssueMaterialInput,
   CreateInventoryItemInput,
   InventoryAlert,
   Language,
@@ -15,6 +16,7 @@ import { dictionaries, type Dictionary } from "./i18n";
 import { detectRuntime, readIssueRouteItemId, type Runtime } from "./runtime";
 import {
   addPersonnel,
+  batchIssueMaterial,
   clearLanAccessKey,
   createInventoryItem,
   backupNow,
@@ -66,6 +68,7 @@ export interface InventoryState {
   handleUpdateItem: (input: UpdateInventoryItemInput) => Promise<boolean>;
   handleReceiveStock: (input: StockMutationInput) => Promise<boolean>;
   handleIssueMaterial: (input: StockMutationInput) => Promise<boolean>;
+  handleBatchIssueMaterial: (input: BatchIssueMaterialInput) => Promise<boolean>;
   handleQuickIssueMaterial: (input: StockMutationInput) => Promise<string>;
   handleRemoveItem: (itemId: string) => Promise<boolean>;
   handleBackupPlanSave: (input: UpdateBackupPlanInput) => Promise<boolean>;
@@ -271,6 +274,9 @@ export function useInventoryState(): InventoryState {
   const handleIssueMaterial = async (input: StockMutationInput) =>
     executeMutation(() => issueMaterial(input), dictionary.successIssueMaterial);
 
+  const handleBatchIssueMaterial = async (input: BatchIssueMaterialInput) =>
+    executeMutation(() => batchIssueMaterial(input), dictionary.successBatchIssueMaterial);
+
   const handleQuickIssueMaterial = async (input: StockMutationInput): Promise<string> => {
     try {
       setBusy(true);
@@ -422,6 +428,7 @@ export function useInventoryState(): InventoryState {
     handleUpdateItem,
     handleReceiveStock,
     handleIssueMaterial,
+    handleBatchIssueMaterial,
     handleQuickIssueMaterial,
     handleRemoveItem,
     handleBackupPlanSave,
