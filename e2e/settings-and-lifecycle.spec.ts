@@ -15,9 +15,10 @@ async function dismissBanner(page: import("@playwright/test").Page) {
 }
 
 async function ensureEnglish(page: import("@playwright/test").Page) {
-  const languageSelect = page.locator(".language-switch select");
-  if (await languageSelect.count()) {
-    await languageSelect.selectOption("en");
+  // If the language toggle shows "EN" it means we're in Chinese, click to switch
+  const langToggle = page.locator(".topbar__controls button:has-text('EN')");
+  if (await langToggle.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await langToggle.click();
   }
 }
 
