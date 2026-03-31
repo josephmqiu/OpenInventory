@@ -25,6 +25,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Run tests
+        run: npm run test && npm run test:backend
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -41,6 +43,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Run tests
+        run: npm run test && npm run test:backend
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

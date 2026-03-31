@@ -38,7 +38,7 @@ const ALLOWED_EVENT_CHANNELS = new Set([
 // ─── Auto-update IPC contracts ───────────────────────────────────────────────
 
 const AUTO_UPDATE_CONTRACTS = {
-  "check-for-updates": { args: "none", returns: "UpdateStatus", mutates: false },
+  "check-for-updates": { args: "none", returns: "void", mutates: false },
   "download-update": { args: "none", returns: "void", mutates: false },
   "install-update": { args: "none", returns: "void", mutates: true },
 } as const;
@@ -66,10 +66,10 @@ describe("auto-update IPC channels", () => {
 });
 
 describe("auto-update IPC contracts", () => {
-  it("check-for-updates is a read-only command that returns UpdateStatus", () => {
+  it("check-for-updates is a fire-and-forget command that returns void", () => {
     const c = AUTO_UPDATE_CONTRACTS["check-for-updates"];
     expect(c.args).toBe("none");
-    expect(c.returns).toBe("UpdateStatus");
+    expect(c.returns).toBe("void");
     expect(c.mutates).toBe(false);
   });
 

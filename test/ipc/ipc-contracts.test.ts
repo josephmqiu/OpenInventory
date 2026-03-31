@@ -121,7 +121,7 @@ const CHANNEL_CONTRACTS: Record<
   },
   "check-for-updates": {
     args: "none",
-    returns: "UpdateStatus",
+    returns: "void",
     mutates: false,
   },
   "download-update": {

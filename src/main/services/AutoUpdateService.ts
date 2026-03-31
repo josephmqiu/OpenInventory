@@ -77,7 +77,7 @@ export function makeAutoUpdateService(
       });
     },
     downloadUpdate: () => {
-      if (is.dev) return;
+      if (is.dev || currentStatus.stage !== "available") return;
       autoUpdater.downloadUpdate().catch((err: Error) => {
         setStatus({ stage: "error", message: err.message });
       });
