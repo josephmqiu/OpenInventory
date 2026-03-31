@@ -1,5 +1,8 @@
 declare global {
   interface Window {
+    electronAPI?: {
+      invoke: <T>(channel: string, args?: unknown) => Promise<T>;
+    };
     __TAURI_INTERNALS__?: {
       invoke?: <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
     };
@@ -8,11 +11,19 @@ declare global {
 
 export type Runtime = "desktop" | "http";
 
+function getElectronInvoke() {
+  return typeof window === "undefined" ? undefined : window.electronAPI?.invoke;
+}
+
 function getTauriInvoke() {
   return typeof window === "undefined" ? undefined : window.__TAURI_INTERNALS__?.invoke;
 }
 
 export function detectRuntime(): Runtime {
+  if (typeof getElectronInvoke() === "function") {
+    return "desktop";
+  }
+
   if (typeof getTauriInvoke() === "function") {
     return "desktop";
   }

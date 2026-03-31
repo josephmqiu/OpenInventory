@@ -31,12 +31,13 @@ function isLanguage(value: string | null | undefined): value is Language {
   return value === "en" || value === "zh-CN";
 }
 
-function getTauriInvoke() {
+function getDesktopInvoke() {
   if (typeof window === "undefined") {
     return undefined;
   }
 
-  return window.__TAURI_INTERNALS__?.invoke;
+  // Prefer Electron API, fall back to Tauri for backward compat during migration
+  return window.electronAPI?.invoke ?? window.__TAURI_INTERNALS__?.invoke;
 }
 
 export function isUnauthorizedError(error: unknown): boolean {
@@ -147,14 +148,17 @@ function unsupportedRuntimeError(action: string): GatewayError {
 }
 
 async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  const tauriInvoke = getTauriInvoke();
-  if (!tauriInvoke) {
+  const desktopInvoke = getDesktopInvoke();
+  if (!desktopInvoke) {
     throw unsupportedRuntimeError("This action");
   }
   try {
-    return await tauriInvoke<T>(command, args);
+    // Electron uses kebab-case channels, Tauri uses snake_case.
+    // Normalize to kebab-case for Electron, keep snake_case for Tauri fallback.
+    const channel = window.electronAPI ? command.replace(/_/g, "-") : command;
+    return await desktopInvoke<T>(channel, args);
   } catch (error) {
-    // Tauri IPC rejects with a plain string, not an Error instance.
+    // IPC rejects with a plain string, not an Error instance.
     // Wrap it so callers can use instanceof Error and read .message.
     throw new GatewayError(typeof error === "string" ? error : String(error));
   }
