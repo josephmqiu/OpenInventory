@@ -6,8 +6,8 @@ interface InventoryTableProps {
   dictionary: Dictionary;
   language: Language;
   items: InventoryItem[];
-  onIssueMaterial: () => void;
-  onReceiveStock: () => void;
+  onIssueMaterial: (itemId?: string) => void;
+  onReceiveStock: (itemId?: string) => void;
 }
 
 export function InventoryTable({
@@ -26,8 +26,12 @@ export function InventoryTable({
           <p>{dictionary.inventoryOperationsHint}</p>
         </div>
         <div className="panel__actions">
-          <button disabled={busy} onClick={onReceiveStock} type="button">{dictionary.receiveStock}</button>
-          <button className="button-secondary" disabled={busy} onClick={onIssueMaterial} type="button">{dictionary.issueMaterial}</button>
+          <button disabled={busy || items.length === 0} onClick={() => onReceiveStock()} type="button">
+            {dictionary.receiveStock}
+          </button>
+          <button className="button-secondary" disabled={busy || items.length === 0} onClick={() => onIssueMaterial()} type="button">
+            {dictionary.issueMaterial}
+          </button>
         </div>
       </div>
       {items.length === 0 ? (
@@ -49,6 +53,7 @@ export function InventoryTable({
                 <th>{dictionary.reorderLevel}</th>
                 <th>{dictionary.status}</th>
                 <th>{dictionary.lastUpdated}</th>
+                <th>{dictionary.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -68,6 +73,28 @@ export function InventoryTable({
                     <span className={`status-pill status-pill--${item.status}`}>{localizeStockStatus(item.status, language)}</span>
                   </td>
                   <td>{item.lastUpdated}</td>
+                  <td>
+                    <div className="row-actions row-actions--compact">
+                      <button
+                        aria-label={`${dictionary.receiveStock}: ${item.name}`}
+                        className="button-secondary button-inline button-icon"
+                        disabled={busy}
+                        onClick={() => onReceiveStock(item.id)}
+                        type="button"
+                      >
+                        + {dictionary.receiveStock}
+                      </button>
+                      <button
+                        aria-label={`${dictionary.issueMaterial}: ${item.name}`}
+                        className="button-secondary button-inline button-icon"
+                        disabled={busy}
+                        onClick={() => onIssueMaterial(item.id)}
+                        type="button"
+                      >
+                        - {dictionary.issueMaterial}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
