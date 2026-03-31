@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "test:backend": "vitest run --config vitest.config.node.ts",
     "test:backend:watch": "vitest --config vitest.config.node.ts",
-    "test:e2e": "electron-vite build && cp -r src/main/infrastructure out/main/infrastructure && npx electron-rebuild -f -w better-sqlite3 && codesign --force --sign - node_modules/better-sqlite3/build/Release/better_sqlite3.node && npx playwright test; npm rebuild better-sqlite3",
+    "test:e2e": "electron-vite build && npx tsx scripts/prepare-e2e.ts && npx playwright test",
+    "test:e2e:cleanup": "npm rebuild better-sqlite3",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },

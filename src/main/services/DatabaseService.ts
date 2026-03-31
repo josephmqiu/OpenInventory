@@ -230,6 +230,8 @@ export interface DatabaseServiceApi {
   readonly saveLanAccessSettings: (
     settings: LanAccessSettings,
   ) => Effect.Effect<void, AppError>;
+  /** Close the underlying database connection. */
+  readonly close: () => void;
 }
 
 export class DatabaseService extends Context.Tag("DatabaseService")<
@@ -1179,6 +1181,8 @@ export function makeDatabaseService(
         },
         catch: () => localizedDatabaseError(db),
       }),
+
+    close: () => db.close(),
   };
 }
 

@@ -81,6 +81,7 @@ afterEach(async () => {
   await new Promise<void>((resolve) => {
     server.close(() => resolve());
   });
+  dbService.close();
   t.cleanup();
 });
 
