@@ -104,6 +104,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* CJK: system fallback fonts render thinner than IBM Plex at same weight.
+   Bump base weight to 500 so Chinese text has equivalent visual density. */
+:lang(zh), :lang(ja), :lang(ko) {
+  font-weight: 500;
+}
+
+:lang(zh) h1, :lang(zh) h2, :lang(zh) h3,
+:lang(ja) h1, :lang(ja) h2, :lang(ja) h3,
+:lang(ko) h1, :lang(ko) h2, :lang(ko) h3 {
+  font-weight: 700;
+}
+
 button,
 input,
 select,
