@@ -140,7 +140,7 @@ export function ActionPanel({
             initialQuantity: 0,
           },
     );
-  }, [action, activeItemId, categoryOptions, items, personnel]);
+  }, [action, activeItemId, categoryOptions, items, personnel, preSelectedItemId]);
 
   if (!action) {
     return null;
