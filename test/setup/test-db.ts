@@ -264,7 +264,10 @@ export function seedMovement(
     previousQty: number;
     newQty: number;
     reason: string | null;
+    referenceNo: string | null;
+    notes: string | null;
     performedBy: string | null;
+    performedAt: string;
   }> = {},
 ): string {
   const id = genId("move");
@@ -272,7 +275,7 @@ export function seedMovement(
     `INSERT INTO inventory_movements
      (id, item_id, movement_type, quantity, previous_quantity, new_quantity,
       reason, reference_no, notes, performed_by, performed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, datetime('now','localtime'))`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     itemId,
@@ -281,7 +284,10 @@ export function seedMovement(
     opts.previousQty ?? 0,
     opts.newQty ?? 10,
     opts.reason ?? null,
+    opts.referenceNo ?? null,
+    opts.notes ?? null,
     opts.performedBy ?? null,
+    opts.performedAt ?? new Date().toISOString().replace("T", " ").slice(0, 19),
   );
   return id;
 }
