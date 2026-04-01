@@ -2,6 +2,28 @@
 
 All notable changes to OpenInventory will be documented in this file.
 
+## [0.0.2] - 2026-03-31
+
+### Changed
+- Database lifecycle is now a scoped Effect resource that closes the connection on app shutdown via ManagedRuntime
+- LAN server is a scoped Effect layer with Semaphore(1) serialization to prevent operation interleaving
+- All 17 IPC handlers and HTTP endpoints validate input with @effect/schema decoders
+- IPC error transport uses result envelopes ({ ok, data/error }) instead of thrown strings, preserving error type discriminants
+- Numeric schema fields reject NaN, Infinity, and out-of-range values (quantities, ports, pagination)
+- PublicIssueContext.item is now correctly nullable (was typed non-null but returned null for deleted items)
+- HTTP error responses include _tag discriminant for typed error handling on the client
+
+### Added
+- src/shared/schemas.ts: centralized @effect/schema decoders for all IPC and HTTP boundaries
+- serializeAppError preserves _tag, available, requested, and language fields across IPC transport
+- GatewayError.errorTag property for renderer-side typed error branching
+- E2E test verifying graceful shutdown releases the database connection
+- 12 new backend tests: 10 schema decode-failure tests + 2 scoped lifecycle tests
+
+### Fixed
+- Electron IPC errors no longer prepend "Error: " to messages (result envelope bypasses Electron's error serialization)
+- QR scan-to-issue flow handles deleted items gracefully instead of showing a blank screen
+
 ## [0.0.1] - 2026-03-31
 
 ### Added
