@@ -14,65 +14,55 @@ import {
   type AppError,
 } from "../domain/errors";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Shared Types (imported from single source of truth) ────────────────────
 
-export interface AppSnapshot {
-  items: InventoryItem[];
-  alerts: InventoryAlert[];
-  personnel: PersonnelMember[];
-  backupPlan: BackupPlan;
-  language: string;
-}
+import type {
+  AddPersonnelInput,
+  AlertFrequencyRow,
+  AppSnapshot,
+  AuditAnalyticsResult,
+  AuditMovementFilters,
+  AuditMovementRow,
+  AuditPageResult,
+  AuditSummary,
+  BackupPlan,
+  BatchIssueMaterialInput,
+  CreateInventoryItemInput,
+  InventoryAlert,
+  InventoryItem,
+  InventoryMovement,
+  ItemActivityRow,
+  PersonnelActivityRow,
+  PersonnelMember,
+  StockMutationInput,
+  UpdateBackupPlanInput,
+  UpdateInventoryItemInput,
+} from "../../shared/types";
 
-export interface InventoryItem {
-  id: string;
-  sku: string;
-  qrCodeDataUrl: string;
-  name: string;
-  category: string;
-  location: string;
-  unit: string;
-  supplier: string;
-  currentQuantity: number;
-  reorderQuantity: number;
-  status: string;
-  lastUpdated: string;
-}
+export type {
+  AddPersonnelInput,
+  AlertFrequencyRow,
+  AppSnapshot,
+  AuditAnalyticsResult,
+  AuditMovementFilters,
+  AuditMovementRow,
+  AuditPageResult,
+  AuditSummary,
+  BackupPlan,
+  BatchIssueMaterialInput,
+  CreateInventoryItemInput,
+  InventoryAlert,
+  InventoryItem,
+  InventoryMovement,
+  ItemActivityRow,
+  PersonnelActivityRow,
+  PersonnelMember,
+  StockMutationInput,
+  UpdateBackupPlanInput,
+  UpdateInventoryItemInput,
+} from "../../shared/types";
 
-export interface InventoryAlert {
-  id: string;
-  itemName: string;
-  sku: string;
-  currentQuantity: number;
-  thresholdQuantity: number;
-  status: string;
-  triggeredAt: string;
-}
-
-export interface PersonnelMember {
-  id: string;
-  name: string;
-}
-
-export interface InventoryMovement {
-  id: string;
-  itemId: string;
-  movementType: string;
-  quantity: number;
-  performedBy: string | null;
-  reason: string | null;
-  createdAt: string;
-}
-
-export interface BackupPlan {
-  targetPath: string;
-  targetType: string;
-  schedule: string;
-  retention: string;
-  lastSuccessfulBackup: string;
-  nextScheduledBackup: string;
-  status: string;
-}
+// ─── Backend-Only Types ─────────────────────────────────────────────────────
 
 export interface LowStockNotification {
   itemName: string;
@@ -93,52 +83,6 @@ export interface LanAccessSettings {
   primaryUrl: string;
 }
 
-export interface CreateInventoryItemInput {
-  sku: string;
-  name: string;
-  category: string;
-  location: string;
-  unit: string;
-  supplier: string;
-  reorderQuantity: number;
-  initialQuantity: number;
-}
-
-export interface UpdateInventoryItemInput {
-  itemId: string;
-  sku: string;
-  name: string;
-  category: string;
-  location: string;
-  unit: string;
-  supplier: string;
-  reorderQuantity: number;
-}
-
-export interface StockMutationInput {
-  itemId: string;
-  quantity: number;
-  reason: string;
-  performedBy: string;
-}
-
-export interface BatchIssueMaterialInput {
-  items: { itemId: string; quantity: number }[];
-  performedBy: string;
-  reason: string;
-}
-
-export interface AddPersonnelInput {
-  name: string;
-}
-
-export interface UpdateBackupPlanInput {
-  targetPath: string;
-  targetType: string;
-  schedule: string;
-  retention: string;
-}
-
 // ─── ID Generation ───────────────────────────────────────────────────────────
 
 let idCounter = 1;
@@ -157,7 +101,7 @@ function generateSku(): string {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function stockStatusKey(currentQuantity: number, reorderQuantity: number): string {
+function stockStatusKey(currentQuantity: number, reorderQuantity: number): import("../../shared/types").StockStatus {
   if (currentQuantity <= 0) return "out_of_stock";
   if (currentQuantity <= reorderQuantity) return "low_stock";
   return "in_stock";
@@ -230,6 +174,12 @@ export interface DatabaseServiceApi {
   readonly saveLanAccessSettings: (
     settings: LanAccessSettings,
   ) => Effect.Effect<void, AppError>;
+  readonly getAuditMovements: (
+    filters: AuditMovementFilters,
+  ) => Effect.Effect<AuditPageResult, AppError>;
+  readonly getAuditAnalytics: (
+    filters: Omit<AuditMovementFilters, "page" | "pageSize">,
+  ) => Effect.Effect<AuditAnalyticsResult, AppError>;
   /** Close the underlying database connection. */
   readonly close: () => void;
 }
@@ -543,7 +493,7 @@ export function makeDatabaseService(
       .all() as Array<{ id: string; name: string }>;
 
     const targetPath = readSetting(db, "backup.target_path") ?? "";
-    const targetType = readSetting(db, "backup.target_type") ?? "local_folder";
+    const targetType = (readSetting(db, "backup.target_type") ?? "local_folder") as import("../../shared/types").BackupTargetType;
     const schedule = readSetting(db, "backup.schedule") ?? "";
     const retention = readSetting(db, "backup.retention") ?? "";
     const lastSuccessful = readSetting(db, "backup.last_successful") ?? "";
@@ -1178,6 +1128,339 @@ export function makeDatabaseService(
             writeSetting(db, "lan.primary_url", settings.primaryUrl);
           });
           saveFn();
+        },
+        catch: () => localizedDatabaseError(db),
+      }),
+
+    getAuditMovements: (filters) =>
+      Effect.try({
+        try: () => {
+          const conditions: string[] = [];
+          const params: unknown[] = [];
+
+          if (filters.dateFrom) {
+            conditions.push("m.performed_at >= ?");
+            params.push(filters.dateFrom.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:00"));
+          }
+          if (filters.dateTo) {
+            conditions.push("m.performed_at <= ?");
+            params.push(filters.dateTo.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:59"));
+          }
+          if (filters.movementType) {
+            conditions.push("m.movement_type = ?");
+            params.push(filters.movementType);
+          }
+          if (filters.itemId) {
+            conditions.push("m.item_id = ?");
+            params.push(filters.itemId);
+          } else if (filters.itemSearch) {
+            const escaped = filters.itemSearch.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+            conditions.push("(i.name LIKE '%' || ? || '%' ESCAPE '\\' OR i.sku LIKE '%' || ? || '%' ESCAPE '\\')");
+            params.push(escaped, escaped);
+          }
+          if (filters.performedBy) {
+            conditions.push("m.performed_by = ?");
+            params.push(filters.performedBy);
+          }
+          if (filters.textSearch) {
+            const escaped = filters.textSearch.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+            conditions.push(
+              "(m.reason LIKE '%' || ? || '%' ESCAPE '\\' OR m.reference_no LIKE '%' || ? || '%' ESCAPE '\\' OR m.notes LIKE '%' || ? || '%' ESCAPE '\\' OR m.performed_by LIKE '%' || ? || '%' ESCAPE '\\')",
+            );
+            params.push(escaped, escaped, escaped, escaped);
+          }
+
+          const whereClause = conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "";
+
+          // Data query with anomaly detection via CTE
+          const page = Math.max(1, filters.page);
+          const pageSize = Math.min(Math.max(1, filters.pageSize), 10000);
+          const offset = (page - 1) * pageSize;
+
+          const dataRows = db
+            .prepare(
+              `WITH item_avgs AS (
+                SELECT item_id, AVG(quantity) AS avg_qty, COUNT(*) AS move_count
+                FROM inventory_movements GROUP BY item_id HAVING COUNT(*) >= 5
+              )
+              SELECT m.id, m.item_id, i.name AS item_name, i.sku AS item_sku,
+                m.movement_type, m.quantity, m.previous_quantity, m.new_quantity,
+                m.reason, m.reference_no, m.notes, m.performed_by, m.performed_at,
+                CASE WHEN a.avg_qty IS NOT NULL AND m.quantity >= a.avg_qty * 5 THEN 1 ELSE 0 END AS is_anomaly
+              FROM inventory_movements m
+              JOIN inventory_items i ON i.id = m.item_id
+              LEFT JOIN item_avgs a ON m.item_id = a.item_id
+              ${whereClause}
+              ORDER BY m.performed_at DESC
+              LIMIT ? OFFSET ?`,
+            )
+            .all(...params, pageSize, offset) as Array<{
+            id: string;
+            item_id: string;
+            item_name: string;
+            item_sku: string;
+            movement_type: string;
+            quantity: number;
+            previous_quantity: number;
+            new_quantity: number;
+            reason: string | null;
+            reference_no: string | null;
+            notes: string | null;
+            performed_by: string | null;
+            performed_at: string;
+            is_anomaly: number;
+          }>;
+
+          // Count query
+          const countRow = db
+            .prepare(
+              `SELECT COUNT(*) AS total
+              FROM inventory_movements m
+              JOIN inventory_items i ON i.id = m.item_id
+              ${whereClause}`,
+            )
+            .get(...params) as { total: number };
+
+          // Summary aggregation
+          const summaryRow = db
+            .prepare(
+              `SELECT
+                COUNT(*) AS total_movements,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'receive' THEN m.quantity ELSE 0 END), 0) AS total_received,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'issue' THEN m.quantity ELSE 0 END), 0) AS total_issued,
+                COUNT(DISTINCT m.item_id) AS unique_items,
+                COUNT(DISTINCT m.performed_by) AS unique_personnel
+              FROM inventory_movements m
+              JOIN inventory_items i ON i.id = m.item_id
+              ${whereClause}`,
+            )
+            .get(...params) as {
+            total_movements: number;
+            total_received: number;
+            total_issued: number;
+            unique_items: number;
+            unique_personnel: number;
+          };
+
+          const rows: AuditMovementRow[] = dataRows.map((row) => ({
+            id: row.id,
+            itemId: row.item_id,
+            itemName: row.item_name,
+            itemSku: row.item_sku,
+            movementType: row.movement_type,
+            quantity: row.quantity,
+            previousQuantity: row.previous_quantity,
+            newQuantity: row.new_quantity,
+            reason: row.reason,
+            referenceNo: row.reference_no,
+            notes: row.notes,
+            performedBy: row.performed_by,
+            performedAt: row.performed_at,
+            isAnomaly: row.is_anomaly === 1,
+          }));
+
+          return {
+            rows,
+            total: countRow.total,
+            summary: {
+              totalMovements: summaryRow.total_movements,
+              totalReceived: summaryRow.total_received,
+              totalIssued: summaryRow.total_issued,
+              uniqueItems: summaryRow.unique_items,
+              uniquePersonnel: summaryRow.unique_personnel,
+            },
+          };
+        },
+        catch: () => localizedDatabaseError(db),
+      }),
+
+    getAuditAnalytics: (filters) =>
+      Effect.try({
+        try: () => {
+          const conditions: string[] = [];
+          const params: unknown[] = [];
+
+          if (filters.dateFrom) {
+            conditions.push("m.performed_at >= ?");
+            params.push(filters.dateFrom.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:00"));
+          }
+          if (filters.dateTo) {
+            conditions.push("m.performed_at <= ?");
+            params.push(filters.dateTo.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:59"));
+          }
+          if (filters.movementType) {
+            conditions.push("m.movement_type = ?");
+            params.push(filters.movementType);
+          }
+          if (filters.itemId) {
+            conditions.push("m.item_id = ?");
+            params.push(filters.itemId);
+          } else if (filters.itemSearch) {
+            const escaped = filters.itemSearch.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+            conditions.push("(i.name LIKE '%' || ? || '%' ESCAPE '\\' OR i.sku LIKE '%' || ? || '%' ESCAPE '\\')");
+            params.push(escaped, escaped);
+          }
+          if (filters.performedBy) {
+            conditions.push("m.performed_by = ?");
+            params.push(filters.performedBy);
+          }
+          if (filters.textSearch) {
+            const escaped = filters.textSearch.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+            conditions.push(
+              "(m.reason LIKE '%' || ? || '%' ESCAPE '\\' OR m.reference_no LIKE '%' || ? || '%' ESCAPE '\\' OR m.notes LIKE '%' || ? || '%' ESCAPE '\\' OR m.performed_by LIKE '%' || ? || '%' ESCAPE '\\')",
+            );
+            params.push(escaped, escaped, escaped, escaped);
+          }
+
+          const whereClause = conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "";
+
+          // Summary
+          const summaryRow = db
+            .prepare(
+              `SELECT
+                COUNT(*) AS total_movements,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'receive' THEN m.quantity ELSE 0 END), 0) AS total_received,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'issue' THEN m.quantity ELSE 0 END), 0) AS total_issued,
+                COUNT(DISTINCT m.item_id) AS unique_items,
+                COUNT(DISTINCT m.performed_by) AS unique_personnel
+              FROM inventory_movements m
+              JOIN inventory_items i ON i.id = m.item_id
+              ${whereClause}`,
+            )
+            .get(...params) as {
+            total_movements: number;
+            total_received: number;
+            total_issued: number;
+            unique_items: number;
+            unique_personnel: number;
+          };
+
+          // By Personnel
+          const personnelRows = db
+            .prepare(
+              `SELECT
+                COALESCE(m.performed_by, '(not provided)') AS performed_by,
+                SUM(CASE WHEN m.movement_type = 'receive' THEN 1 ELSE 0 END) AS receive_count,
+                SUM(CASE WHEN m.movement_type = 'issue' THEN 1 ELSE 0 END) AS issue_count,
+                SUM(m.quantity) AS total_quantity,
+                COUNT(DISTINCT m.item_id) AS distinct_items
+              FROM inventory_movements m
+              JOIN inventory_items i ON i.id = m.item_id
+              ${whereClause}
+              GROUP BY COALESCE(m.performed_by, '(not provided)')
+              ORDER BY total_quantity DESC`,
+            )
+            .all(...params) as Array<{
+            performed_by: string;
+            receive_count: number;
+            issue_count: number;
+            total_quantity: number;
+            distinct_items: number;
+          }>;
+
+          // By Item
+          const itemRows = db
+            .prepare(
+              `SELECT
+                m.item_id, i.name AS item_name, i.sku AS item_sku,
+                SUM(CASE WHEN m.movement_type = 'receive' THEN 1 ELSE 0 END) AS receive_count,
+                SUM(CASE WHEN m.movement_type = 'issue' THEN 1 ELSE 0 END) AS issue_count,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'receive' THEN m.quantity ELSE 0 END), 0) AS total_received,
+                COALESCE(SUM(CASE WHEN m.movement_type = 'issue' THEN m.quantity ELSE 0 END), 0) AS total_issued,
+                i.current_quantity
+              FROM inventory_movements m
+              JOIN inventory_items i ON i.id = m.item_id
+              ${whereClause}
+              GROUP BY m.item_id, i.name, i.sku, i.current_quantity
+              ORDER BY (SUM(CASE WHEN m.movement_type = 'receive' THEN 1 ELSE 0 END) + SUM(CASE WHEN m.movement_type = 'issue' THEN 1 ELSE 0 END)) DESC`,
+            )
+            .all(...params) as Array<{
+            item_id: string;
+            item_name: string;
+            item_sku: string;
+            receive_count: number;
+            issue_count: number;
+            total_received: number;
+            total_issued: number;
+            current_quantity: number;
+          }>;
+
+          // Alert Frequency (uses date filters only)
+          const alertConditions: string[] = [];
+          const alertParams: unknown[] = [];
+          if (filters.dateFrom) {
+            alertConditions.push("a.triggered_at >= ?");
+            alertParams.push(filters.dateFrom.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:00"));
+          }
+          if (filters.dateTo) {
+            alertConditions.push("a.triggered_at <= ?");
+            alertParams.push(filters.dateTo.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:59"));
+          }
+          const alertWhereClause = alertConditions.length > 0 ? "WHERE " + alertConditions.join(" AND ") : "";
+
+          const alertRows = db
+            .prepare(
+              `SELECT
+                a.item_id, i.name AS item_name, i.sku AS item_sku,
+                COUNT(*) AS trigger_count,
+                MAX(a.triggered_at) AS last_triggered_at,
+                CASE WHEN EXISTS (
+                  SELECT 1 FROM low_stock_alerts a2
+                  WHERE a2.item_id = a.item_id AND a2.status = 'open'
+                ) THEN 'open' ELSE 'resolved' END AS current_status,
+                i.current_quantity
+              FROM low_stock_alerts a
+              JOIN inventory_items i ON i.id = a.item_id
+              ${alertWhereClause}
+              GROUP BY a.item_id, i.name, i.sku, i.current_quantity
+              ORDER BY trigger_count DESC`,
+            )
+            .all(...alertParams) as Array<{
+            item_id: string;
+            item_name: string;
+            item_sku: string;
+            trigger_count: number;
+            last_triggered_at: string;
+            current_status: string;
+            current_quantity: number;
+          }>;
+
+          return {
+            summary: {
+              totalMovements: summaryRow.total_movements,
+              totalReceived: summaryRow.total_received,
+              totalIssued: summaryRow.total_issued,
+              uniqueItems: summaryRow.unique_items,
+              uniquePersonnel: summaryRow.unique_personnel,
+            },
+            byPersonnel: personnelRows.map((r) => ({
+              performedBy: r.performed_by,
+              receiveCount: r.receive_count,
+              issueCount: r.issue_count,
+              totalQuantity: r.total_quantity,
+              distinctItems: r.distinct_items,
+            })),
+            byItem: itemRows.map((r) => ({
+              itemId: r.item_id,
+              itemName: r.item_name,
+              itemSku: r.item_sku,
+              receiveCount: r.receive_count,
+              issueCount: r.issue_count,
+              totalReceived: r.total_received,
+              totalIssued: r.total_issued,
+              netChange: r.total_received - r.total_issued,
+              currentQuantity: r.current_quantity,
+            })),
+            alertFrequency: alertRows.map((r) => ({
+              itemId: r.item_id,
+              itemName: r.item_name,
+              itemSku: r.item_sku,
+              triggerCount: r.trigger_count,
+              lastTriggeredAt: r.last_triggered_at,
+              currentStatus: r.current_status,
+              currentQuantity: r.current_quantity,
+            })),
+          };
         },
         catch: () => localizedDatabaseError(db),
       }),

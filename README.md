@@ -49,6 +49,7 @@ The app opens an Electron window. Data is stored in `~/Library/Application Suppo
 | `npm run build` | Production build (main + preload + renderer) |
 | `npm run test` | Frontend unit tests |
 | `npm run test:backend` | Backend service + integration tests |
+| `npm run test:coverage` | Full Vitest coverage report (frontend + backend) |
 | `npm run test:e2e` | Electron E2E workflow (builds app, runs Playwright) |
 | `npm run lint` | ESLint |
 | `npm run pack` | Package app (unpacked) |
@@ -76,11 +77,12 @@ e2e/                   # Playwright E2E tests
 
 ```bash
 npm run test           # Frontend unit tests (Vitest, jsdom)
-npm run test:backend   # Backend tests — 103 tests covering services, IPC, LAN auth, migrations
-npm run test:e2e       # E2E workflow — 8 Playwright tests against a real Electron instance
+npm run test:backend   # Backend tests (Vitest, node)
+npm run test:coverage  # Combined Vitest coverage report under coverage/
+npm run test:e2e       # E2E workflow against a real Electron instance
 ```
 
-The E2E suite launches the app with an isolated temporary database and walks through a full workflow: creating items in different stock states, adding personnel, receiving and issuing stock, then verifying dashboard metrics and alerts.
+The E2E suite launches the app with an isolated temporary database and covers the most important product journeys: inventory lifecycle, LAN access, browser quick issue, backup, theme/language, and stock workflows.
 
 ## Design
 

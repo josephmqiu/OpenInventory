@@ -152,6 +152,9 @@ textarea:focus-visible {
   padding: 20px 0;
   display: flex;
   flex-direction: column;
+  position: relative;
+  transition: width 0.15s ease;
+  overflow: hidden;
 }
 
 .sidebar__brand {
@@ -201,6 +204,9 @@ textarea:focus-visible {
 }
 
 .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 13px;
   font-weight: 500;
   padding: 8px 12px;
@@ -213,6 +219,10 @@ textarea:focus-visible {
   transition: color 100ms ease, background 100ms ease;
 }
 
+.nav-item svg {
+  flex-shrink: 0;
+}
+
 .nav-item:hover {
   color: var(--sidebar-text);
   background: var(--sidebar-hover);
@@ -223,6 +233,50 @@ textarea:focus-visible {
   background: var(--sidebar-active-bg);
   border-left: 2px solid var(--sidebar-accent);
   padding-left: 10px;
+}
+
+/* Sidebar toggle + collapsed state */
+.sidebar__footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px;
+}
+
+.sidebar__footer .button-icon-only {
+  color: var(--sidebar-muted);
+  border-color: transparent;
+}
+
+.sidebar__footer .button-icon-only:hover {
+  color: var(--sidebar-text);
+  background: var(--sidebar-hover);
+  border-color: transparent;
+}
+
+.app-shell--collapsed {
+  grid-template-columns: 44px 1fr;
+}
+
+.sidebar--collapsed {
+  padding: 8px 0 0;
+}
+
+.sidebar--collapsed .sidebar__nav {
+  padding: 4px 6px;
+  gap: 2px;
+}
+
+.sidebar--collapsed .nav-item {
+  justify-content: center;
+  padding: 8px;
+  border-left: none;
+}
+
+.sidebar--collapsed .nav-item--active {
+  padding-left: 8px;
+  border-left: none;
 }
 
 /* Content area */
@@ -257,26 +311,6 @@ textarea:focus-visible {
   gap: 8px;
   align-items: end;
   flex-shrink: 0;
-}
-
-.language-switch {
-  display: grid;
-  gap: 4px;
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.language-switch select {
-  min-width: 160px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  background: var(--input-bg);
-  color: var(--text);
-  font-size: 13px;
 }
 
 /* State screens (loading, error, auth) */
@@ -792,13 +826,13 @@ button.button-icon-only {
   min-width: 0;
   background: transparent;
   color: var(--text-muted);
-  border-color: var(--border);
+  border-color: transparent;
 }
 
 button.button-icon-only:hover {
   color: var(--text);
-  background: transparent;
-  border-color: var(--text-muted);
+  background: var(--raised);
+  border-color: transparent;
 }
 
 button.button-icon-only svg {
@@ -1163,71 +1197,6 @@ button.button-icon-only svg {
   margin-top: 16px;
 }
 
-/* ---- P. Quick Issue Page ---- */
-
-.quick-issue-layout {
-  align-items: start;
-}
-
-.quick-issue-form {
-  padding: 16px;
-  border-radius: var(--radius-md);
-  background: var(--raised);
-  border: 1px solid var(--border);
-  display: grid;
-  gap: 12px;
-}
-
-.quick-issue-form label {
-  display: grid;
-  gap: 5px;
-}
-
-.quick-issue-form span {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.quick-issue-form input,
-.quick-issue-form select {
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 7px 10px;
-  background: var(--input-bg);
-  font-size: 13px;
-  outline: none;
-  transition: border-color 100ms ease;
-}
-
-.quick-issue-form input:focus,
-.quick-issue-form select:focus {
-  border-color: var(--accent);
-}
-
-.quick-issue-quantity-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.quick-issue-quantity-row input {
-  flex: 1 1 auto;
-}
-
-.quick-issue-unit-chip {
-  flex: 0 0 auto;
-  padding: 7px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--accent-muted);
-  color: var(--accent);
-  font-weight: 600;
-  font-size: 13px;
-}
-
 /* ---- Q. Selection & Row Actions ---- */
 
 .selection-count {
@@ -1279,7 +1248,7 @@ td input[type="checkbox"] {
   }
 
   /* Desktop: narrow sidebar and tighten padding at smaller widths */
-  [data-platform="desktop"] .app-shell {
+  [data-platform="desktop"] .app-shell:not(.app-shell--collapsed) {
     grid-template-columns: 180px 1fr;
   }
 
@@ -1374,5 +1343,308 @@ td input[type="checkbox"] {
   [data-platform="web"] .alert-card,
   [data-platform="web"] .personnel-card {
     padding: 10px 14px;
+  }
+}
+
+/* ─── Audit ──────────────────────────────────────────────────────────────────── */
+
+.audit-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.audit-tab {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.audit-tab:hover {
+  color: var(--text);
+}
+
+.audit-tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.audit-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 12px;
+}
+
+/* Row 1: date presets + date range inputs */
+.audit-filter-bar__date-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.audit-date-presets {
+  display: flex;
+  gap: 0;
+}
+
+.audit-preset {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s, border-color 0.1s;
+}
+
+.audit-preset:first-child {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.audit-preset:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.audit-preset:not(:first-child) {
+  border-left: none;
+}
+
+.audit-preset:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.audit-preset--active {
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.audit-preset--active + .audit-preset {
+  border-left-color: var(--accent);
+}
+
+.audit-date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.audit-date-range__sep {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.audit-date-range input[type="date"] {
+  width: 130px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+  color-scheme: dark;
+  transition: border-color 0.1s;
+}
+
+:root[data-theme="light"] .audit-date-range input[type="date"] {
+  color-scheme: light;
+}
+
+.audit-date-range input[type="date"]:focus {
+  border-color: var(--accent);
+}
+
+/* Row 2: data filters + actions */
+.audit-filter-bar__filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.audit-filter-bar__filter-row select,
+.audit-filter-bar__filter-row input[type="text"] {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color 0.1s;
+}
+
+.audit-filter-bar__filter-row select {
+  min-width: 100px;
+}
+
+.audit-filter-bar__filter-row input[type="text"] {
+  min-width: 120px;
+  flex: 1;
+}
+
+.audit-filter-bar__filter-row select:focus,
+.audit-filter-bar__filter-row input[type="text"]:focus {
+  border-color: var(--accent);
+}
+
+.audit-filter-bar__filter-row input::placeholder {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.audit-filter-bar__filter-row select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.audit-filter-bar__actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.audit-table .cell-link {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+
+.audit-table .cell-link:hover {
+  text-decoration: underline;
+}
+
+.cell-filterable {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.cell-filterable:hover {
+  text-decoration: underline;
+}
+
+.cell-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.cell-muted {
+  color: var(--text-dim);
+}
+
+.cell-subtitle {
+  display: block;
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.cell-strong {
+  font-weight: 600;
+}
+
+.audit-row--anomaly {
+  border-left: 3px solid var(--warning);
+  background: var(--warning-muted);
+}
+
+.audit-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+
+.audit-pagination__controls {
+  display: flex;
+  gap: 6px;
+}
+
+.audit-summary-section {
+  margin-top: 16px;
+}
+
+.audit-summary-section h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+.audit-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+.audit-breadcrumb__separator {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+@media (max-width: 960px) {
+  [data-platform="web"] .audit-filter-bar__date-row,
+  [data-platform="web"] .audit-filter-bar__filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  [data-platform="web"] .audit-filter-bar__actions {
+    margin-left: 0;
+  }
+
+  [data-platform="web"] .audit-filter-bar__filter-row select,
+  [data-platform="web"] .audit-filter-bar__filter-row input[type="text"] {
+    min-width: unset;
+    width: 100%;
+  }
+
+  [data-platform="web"] .audit-date-range input[type="date"] {
+    width: 100%;
   }
 }

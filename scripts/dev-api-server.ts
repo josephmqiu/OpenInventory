@@ -192,13 +192,46 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Public issue
+    // Public issue — return PublicIssueContext shape (not full snapshot)
     const publicIssueMatch = pathname.match(/^\/public\/items\/([^/]+)\/issue$/);
     if (publicIssueMatch && method === "POST") {
       const body = await readBody(req);
       body.itemId = publicIssueMatch[1];
       const result = await runEffect(dbService.issueMaterial(body as never));
-      sendJson(res, 200, result.snapshot);
+      const item = result.snapshot.items.find((i) => i.id === publicIssueMatch[1]);
+      sendJson(res, 200, { item: item ?? null, personnel: result.snapshot.personnel, language: result.snapshot.language });
+      return;
+    }
+
+    // Audit movements
+    if (pathname === "/api/audit/movements" && method === "GET") {
+      const filters = {
+        dateFrom: url.searchParams.get("dateFrom") || undefined,
+        dateTo: url.searchParams.get("dateTo") || undefined,
+        movementType: (url.searchParams.get("movementType") as "receive" | "issue") || undefined,
+        itemId: url.searchParams.get("itemId") || undefined,
+        itemSearch: url.searchParams.get("itemSearch") || undefined,
+        performedBy: url.searchParams.get("performedBy") || undefined,
+        textSearch: url.searchParams.get("textSearch") || undefined,
+        page: parseInt(url.searchParams.get("page") ?? "1", 10),
+        pageSize: Math.min(parseInt(url.searchParams.get("pageSize") ?? "50", 10), 10000),
+      };
+      sendJson(res, 200, await runEffect(dbService.getAuditMovements(filters)));
+      return;
+    }
+
+    // Audit analytics
+    if (pathname === "/api/audit/analytics" && method === "GET") {
+      const filters = {
+        dateFrom: url.searchParams.get("dateFrom") || undefined,
+        dateTo: url.searchParams.get("dateTo") || undefined,
+        movementType: (url.searchParams.get("movementType") as "receive" | "issue") || undefined,
+        itemId: url.searchParams.get("itemId") || undefined,
+        itemSearch: url.searchParams.get("itemSearch") || undefined,
+        performedBy: url.searchParams.get("performedBy") || undefined,
+        textSearch: url.searchParams.get("textSearch") || undefined,
+      };
+      sendJson(res, 200, await runEffect(dbService.getAuditAnalytics(filters)));
       return;
     }
 

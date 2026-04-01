@@ -48,8 +48,8 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1480,
     height: 960,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: 1280,
+    minHeight: 800,
     show: false,
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),

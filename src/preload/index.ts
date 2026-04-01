@@ -23,6 +23,8 @@ const ALLOWED_CHANNELS = new Set([
   "load-lan-access-state",
   "update-lan-access",
   "regenerate-lan-access-key",
+  "get-audit-movements",
+  "get-audit-analytics",
   "check-for-updates",
   "download-update",
   "install-update",

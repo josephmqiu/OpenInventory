@@ -22,8 +22,9 @@ Run all three test suites before every commit:
 
 ```bash
 npm run test           # Frontend unit tests (Vitest, jsdom)
-npm run test:backend   # Backend service tests (Vitest, node — 103 tests)
-npm run test:e2e       # Electron E2E workflow (Playwright — 8 tests, builds app first)
+npm run test:backend   # Backend service tests (Vitest, node)
+npm run test:coverage  # Combined Vitest coverage report under coverage/
+npm run test:e2e       # Electron E2E workflow (Playwright, builds app first)
 ```
 
 - `test:e2e` handles native module rebuild/restore automatically.

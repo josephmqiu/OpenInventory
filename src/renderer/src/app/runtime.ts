@@ -17,11 +17,6 @@ export function detectRuntime(): Runtime {
   return "http";
 }
 
-export function readIssueRouteItemId(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const match = /^\/issue\/([^/]+)\/?$/i.exec(window.location.pathname);
-  return match ? decodeURIComponent(match[1]) : null;
+export function isDevPreviewRuntime(): boolean {
+  return import.meta.env.DEV;
 }

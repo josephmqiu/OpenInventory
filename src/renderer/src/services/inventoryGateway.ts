@@ -1,12 +1,14 @@
 import type {
   AddPersonnelInput,
   AppSnapshot,
+  AuditAnalyticsResult,
+  AuditMovementFilters,
+  AuditPageResult,
   BatchIssueMaterialInput,
   CreateInventoryItemInput,
   InventoryMovement,
   Language,
   LanAccessState,
-  PublicIssueContext,
   UpdateBackupPlanInput,
   UpdateStatus,
   StockMutationInput,
@@ -178,14 +180,6 @@ export async function loadAppSnapshot(): Promise<AppSnapshot> {
   throw unsupportedRuntimeError("Loading the inventory workspace");
 }
 
-export async function loadPublicIssueContext(itemId: string): Promise<PublicIssueContext> {
-  if (!supportsHttpApi()) {
-    throw new GatewayError("Public issue pages are only available through LAN browser access.");
-  }
-
-  return fetchJson<PublicIssueContext>(`/public/items/${encodeURIComponent(itemId)}/context`, { method: "GET" }, false);
-}
-
 export async function loadLanAccessState(): Promise<LanAccessState> {
   if (detectRuntime() !== "desktop") {
     throw new GatewayError("LAN access can only be managed from the desktop app.");
@@ -270,17 +264,6 @@ export async function batchIssueMaterial(input: BatchIssueMaterialInput): Promis
     return invokeCommand<AppSnapshot>("batch_issue_material", { input });
   }
   throw unsupportedRuntimeError("Issuing materials");
-}
-
-export async function issueMaterialPublic(input: StockMutationInput): Promise<PublicIssueContext> {
-  if (!supportsHttpApi()) {
-    throw new GatewayError("Public issue pages are only available through LAN browser access.");
-  }
-
-  return fetchJson<PublicIssueContext>(`/public/items/${encodeURIComponent(input.itemId)}/issue`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
 }
 
 export async function updateBackupPlan(input: UpdateBackupPlanInput): Promise<AppSnapshot> {
@@ -374,6 +357,48 @@ export async function updateAppLanguage(language: Language): Promise<void> {
   }
 
   throw unsupportedRuntimeError("Updating the app language");
+}
+
+// ─── Audit ────────────────────────────────────────────────────────────────────
+
+export async function getAuditMovements(filters: AuditMovementFilters): Promise<AuditPageResult> {
+  if (supportsHttpApi()) {
+    const params = new URLSearchParams();
+    if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) params.set("dateTo", filters.dateTo);
+    if (filters.movementType) params.set("movementType", filters.movementType);
+    if (filters.itemId) params.set("itemId", filters.itemId);
+    if (filters.itemSearch) params.set("itemSearch", filters.itemSearch);
+    if (filters.performedBy) params.set("performedBy", filters.performedBy);
+    if (filters.textSearch) params.set("textSearch", filters.textSearch);
+    params.set("page", String(filters.page));
+    params.set("pageSize", String(filters.pageSize));
+    return fetchJson<AuditPageResult>(`/api/audit/movements?${params}`, { method: "GET" });
+  }
+  if (detectRuntime() === "desktop") {
+    return invokeCommand<AuditPageResult>("get-audit-movements", { filters });
+  }
+  throw unsupportedRuntimeError("Loading audit data");
+}
+
+export async function getAuditAnalytics(
+  filters: Omit<AuditMovementFilters, "page" | "pageSize">,
+): Promise<AuditAnalyticsResult> {
+  if (supportsHttpApi()) {
+    const params = new URLSearchParams();
+    if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
+    if (filters.dateTo) params.set("dateTo", filters.dateTo);
+    if (filters.movementType) params.set("movementType", filters.movementType);
+    if (filters.itemId) params.set("itemId", filters.itemId);
+    if (filters.itemSearch) params.set("itemSearch", filters.itemSearch);
+    if (filters.performedBy) params.set("performedBy", filters.performedBy);
+    if (filters.textSearch) params.set("textSearch", filters.textSearch);
+    return fetchJson<AuditAnalyticsResult>(`/api/audit/analytics?${params}`, { method: "GET" });
+  }
+  if (detectRuntime() === "desktop") {
+    return invokeCommand<AuditAnalyticsResult>("get-audit-analytics", { filters });
+  }
+  throw unsupportedRuntimeError("Loading audit analytics");
 }
 
 // ─── Auto-update ──────────────────────────────────────────────────────────────

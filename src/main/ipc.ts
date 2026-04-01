@@ -108,6 +108,14 @@ export function registerIpcHandlers(
     run(Effect.flatMap(DatabaseService, (s) => s.getItemMovements(args.itemId))),
   );
 
+  ipcMain.handle("get-audit-movements", (_event, args: { filters: unknown }) =>
+    run(Effect.flatMap(DatabaseService, (s) => s.getAuditMovements(args.filters as Parameters<typeof s.getAuditMovements>[0]))),
+  );
+
+  ipcMain.handle("get-audit-analytics", (_event, args: { filters: unknown }) =>
+    run(Effect.flatMap(DatabaseService, (s) => s.getAuditAnalytics(args.filters as Parameters<typeof s.getAuditAnalytics>[0]))),
+  );
+
   ipcMain.handle("update-backup-plan", (_event, args: { input: unknown }) =>
     run(
       Effect.flatMap(DatabaseService, (s) =>

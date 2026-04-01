@@ -4,6 +4,7 @@ import path from "path";
 import { RateLimiter, getClientIp } from "./auth";
 import type {
   AddPersonnelInput,
+  AuditMovementFilters,
   BatchIssueMaterialInput,
   CreateInventoryItemInput,
   DatabaseServiceApi,
@@ -60,13 +61,14 @@ export function createLanRouter(deps: LanRouterDeps): http.RequestListener {
     }
 
     // ─── API routes ──────────────────────────────────────────────────
-    await handleApiRoute(pathname, method, req, res, dbService, messages);
+    await handleApiRoute(pathname, method, url, req, res, dbService, messages);
   };
 }
 
 async function handleApiRoute(
   pathname: string,
   method: string,
+  url: URL,
   req: http.IncomingMessage,
   res: http.ServerResponse,
   db: DatabaseServiceApi,
@@ -166,6 +168,40 @@ async function handleApiRoute(
       const body = await readBody<{ language: string }>(req, messages);
       await runEffect(db.updateLanguage(body.language));
       sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    // GET /api/audit/movements
+    if (pathname === "/api/audit/movements" && method === "GET") {
+      const filters: AuditMovementFilters = {
+        dateFrom: url.searchParams.get("dateFrom") || undefined,
+        dateTo: url.searchParams.get("dateTo") || undefined,
+        movementType: (url.searchParams.get("movementType") as "receive" | "issue") || undefined,
+        itemId: url.searchParams.get("itemId") || undefined,
+        itemSearch: url.searchParams.get("itemSearch") || undefined,
+        performedBy: url.searchParams.get("performedBy") || undefined,
+        textSearch: url.searchParams.get("textSearch") || undefined,
+        page: parseInt(url.searchParams.get("page") ?? "1", 10),
+        pageSize: Math.min(parseInt(url.searchParams.get("pageSize") ?? "50", 10), 10000),
+      };
+      const result = await runEffect(db.getAuditMovements(filters));
+      sendJson(res, 200, result);
+      return;
+    }
+
+    // GET /api/audit/analytics
+    if (pathname === "/api/audit/analytics" && method === "GET") {
+      const filters = {
+        dateFrom: url.searchParams.get("dateFrom") || undefined,
+        dateTo: url.searchParams.get("dateTo") || undefined,
+        movementType: (url.searchParams.get("movementType") as "receive" | "issue") || undefined,
+        itemId: url.searchParams.get("itemId") || undefined,
+        itemSearch: url.searchParams.get("itemSearch") || undefined,
+        performedBy: url.searchParams.get("performedBy") || undefined,
+        textSearch: url.searchParams.get("textSearch") || undefined,
+      };
+      const result = await runEffect(db.getAuditAnalytics(filters));
+      sendJson(res, 200, result);
       return;
     }
 
@@ -321,8 +357,9 @@ function serveStaticFile(
   }
 
   if (!fs.existsSync(filePath)) {
-    // SPA fallback
-    filePath = path.join(resolvedBase, "index.html");
+    // SPA fallback: serve issue.html for /issue/* routes, index.html for everything else
+    const fallbackFile = pathname.startsWith("/issue/") ? "issue.html" : "index.html";
+    filePath = path.join(resolvedBase, fallbackFile);
   }
 
   if (!fs.existsSync(filePath)) {
@@ -352,10 +389,12 @@ function serveStaticFile(
   // Electron-vite builds with base="./" for file:// protocol. Rewrite to
   // absolute paths so the SPA works when served over HTTP on sub-routes.
   if (ext === ".html") {
+    const platform = path.basename(filePath) === "issue.html" ? "mobile" : "web";
     content = content
       .toString("utf-8")
       .replace(/\.\//g, "/")
-      .replace('<html lang="en">', '<html lang="en" data-platform="web">');
+      .replace(/<html lang="en"(?: data-platform="[^"]*")?>/,
+        `<html lang="en" data-platform="${platform}">`);
   }
 
   res.writeHead(200, { "Content-Type": contentType });

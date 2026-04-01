@@ -46,9 +46,8 @@ test.describe.serial("theme and language", () => {
     await page.click("button.nav-item:has-text('Dashboard')");
     await expect(page.locator("button.nav-item").first()).toHaveText("Dashboard");
 
-    // Switch to Chinese
-    const langSelect = page.locator(".language-switch select");
-    await langSelect.selectOption("zh-CN");
+    // Switch to Chinese via language toggle button (shows "中" when in English)
+    await page.click(".topbar__controls button:has-text('中')");
 
     // Verify nav items switched to Chinese
     await expect(page.locator("button.nav-item").first()).toHaveText("概览");
@@ -71,8 +70,8 @@ test.describe.serial("theme and language", () => {
   });
 
   test("switches back to English", async ({ page }) => {
-    const langSelect = page.locator(".language-switch select");
-    await langSelect.selectOption("en");
+    // Click language toggle (shows "EN" when in Chinese)
+    await page.click(".topbar__controls button:has-text('EN')");
 
     // Verify nav items back to English
     await expect(page.locator("button.nav-item").first()).toHaveText("Dashboard");
@@ -82,15 +81,14 @@ test.describe.serial("theme and language", () => {
 
   test("theme button labels update with language", async ({ page }) => {
     // Switch to Chinese
-    const langSelect = page.locator(".language-switch select");
-    await langSelect.selectOption("zh-CN");
+    await page.click(".topbar__controls button:has-text('中')");
 
     // Theme button aria-label should now be in Chinese
     const themeBtn = page.locator(".topbar__controls button[aria-label='自动']");
     await expect(themeBtn).toBeVisible();
 
     // Switch back to English
-    await langSelect.selectOption("en");
+    await page.click(".topbar__controls button:has-text('EN')");
     await expect(page.locator(".topbar__controls button[aria-label='Auto']")).toBeVisible();
   });
 });
