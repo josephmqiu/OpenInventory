@@ -11,7 +11,6 @@ export interface QuickIssueState {
   notice: { message: string; tone: "success" | "error" } | null;
   busy: boolean;
   handleQuickIssueMaterial: (input: StockMutationInput) => Promise<string>;
-  handleLanguageChange: (next: Language) => void;
   clearNotice: () => void;
   retry: () => void;
 }
@@ -80,11 +79,6 @@ export function useQuickIssueState(itemId: string): QuickIssueState {
     }
   };
 
-  const handleLanguageChange = (next: Language) => {
-    setLanguage(next);
-    try { localStorage.setItem(LANGUAGE_KEY, next); } catch { /* ignore */ }
-  };
-
   const clearNotice = () => setNotice(null);
   const retry = () => setReloadKey((k) => k + 1);
 
@@ -96,7 +90,6 @@ export function useQuickIssueState(itemId: string): QuickIssueState {
     notice,
     busy,
     handleQuickIssueMaterial,
-    handleLanguageChange,
     clearNotice,
     retry,
   };

@@ -44,7 +44,7 @@ export function QuickIssueApp() {
   if (!itemId) {
     return (
       <>
-        <TopBar theme={theme} cycleTheme={cycleTheme} language="en" onLanguageChange={() => {}} />
+        <TopBar theme={theme} cycleTheme={cycleTheme} />
         <div className="qi-state-screen">
           <h2>OpenInventory</h2>
           <p>No item specified. Scan a QR code to issue material.</p>
@@ -65,8 +65,6 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
     notice,
     busy,
     handleQuickIssueMaterial,
-    handleLanguageChange,
-    clearNotice,
     retry,
   } = useQuickIssueState(itemId);
 
@@ -74,12 +72,10 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
     document.documentElement.lang = language;
   }, [language]);
 
-  const toggleLanguage = () => handleLanguageChange(language === "en" ? "zh-CN" : "en");
-
   if (loadError) {
     return (
       <>
-        <TopBar theme={theme} cycleTheme={cycleTheme} language={language} onLanguageChange={toggleLanguage} />
+        <TopBar theme={theme} cycleTheme={cycleTheme} />
         <div className="qi-state-screen">
           <h2>{dictionary.appName}</h2>
           <p>{loadError}</p>
@@ -92,7 +88,7 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
   if (!issueContext) {
     return (
       <>
-        <TopBar theme={theme} cycleTheme={cycleTheme} language={language} onLanguageChange={toggleLanguage} />
+        <TopBar theme={theme} cycleTheme={cycleTheme} />
         <div className="qi-state-screen">
           <h2>{dictionary.appName}</h2>
           <p>{dictionary.loadingWorkspace}</p>
@@ -103,7 +99,7 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
 
   return (
     <>
-      <TopBar theme={theme} cycleTheme={cycleTheme} language={language} onLanguageChange={toggleLanguage} />
+      <TopBar theme={theme} cycleTheme={cycleTheme} />
       {notice && (
         <div className={`qi-feedback qi-feedback--${notice.tone}`} style={{ margin: "0 12px 8px" }}>
           <span>{notice.message}</span>
@@ -125,13 +121,9 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
 function TopBar({
   theme,
   cycleTheme,
-  language,
-  onLanguageChange,
 }: {
   theme: ThemeMode;
   cycleTheme: () => void;
-  language: string;
-  onLanguageChange: () => void;
 }) {
   return (
     <div className="qi-topbar">
@@ -145,11 +137,6 @@ function TopBar({
           {theme === "auto" && <SunMoon size={12} strokeWidth={1.5} />}
           {theme === "light" && <Sun size={12} strokeWidth={1.5} />}
           {theme === "dark" && <Moon size={12} strokeWidth={1.5} />}
-        </button>
-        <button type="button" onClick={onLanguageChange}>
-          <span style={{ fontSize: 11, fontWeight: 600, fontFamily: "var(--font-sans)", letterSpacing: "0.02em" }}>
-            {language === "en" ? "中" : "EN"}
-          </span>
         </button>
       </div>
     </div>

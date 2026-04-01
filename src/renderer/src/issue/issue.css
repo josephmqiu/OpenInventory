@@ -24,6 +24,27 @@ body {
   font-weight: 500;
 }
 
+:lang(zh) .qi-header__name,
+:lang(ja) .qi-header__name,
+:lang(ko) .qi-header__name {
+  font-weight: 700;
+}
+
+:lang(zh) .qi-submit-btn,
+:lang(ja) .qi-submit-btn,
+:lang(ko) .qi-submit-btn {
+  font-weight: 700;
+}
+
+:lang(zh) .qi-data-row__label,
+:lang(ja) .qi-data-row__label,
+:lang(ko) .qi-data-row__label,
+:lang(zh) .qi-field__label,
+:lang(ja) .qi-field__label,
+:lang(ko) .qi-field__label {
+  font-weight: 700;
+}
+
 /* ---- Top Bar ---- */
 
 .qi-topbar {
@@ -377,7 +398,7 @@ body {
 .qi-submit-btn {
   width: 100%;
   min-height: 52px;
-  border: none;
+  border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--accent-on);
@@ -386,11 +407,12 @@ body {
   font-weight: 600;
   cursor: pointer;
   letter-spacing: 0.02em;
-  transition: background 100ms;
+  transition: background 100ms ease, border-color 100ms ease;
 }
 
 .qi-submit-btn:hover:not(:disabled) {
   background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .qi-submit-btn:active:not(:disabled) {
@@ -398,7 +420,7 @@ body {
 }
 
 .qi-submit-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 

@@ -142,15 +142,13 @@ describe("useQuickIssueState", () => {
     expect(result.current.busy).toBe(false);
   });
 
-  it("handleLanguageChange updates language and persists to localStorage", async () => {
-    gatewayMocks.loadPublicIssueContext.mockResolvedValue(mockContext);
+  it("language is set from server response, not user-changeable", async () => {
+    const zhContext = { ...mockContext, language: "zh-CN" as const };
+    gatewayMocks.loadPublicIssueContext.mockResolvedValue(zhContext);
 
     const { result } = renderHook(() => useQuickIssueState("item-1"));
     await waitFor(() => expect(result.current.issueContext).not.toBeNull());
 
-    act(() => result.current.handleLanguageChange("zh-CN"));
-
     expect(result.current.language).toBe("zh-CN");
-    expect(localStorage.getItem("inventory-monitor.language")).toBe("zh-CN");
   });
 });
