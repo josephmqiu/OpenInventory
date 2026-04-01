@@ -59,6 +59,7 @@ export function PersonnelPanel({
               <strong>{member.name}</strong>
               <button
                 className="button-danger-ghost button-inline"
+                data-testid={`personnel-remove-${member.name}`}
                 disabled={busy}
                 onClick={() => void onRemovePersonnel(member.id)}
                 type="button"

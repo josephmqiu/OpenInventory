@@ -57,7 +57,7 @@ export function LanAccessPanel({ busy, dictionary, lanAccess, onSave, onRegenera
           <h2>{dictionary.lanAccess}</h2>
           <p>{dictionary.lanEnableHint}</p>
         </div>
-        <span className={`status-pill status-pill--lan-${lanAccess.status}`}>
+        <span className={`status-pill status-pill--lan-${lanAccess.status}`} data-testid="lan-status">
           {statusLabel(lanAccess.status, dictionary)}
         </span>
       </div>
@@ -121,6 +121,7 @@ export function LanAccessPanel({ busy, dictionary, lanAccess, onSave, onRegenera
       <div className="action-panel__footer action-panel__footer--spread">
         <button
           className="button-secondary"
+          data-testid="lan-regen-key"
           disabled={busy}
           onClick={() => void onRegenerateKey()}
           type="button"
@@ -128,6 +129,7 @@ export function LanAccessPanel({ busy, dictionary, lanAccess, onSave, onRegenera
           {dictionary.lanRegenerateKey}
         </button>
         <button
+          data-testid="lan-save"
           disabled={busy || !hasChanges || form.port <= 0 || form.port > 65535}
           onClick={() => void onSave(form)}
           type="button"

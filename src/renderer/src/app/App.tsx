@@ -277,6 +277,7 @@ export function App() {
             return (
               <button
                 key={item}
+                data-testid={`nav-${item}`}
                 className={section === item ? "nav-item nav-item--active" : "nav-item"}
                 onClick={() => { closeAction(); closeBatchIssue(); setSection(item); }}
                 type="button"
@@ -319,6 +320,7 @@ export function App() {
               </button>
             )}
             <button
+              data-testid="theme-toggle"
               className="button-secondary button-icon-only"
               onClick={cycleTheme}
               type="button"
@@ -330,6 +332,7 @@ export function App() {
               {theme === "dark" && <Moon size={16} strokeWidth={1.5} />}
             </button>
             <button
+              data-testid="lang-toggle"
               className="button-secondary button-icon-only"
               onClick={() => handleLanguageChange(language === "en" ? "zh-CN" : "en")}
               type="button"
@@ -354,15 +357,15 @@ export function App() {
         )}
 
         {notice && (
-          <div className={`feedback-banner feedback-banner--${notice.tone}`}>
+          <div data-testid="feedback-banner" className={`feedback-banner feedback-banner--${notice.tone}`}>
             <span>{notice.message}</span>
-            <button className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label={dictionary.dismiss}>&times;</button>
+            <button data-testid="feedback-dismiss" className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label={dictionary.dismiss}>&times;</button>
           </div>
         )}
         {actionError && (
-          <div className="feedback-banner feedback-banner--error">
+          <div data-testid="feedback-banner" className="feedback-banner feedback-banner--error">
             <span>{actionError}</span>
-            <button className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label={dictionary.dismiss}>&times;</button>
+            <button data-testid="feedback-dismiss" className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label={dictionary.dismiss}>&times;</button>
           </div>
         )}
 

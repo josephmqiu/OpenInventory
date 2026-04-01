@@ -101,6 +101,7 @@ export function BackupPanel({ busy, dictionary, language, backupPlan, onBackupNo
       <div className="action-panel__footer action-panel__footer--spread">
         <button
           className="button-secondary"
+          data-testid="backup-now"
           disabled={busy || !backupPlan.targetPath.trim()}
           onClick={() => void onBackupNow()}
           type="button"
@@ -109,6 +110,7 @@ export function BackupPanel({ busy, dictionary, language, backupPlan, onBackupNo
         </button>
         <button
           className="button-secondary"
+          data-testid="backup-save"
           disabled={busy || !hasChanges}
           onClick={() => void onSave(form)}
           type="button"

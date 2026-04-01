@@ -100,6 +100,7 @@ export function QuickIssueMobile({ busy, dictionary, item, language, personnel, 
                 <button
                   key={n}
                   className="qi-preset-btn"
+                  data-testid={n === 5 ? "qi-preset-5" : n === 10 ? "qi-preset-10" : undefined}
                   type="button"
                   disabled={isOutOfStock}
                   onClick={() => addQty(n)}
@@ -109,6 +110,7 @@ export function QuickIssueMobile({ busy, dictionary, item, language, personnel, 
               ))}
               <button
                 className="qi-preset-btn qi-preset-btn--clear"
+                data-testid="qi-preset-clear"
                 type="button"
                 onClick={clearQty}
               >
@@ -156,6 +158,7 @@ export function QuickIssueMobile({ busy, dictionary, item, language, personnel, 
       <div className="qi-submit-area">
         <button
           className="qi-submit-btn"
+          data-testid="qi-submit"
           type="button"
           disabled={busy || !quantityIsValid || !performedBy.trim() || isOutOfStock}
           onClick={() => void handleSubmit()}

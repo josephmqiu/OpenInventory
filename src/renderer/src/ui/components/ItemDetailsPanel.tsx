@@ -49,7 +49,7 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
   }, [dictionary, item.id]);
 
   return (
-    <section className="panel item-details-panel">
+    <section className="panel item-details-panel" data-testid="item-details-panel">
       <div className="panel__header">
         <div>
           <h2>{dictionary.itemDetails}</h2>
@@ -131,7 +131,7 @@ export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }
           </div>
         ) : (
           <div className="table-wrap">
-            <table>
+            <table data-testid="movement-history-table">
               <thead>
                 <tr>
                   <th>{dictionary.date}</th>
