@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, shell } from "electron";
 import { join } from "path";
-import { Effect, Layer, Runtime } from "effect";
+import { Effect, Layer, ManagedRuntime } from "effect";
 import { is } from "@electron-toolkit/utils";
 
 // Surface fatal startup errors instead of silently exiting.
@@ -11,7 +11,7 @@ process.on("uncaughtException", (err) => {
 
 import { DatabaseService, makeDatabaseLayer } from "./services/DatabaseService";
 import { NotificationService, NotificationServiceLive } from "./services/NotificationService";
-import { makeLanServerService, type LanServerServiceApi } from "./services/LanServerService";
+import { LanServerService, makeLanServerLayer } from "./services/LanServerService";
 import { makeAutoUpdateService, type AutoUpdateServiceApi } from "./services/AutoUpdateService";
 import { runPendingMigrations } from "./infrastructure/migrations";
 import { registerIpcHandlers } from "./ipc";
@@ -90,20 +90,6 @@ app.whenReady().then(async () => {
       ? `${lanState.primaryUrl}/issue/${itemId}`
       : "";
 
-  const AppLayer = Layer.merge(
-    makeDatabaseLayer(dbPath, qrCodeGenerator),
-    NotificationServiceLive,
-  );
-
-  const runtime = await Effect.runPromise(
-    Layer.toRuntime(AppLayer).pipe(Effect.scoped),
-  ) as Runtime.Runtime<DatabaseService | NotificationService>;
-
-  // Extract the concrete DatabaseServiceApi to hand to LanServerService.
-  const dbServiceApi = await Runtime.runPromise(runtime)(
-    Effect.map(DatabaseService, (s) => s),
-  );
-
   // In production, renderer assets are unpacked from the asar so the LAN
   // server can serve them via fs.readFileSync to external HTTP clients.
   // In dev, use the build output directory (electron-vite builds to out/).
@@ -111,11 +97,21 @@ app.whenReady().then(async () => {
     ? join(__dirname, "../renderer")
     : join(__dirname, "../renderer").replace("app.asar", "app.asar.unpacked");
   console.log(`[LAN] rendererDir=${rendererDir}, exists=${fs.existsSync(rendererDir)}`);
-  const lanService: LanServerServiceApi = makeLanServerService(dbServiceApi, rendererDir);
+
+  // Merged layer: DB (scoped) + Notifications + LAN server (scoped, depends on DB)
+  // IMPORTANT: reuse the same DbLayer reference so Effect memoizes a single connection.
+  const DbLayer = makeDatabaseLayer(dbPath, qrCodeGenerator);
+  const DbAndNotifications = Layer.merge(DbLayer, NotificationServiceLive);
+  const LanLayer = makeLanServerLayer(rendererDir).pipe(Layer.provide(DbLayer));
+  const AppLayer = Layer.merge(DbAndNotifications, LanLayer);
+
+  const managedRuntime = ManagedRuntime.make(AppLayer);
 
   // Auto-start LAN server if previously enabled; populate lanState.
   try {
-    const state = await Effect.runPromise(lanService.loadState());
+    const state = await managedRuntime.runPromise(
+      Effect.flatMap(LanServerService, (s) => s.loadState()),
+    );
     if (state.status === "running" && state.urls.length > 0) {
       lanState.primaryUrl = state.urls[0];
     }
@@ -131,7 +127,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  registerIpcHandlers(runtime, lanService, lanState, autoUpdateService);
+  registerIpcHandlers(managedRuntime, lanState, autoUpdateService);
 
   createWindow();
 
@@ -140,6 +136,11 @@ app.whenReady().then(async () => {
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  // Graceful shutdown: dispose the runtime to close DB + stop LAN server.
+  app.on("before-quit", () => {
+    managedRuntime.dispose().catch(() => {});
   });
 });
 

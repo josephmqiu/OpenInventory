@@ -22,11 +22,13 @@ const LAN_ACCESS_KEY_STORAGE_KEY = "inventory-monitor.lan-access-key";
 
 export class GatewayError extends Error {
   status?: number;
+  errorTag?: string;
 
-  constructor(message: string, status?: number) {
+  constructor(message: string, status?: number, errorTag?: string) {
     super(message);
     this.name = "GatewayError";
     this.status = status;
+    this.errorTag = errorTag;
   }
 }
 
@@ -123,15 +125,19 @@ async function fetchJson<T>(path: string, init?: RequestInit, includeAccessKey =
 
   if (!response.ok) {
     let message = `Request failed with status ${response.status}.`;
+    let errorTag: string | undefined;
     try {
-      const errorBody = (await response.json()) as { message?: string };
+      const errorBody = (await response.json()) as { message?: string; _tag?: string };
       if (typeof errorBody.message === "string" && errorBody.message.trim()) {
         message = errorBody.message;
+      }
+      if (typeof errorBody._tag === "string") {
+        errorTag = errorBody._tag;
       }
     } catch {
       // Ignore JSON parse errors and keep the default message.
     }
-    throw new GatewayError(message, response.status);
+    throw new GatewayError(message, response.status, errorTag);
   }
 
   if (response.status === 204) {
@@ -149,6 +155,12 @@ function unsupportedRuntimeError(action: string): GatewayError {
   return new GatewayError(`${action} requires the desktop app or LAN HTTP access.`);
 }
 
+interface IpcResult<T> {
+  ok: boolean;
+  data?: T;
+  error?: { _tag: string; message: string };
+}
+
 async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const desktopInvoke = getDesktopInvoke();
   if (!desktopInvoke) {
@@ -156,10 +168,25 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
   }
   try {
     const channel = command.replace(/_/g, "-");
-    return await desktopInvoke<T>(channel, args);
+    const result = await desktopInvoke<IpcResult<T>>(channel, args);
+
+    // Unwrap the result envelope returned by the main process.
+    if (result && typeof result === "object" && "ok" in result) {
+      if (result.ok) {
+        return result.data as T;
+      }
+      throw new GatewayError(
+        result.error?.message ?? "Unknown error",
+        undefined,
+        result.error?._tag,
+      );
+    }
+
+    // Backward compat: if the handler doesn't return an envelope (e.g. auto-update),
+    // treat the raw value as the data.
+    return result as unknown as T;
   } catch (error) {
-    // IPC rejects with a plain string, not an Error instance.
-    // Wrap it so callers can use instanceof Error and read .message.
+    if (error instanceof GatewayError) throw error;
     throw new GatewayError(typeof error === "string" ? error : String(error));
   }
 }

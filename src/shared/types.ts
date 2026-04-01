@@ -79,7 +79,7 @@ export interface LanAccessState {
 }
 
 export interface PublicIssueContext {
-  item: InventoryItem;
+  item: InventoryItem | null;
   personnel: PersonnelMember[];
   language: Language;
 }
@@ -137,7 +137,7 @@ export interface BatchIssueItem {
 }
 
 export interface BatchIssueMaterialInput {
-  items: BatchIssueItem[];
+  items: readonly BatchIssueItem[];
   performedBy: string;
   reason: string;
 }

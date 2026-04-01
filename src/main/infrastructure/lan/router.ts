@@ -1,21 +1,24 @@
 import http from "http";
 import fs from "fs";
 import path from "path";
+import { Schema } from "@effect/schema";
 import { RateLimiter, getClientIp } from "./auth";
-import type {
-  AddPersonnelInput,
-  AuditMovementFilters,
-  BatchIssueMaterialInput,
-  CreateInventoryItemInput,
-  DatabaseServiceApi,
-  StockMutationInput,
-  UpdateInventoryItemInput,
-} from "../../services/DatabaseService";
+import type { DatabaseServiceApi } from "../../services/DatabaseService";
+import type { AuditMovementFilters } from "../../../shared/types";
 import {
   backendMessages,
   normalizeBackendLanguage,
   ValidationError,
 } from "../../domain/errors";
+import {
+  CreateInventoryItemBody,
+  UpdateInventoryItemBody,
+  StockMutationBody,
+  BatchIssueMaterialBody,
+  AddPersonnelBody,
+  UpdateLanguageBody,
+  PublicIssueBody,
+} from "../../../shared/schemas";
 
 interface LanRouterDeps {
   dbService: DatabaseServiceApi;
@@ -84,7 +87,8 @@ async function handleApiRoute(
 
     // POST /api/items
     if (pathname === "/api/items" && method === "POST") {
-      const body = await readBody<CreateInventoryItemInput>(req, messages);
+      const raw = await readBody(req, messages);
+      const body = decodeBody(CreateInventoryItemBody, raw);
       const result = await runEffect(db.createInventoryItem(body));
       sendJson(res, 201, result.snapshot);
       return;
@@ -93,8 +97,9 @@ async function handleApiRoute(
     // PUT /api/items/:id
     const itemPutMatch = pathname.match(/^\/api\/items\/([^/]+)$/);
     if (itemPutMatch && method === "PUT") {
-      const body = await readBody<UpdateInventoryItemInput>(req, messages);
-      body.itemId = itemPutMatch[1];
+      const raw = await readBody(req, messages);
+      const decoded = decodeBody(UpdateInventoryItemBody, raw);
+      const body = { ...decoded, itemId: itemPutMatch[1] };
       const result = await runEffect(db.updateInventoryItem(body));
       sendJson(res, 200, result.snapshot);
       return;
@@ -110,8 +115,9 @@ async function handleApiRoute(
     // POST /api/items/:id/receive
     const receiveMatch = pathname.match(/^\/api\/items\/([^/]+)\/receive$/);
     if (receiveMatch && method === "POST") {
-      const body = await readBody<StockMutationInput>(req, messages);
-      body.itemId = receiveMatch[1];
+      const raw = await readBody(req, messages);
+      const decoded = decodeBody(StockMutationBody, raw);
+      const body = { ...decoded, itemId: receiveMatch[1] };
       const result = await runEffect(db.receiveStock(body));
       sendJson(res, 200, result.snapshot);
       return;
@@ -120,8 +126,9 @@ async function handleApiRoute(
     // POST /api/items/:id/issue
     const issueMatch = pathname.match(/^\/api\/items\/([^/]+)\/issue$/);
     if (issueMatch && method === "POST") {
-      const body = await readBody<StockMutationInput>(req, messages);
-      body.itemId = issueMatch[1];
+      const raw = await readBody(req, messages);
+      const decoded = decodeBody(StockMutationBody, raw);
+      const body = { ...decoded, itemId: issueMatch[1] };
       const result = await runEffect(db.issueMaterial(body));
       sendJson(res, 200, result.snapshot);
       return;
@@ -137,7 +144,8 @@ async function handleApiRoute(
 
     // POST /api/items/batch-issue
     if (pathname === "/api/items/batch-issue" && method === "POST") {
-      const body = await readBody<BatchIssueMaterialInput>(req, messages);
+      const raw = await readBody(req, messages);
+      const body = decodeBody(BatchIssueMaterialBody, raw);
       const result = await runEffect(db.batchIssueMaterial(body));
       sendJson(res, 200, result.snapshot);
       return;
@@ -145,7 +153,8 @@ async function handleApiRoute(
 
     // POST /api/personnel
     if (pathname === "/api/personnel" && method === "POST") {
-      const body = await readBody<AddPersonnelInput>(req, messages);
+      const raw = await readBody(req, messages);
+      const body = decodeBody(AddPersonnelBody, raw);
       const result = await runEffect(db.addPersonnel(body));
       sendJson(res, 201, result);
       return;
@@ -165,7 +174,8 @@ async function handleApiRoute(
 
     // PUT /api/language
     if (pathname === "/api/language" && method === "PUT") {
-      const body = await readBody<{ language: string }>(req, messages);
+      const raw = await readBody(req, messages);
+      const body = decodeBody(UpdateLanguageBody, raw);
       await runEffect(db.updateLanguage(body.language));
       sendJson(res, 200, { ok: true });
       return;
@@ -247,9 +257,10 @@ async function handlePublicRoute(
     // POST /public/items/:id/issue
     const issueMatch = pathname.match(/^\/public\/items\/([^/]+)\/issue$/);
     if (issueMatch && method === "POST") {
-      const body = await readBody<StockMutationInput>(req, messages);
-      body.itemId = issueMatch[1];
-      const result = await runEffect(db.issueMaterial(body));
+      const raw = await readBody(req, messages);
+      const body = decodeBody(PublicIssueBody, raw);
+      const input = { ...body, itemId: issueMatch[1] };
+      const result = await runEffect(db.issueMaterial(input));
       // Return PublicIssueContext shape (not the full snapshot) so the
       // frontend can update the QuickIssuePage with the refreshed item.
       const item = result.snapshot.items.find((i) => i.id === issueMatch[1]);
@@ -293,9 +304,9 @@ function handleApiError(
   if (error && typeof error === "object" && "_tag" in error) {
     const appError = error as AppError;
     const status = errorToHttpStatus(appError);
-    sendJson(res, status, { message: appError.message });
+    sendJson(res, status, { _tag: appError._tag, message: appError.message });
   } else {
-    sendJson(res, 500, { message: messages.unexpectedError });
+    sendJson(res, 500, { _tag: "ServerError", message: messages.unexpectedError });
   }
 }
 
@@ -306,10 +317,10 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
-function readBody<T>(
+function readBody(
   req: http.IncomingMessage,
   messages: ReturnType<typeof backendMessages>,
-): Promise<T> {
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let data = "";
     let bytes = 0;
@@ -324,13 +335,23 @@ function readBody<T>(
     });
     req.on("end", () => {
       try {
-        resolve((data ? JSON.parse(data) : {}) as T);
+        resolve(data ? JSON.parse(data) : {});
       } catch {
         reject(new ValidationError({ message: messages.invalidJsonBody }));
       }
     });
     req.on("error", reject);
   });
+}
+
+function decodeBody<A, I>(schema: Schema.Schema<A, I>, raw: unknown): A {
+  try {
+    return Schema.decodeUnknownSync(schema)(raw);
+  } catch (e) {
+    throw new ValidationError({
+      message: e instanceof Error ? e.message : "Invalid request body.",
+    });
+  }
 }
 
 function serveStaticFile(

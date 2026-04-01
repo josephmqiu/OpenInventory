@@ -64,7 +64,7 @@ describe("useQuickIssueState", () => {
 
     await waitFor(() => expect(result.current.issueContext).not.toBeNull());
 
-    expect(result.current.issueContext?.item.name).toBe("Test Item");
+    expect(result.current.issueContext?.item?.name).toBe("Test Item");
     expect(result.current.language).toBe("en");
     expect(result.current.loadError).toBeNull();
     expect(gatewayMocks.loadPublicIssueContext).toHaveBeenCalledWith("item-1");
@@ -95,7 +95,7 @@ describe("useQuickIssueState", () => {
 
     const updatedContext: PublicIssueContext = {
       ...mockContext,
-      item: { ...mockContext.item, currentQuantity: 95 },
+      item: { ...mockContext.item!, currentQuantity: 95 },
     };
     gatewayMocks.issueMaterialPublic.mockResolvedValue(updatedContext);
 
@@ -111,7 +111,7 @@ describe("useQuickIssueState", () => {
       });
     });
 
-    expect(result.current.issueContext?.item.currentQuantity).toBe(95);
+    expect(result.current.issueContext?.item?.currentQuantity).toBe(95);
     expect(result.current.notice?.tone).toBe("success");
   });
 
