@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const runtimeMocks = vi.hoisted(() => ({
   detectRuntime: vi.fn().mockReturnValue("http"),
   isDevPreviewRuntime: vi.fn().mockReturnValue(true),
-  readIssueRouteItemId: vi.fn().mockReturnValue(null),
 }));
 
 const gatewayMocks = vi.hoisted(() => ({

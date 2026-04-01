@@ -20,12 +20,3 @@ export function detectRuntime(): Runtime {
 export function isDevPreviewRuntime(): boolean {
   return import.meta.env.DEV;
 }
-
-export function readIssueRouteItemId(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const match = /^\/issue\/([^/]+)\/?$/i.exec(window.location.pathname);
-  return match ? decodeURIComponent(match[1]) : null;
-}

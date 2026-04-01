@@ -357,8 +357,9 @@ function serveStaticFile(
   }
 
   if (!fs.existsSync(filePath)) {
-    // SPA fallback
-    filePath = path.join(resolvedBase, "index.html");
+    // SPA fallback: serve issue.html for /issue/* routes, index.html for everything else
+    const fallbackFile = pathname.startsWith("/issue/") ? "issue.html" : "index.html";
+    filePath = path.join(resolvedBase, fallbackFile);
   }
 
   if (!fs.existsSync(filePath)) {
@@ -388,10 +389,12 @@ function serveStaticFile(
   // Electron-vite builds with base="./" for file:// protocol. Rewrite to
   // absolute paths so the SPA works when served over HTTP on sub-routes.
   if (ext === ".html") {
+    const platform = path.basename(filePath) === "issue.html" ? "mobile" : "web";
     content = content
       .toString("utf-8")
       .replace(/\.\//g, "/")
-      .replace('<html lang="en">', '<html lang="en" data-platform="web">');
+      .replace(/<html lang="en"(?: data-platform="[^"]*")?>/,
+        `<html lang="en" data-platform="${platform}">`);
   }
 
   res.writeHead(200, { "Content-Type": contentType });

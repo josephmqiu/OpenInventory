@@ -9,7 +9,6 @@ import type {
   InventoryMovement,
   Language,
   LanAccessState,
-  PublicIssueContext,
   UpdateBackupPlanInput,
   UpdateStatus,
   StockMutationInput,
@@ -181,14 +180,6 @@ export async function loadAppSnapshot(): Promise<AppSnapshot> {
   throw unsupportedRuntimeError("Loading the inventory workspace");
 }
 
-export async function loadPublicIssueContext(itemId: string): Promise<PublicIssueContext> {
-  if (!supportsHttpApi()) {
-    throw new GatewayError("Public issue pages are only available through LAN browser access.");
-  }
-
-  return fetchJson<PublicIssueContext>(`/public/items/${encodeURIComponent(itemId)}/context`, { method: "GET" }, false);
-}
-
 export async function loadLanAccessState(): Promise<LanAccessState> {
   if (detectRuntime() !== "desktop") {
     throw new GatewayError("LAN access can only be managed from the desktop app.");
@@ -273,17 +264,6 @@ export async function batchIssueMaterial(input: BatchIssueMaterialInput): Promis
     return invokeCommand<AppSnapshot>("batch_issue_material", { input });
   }
   throw unsupportedRuntimeError("Issuing materials");
-}
-
-export async function issueMaterialPublic(input: StockMutationInput): Promise<PublicIssueContext> {
-  if (!supportsHttpApi()) {
-    throw new GatewayError("Public issue pages are only available through LAN browser access.");
-  }
-
-  return fetchJson<PublicIssueContext>(`/public/items/${encodeURIComponent(input.itemId)}/issue`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
 }
 
 export async function updateBackupPlan(input: UpdateBackupPlanInput): Promise<AppSnapshot> {

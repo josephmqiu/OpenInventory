@@ -12,7 +12,6 @@ import type {
 const runtimeMocks = vi.hoisted(() => ({
   detectRuntime: vi.fn(),
   isDevPreviewRuntime: vi.fn(),
-  readIssueRouteItemId: vi.fn(),
 }));
 
 const gatewayMocks = vi.hoisted(() => ({
@@ -133,7 +132,6 @@ beforeEach(() => {
 
   runtimeMocks.detectRuntime.mockReturnValue("http");
   runtimeMocks.isDevPreviewRuntime.mockReturnValue(false);
-  runtimeMocks.readIssueRouteItemId.mockReturnValue(null);
 
   gatewayMocks.addPersonnel.mockResolvedValue(createSnapshot());
   gatewayMocks.backupNow.mockResolvedValue(createSnapshot());
@@ -416,7 +414,6 @@ describe("useInventoryState", () => {
     expect(gatewayMocks.clearLanAccessKey).toHaveBeenCalledOnce();
     expect(result.current.accessKeyInput).toBe("");
     expect(result.current.snapshot).toBeNull();
-    expect(result.current.issueContext).toBeNull();
     expect(result.current.loadError).toBeNull();
     expect(result.current.actionError).toBeNull();
     expect(result.current.notice).toBeNull();

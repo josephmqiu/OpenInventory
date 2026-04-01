@@ -192,13 +192,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Public issue
+    // Public issue — return PublicIssueContext shape (not full snapshot)
     const publicIssueMatch = pathname.match(/^\/public\/items\/([^/]+)\/issue$/);
     if (publicIssueMatch && method === "POST") {
       const body = await readBody(req);
       body.itemId = publicIssueMatch[1];
       const result = await runEffect(dbService.issueMaterial(body as never));
-      sendJson(res, 200, result.snapshot);
+      const item = result.snapshot.items.find((i) => i.id === publicIssueMatch[1]);
+      sendJson(res, 200, { item: item ?? null, personnel: result.snapshot.personnel, language: result.snapshot.language });
       return;
     }
 

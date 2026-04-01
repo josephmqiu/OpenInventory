@@ -127,15 +127,13 @@ test.describe.serial("LAN access and QR codes", () => {
 
     try {
       await publicPage.goto(issueUrl);
-      await expect(publicPage.locator(".quick-issue-panel")).toBeVisible({ timeout: 10_000 });
-      await publicPage.locator("label:has-text('Quantity') input").fill("7");
-      await publicPage.locator("label:has-text('Performed By') select").selectOption(publicOperatorName);
-      await publicPage.locator("button:has-text('Issue Material')").click();
+      // The QR view now uses the mobile-specific QuickIssueMobile component
+      await expect(publicPage.locator(".qi-card")).toBeVisible({ timeout: 10_000 });
+      await publicPage.locator(".qi-input-row input").fill("7");
+      await publicPage.locator(".qi-form select").selectOption(publicOperatorName);
+      await publicPage.locator(".qi-submit-btn").click();
 
-      await expect(publicPage.locator(".feedback-banner:not(.feedback-banner--error)")).toContainText(
-        "Material issue recorded.",
-        { timeout: 10_000 },
-      );
+      await expect(publicPage.locator(".qi-feedback--success")).toBeVisible({ timeout: 10_000 });
 
       await expect.poll(async () => {
         const snapshot = await fetchSnapshot();

@@ -6,14 +6,13 @@ import type {
   InventoryAlert,
   Language,
   LanAccessState,
-  PublicIssueContext,
   StockMutationInput,
   UpdateBackupPlanInput,
   UpdateInventoryItemInput,
   UpdateLanAccessInput,
 } from "../domain/models";
 import { dictionaries, localizeBackendMessage, type Dictionary } from "./i18n";
-import { detectRuntime, isDevPreviewRuntime, readIssueRouteItemId, type Runtime } from "./runtime";
+import { detectRuntime, isDevPreviewRuntime, type Runtime } from "./runtime";
 import {
   addPersonnel,
   batchIssueMaterial,
@@ -22,10 +21,8 @@ import {
   backupNow,
   isUnauthorizedError,
   issueMaterial,
-  issueMaterialPublic,
   loadAppSnapshot,
   loadLanAccessState,
-  loadPublicIssueContext,
   persistLanAccessKey,
   readPersistedLanAccessKey,
   readPersistedLanguage,
@@ -48,10 +45,8 @@ export interface InventoryNotice {
 
 export interface InventoryState {
   runtime: Runtime;
-  issueRouteItemId: string | null;
   language: Language;
   snapshot: AppSnapshot | null;
-  issueContext: PublicIssueContext | null;
   lanAccess: LanAccessState | null;
   loadError: string | null;
   actionError: string | null;
@@ -69,7 +64,6 @@ export interface InventoryState {
   handleReceiveStock: (input: StockMutationInput) => Promise<boolean>;
   handleIssueMaterial: (input: StockMutationInput) => Promise<boolean>;
   handleBatchIssueMaterial: (input: BatchIssueMaterialInput) => Promise<boolean>;
-  handleQuickIssueMaterial: (input: StockMutationInput) => Promise<string>;
   handleRemoveItem: (itemId: string) => Promise<boolean>;
   handleBackupPlanSave: (input: UpdateBackupPlanInput) => Promise<boolean>;
   handleBackupNow: () => Promise<boolean>;
@@ -117,10 +111,8 @@ function buildMutationNotice(
 export function useInventoryState(): InventoryState {
   const runtime = detectRuntime();
   const desktopRuntime = runtime === "desktop";
-  const issueRouteItemId = readIssueRouteItemId();
   const [language, setLanguage] = useState<Language>(() => readPersistedLanguage());
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
-  const [issueContext, setIssueContext] = useState<PublicIssueContext | null>(null);
   const [lanAccess, setLanAccess] = useState<LanAccessState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -130,7 +122,7 @@ export function useInventoryState(): InventoryState {
   const [accessKeyInput, setAccessKeyInput] = useState(() => readPersistedLanAccessKey());
   const dictionary = dictionaries[language];
   const isDev = isDevPreviewRuntime();
-  const requiresBrowserAuth = runtime !== "desktop" && !issueRouteItemId && !isDev && !readPersistedLanAccessKey().trim();
+  const requiresBrowserAuth = runtime !== "desktop" && !isDev && !readPersistedLanAccessKey().trim();
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -143,54 +135,35 @@ export function useInventoryState(): InventoryState {
 
     setLoadError(null);
 
-    if (runtime !== "desktop" && issueRouteItemId) {
+    if (runtime !== "desktop" && !isDev && !readPersistedLanAccessKey().trim()) {
       setSnapshot(null);
-      loadPublicIssueContext(issueRouteItemId)
-        .then((result) => {
-          if (!cancelled) {
-            setLanguage(result.language);
-            setIssueContext(result);
-          }
-        })
-        .catch((loadErrorValue: unknown) => {
-          if (!cancelled) {
-            setIssueContext(null);
-            setLoadError(toErrorMessage(loadErrorValue, dictionary));
-          }
-        });
-    } else {
-      setIssueContext(null);
-
-      if (runtime !== "desktop" && !isDev && !readPersistedLanAccessKey().trim()) {
-        setSnapshot(null);
-        return () => {
-          cancelled = true;
-        };
-      }
-
-      loadAppSnapshot()
-        .then((result) => {
-          if (!cancelled) {
-            setLanguage(result.language);
-            setSnapshot(result);
-          }
-        })
-        .catch((loadErrorValue: unknown) => {
-          if (cancelled) {
-            return;
-          }
-
-          if (runtime !== "desktop" && isUnauthorizedError(loadErrorValue)) {
-            clearLanAccessKey();
-            setAccessKeyInput("");
-            setSnapshot(null);
-            setLoadError(null);
-            return;
-          }
-
-          setLoadError(toErrorMessage(loadErrorValue, dictionary));
-        });
+      return () => {
+        cancelled = true;
+      };
     }
+
+    loadAppSnapshot()
+      .then((result) => {
+        if (!cancelled) {
+          setLanguage(result.language);
+          setSnapshot(result);
+        }
+      })
+      .catch((loadErrorValue: unknown) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (runtime !== "desktop" && isUnauthorizedError(loadErrorValue)) {
+          clearLanAccessKey();
+          setAccessKeyInput("");
+          setSnapshot(null);
+          setLoadError(null);
+          return;
+        }
+
+        setLoadError(toErrorMessage(loadErrorValue, dictionary));
+      });
 
     if (desktopRuntime) {
       loadLanAccessState()
@@ -221,10 +194,10 @@ export function useInventoryState(): InventoryState {
     return () => {
       cancelled = true;
     };
-  }, [desktopRuntime, dictionary, isDev, issueRouteItemId, reloadKey, runtime]);
+  }, [desktopRuntime, dictionary, isDev, reloadKey, runtime]);
 
   useEffect(() => {
-    if (!desktopRuntime || issueRouteItemId || busy || typeof window === "undefined" || typeof document === "undefined") {
+    if (!desktopRuntime || busy || typeof window === "undefined" || typeof document === "undefined") {
       return;
     }
 
@@ -299,14 +272,13 @@ export function useInventoryState(): InventoryState {
       clearRefreshTimeout();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [busy, desktopRuntime, issueRouteItemId]);
+  }, [busy, desktopRuntime]);
 
   const handleGatewayError = (error: unknown) => {
-    if (runtime !== "desktop" && !issueRouteItemId && isUnauthorizedError(error)) {
+    if (runtime !== "desktop" && isUnauthorizedError(error)) {
       clearLanAccessKey();
       setAccessKeyInput("");
       setSnapshot(null);
-      setIssueContext(null);
       setLoadError(null);
       setActionError(null);
       return;
@@ -350,26 +322,6 @@ export function useInventoryState(): InventoryState {
 
   const handleBatchIssueMaterial = async (input: BatchIssueMaterialInput) =>
     executeMutation(() => batchIssueMaterial(input), dictionary.successBatchIssueMaterial);
-
-  const handleQuickIssueMaterial = async (input: StockMutationInput): Promise<string> => {
-    try {
-      setBusy(true);
-      setActionError(null);
-      const nextContext = await issueMaterialPublic(input);
-      setIssueContext(nextContext);
-      setLanguage(nextContext.language);
-      setNotice({
-        message: dictionary.successIssueMaterial,
-        tone: "success",
-      });
-      return dictionary.successIssueMaterial;
-    } catch (error) {
-      handleGatewayError(error);
-      throw new Error(toErrorMessage(error, dictionary));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const handleRemoveItem = async (itemId: string) =>
     executeMutation(() => removeInventoryItem(itemId), dictionary.successRemoveItem);
@@ -472,7 +424,6 @@ export function useInventoryState(): InventoryState {
     clearLanAccessKey();
     setAccessKeyInput("");
     setSnapshot(null);
-    setIssueContext(null);
     setLoadError(null);
     setActionError(null);
     setNotice(null);
@@ -490,10 +441,8 @@ export function useInventoryState(): InventoryState {
 
   return {
     runtime,
-    issueRouteItemId,
     language,
     snapshot,
-    issueContext,
     lanAccess,
     loadError,
     actionError,
@@ -511,7 +460,6 @@ export function useInventoryState(): InventoryState {
     handleReceiveStock,
     handleIssueMaterial,
     handleBatchIssueMaterial,
-    handleQuickIssueMaterial,
     handleRemoveItem,
     handleBackupPlanSave,
     handleBackupNow,

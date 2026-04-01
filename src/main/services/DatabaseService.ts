@@ -14,65 +14,55 @@ import {
   type AppError,
 } from "../domain/errors";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Shared Types (imported from single source of truth) ────────────────────
 
-export interface AppSnapshot {
-  items: InventoryItem[];
-  alerts: InventoryAlert[];
-  personnel: PersonnelMember[];
-  backupPlan: BackupPlan;
-  language: string;
-}
+import type {
+  AddPersonnelInput,
+  AlertFrequencyRow,
+  AppSnapshot,
+  AuditAnalyticsResult,
+  AuditMovementFilters,
+  AuditMovementRow,
+  AuditPageResult,
+  AuditSummary,
+  BackupPlan,
+  BatchIssueMaterialInput,
+  CreateInventoryItemInput,
+  InventoryAlert,
+  InventoryItem,
+  InventoryMovement,
+  ItemActivityRow,
+  PersonnelActivityRow,
+  PersonnelMember,
+  StockMutationInput,
+  UpdateBackupPlanInput,
+  UpdateInventoryItemInput,
+} from "../../shared/types";
 
-export interface InventoryItem {
-  id: string;
-  sku: string;
-  qrCodeDataUrl: string;
-  name: string;
-  category: string;
-  location: string;
-  unit: string;
-  supplier: string;
-  currentQuantity: number;
-  reorderQuantity: number;
-  status: string;
-  lastUpdated: string;
-}
+export type {
+  AddPersonnelInput,
+  AlertFrequencyRow,
+  AppSnapshot,
+  AuditAnalyticsResult,
+  AuditMovementFilters,
+  AuditMovementRow,
+  AuditPageResult,
+  AuditSummary,
+  BackupPlan,
+  BatchIssueMaterialInput,
+  CreateInventoryItemInput,
+  InventoryAlert,
+  InventoryItem,
+  InventoryMovement,
+  ItemActivityRow,
+  PersonnelActivityRow,
+  PersonnelMember,
+  StockMutationInput,
+  UpdateBackupPlanInput,
+  UpdateInventoryItemInput,
+} from "../../shared/types";
 
-export interface InventoryAlert {
-  id: string;
-  itemName: string;
-  sku: string;
-  currentQuantity: number;
-  thresholdQuantity: number;
-  status: string;
-  triggeredAt: string;
-}
-
-export interface PersonnelMember {
-  id: string;
-  name: string;
-}
-
-export interface InventoryMovement {
-  id: string;
-  itemId: string;
-  movementType: string;
-  quantity: number;
-  performedBy: string | null;
-  reason: string | null;
-  createdAt: string;
-}
-
-export interface BackupPlan {
-  targetPath: string;
-  targetType: string;
-  schedule: string;
-  retention: string;
-  lastSuccessfulBackup: string;
-  nextScheduledBackup: string;
-  status: string;
-}
+// ─── Backend-Only Types ─────────────────────────────────────────────────────
 
 export interface LowStockNotification {
   itemName: string;
@@ -93,134 +83,6 @@ export interface LanAccessSettings {
   primaryUrl: string;
 }
 
-export interface CreateInventoryItemInput {
-  sku: string;
-  name: string;
-  category: string;
-  location: string;
-  unit: string;
-  supplier: string;
-  reorderQuantity: number;
-  initialQuantity: number;
-}
-
-export interface UpdateInventoryItemInput {
-  itemId: string;
-  sku: string;
-  name: string;
-  category: string;
-  location: string;
-  unit: string;
-  supplier: string;
-  reorderQuantity: number;
-}
-
-export interface StockMutationInput {
-  itemId: string;
-  quantity: number;
-  reason: string;
-  performedBy: string;
-}
-
-export interface BatchIssueMaterialInput {
-  items: { itemId: string; quantity: number }[];
-  performedBy: string;
-  reason: string;
-}
-
-export interface AddPersonnelInput {
-  name: string;
-}
-
-export interface UpdateBackupPlanInput {
-  targetPath: string;
-  targetType: string;
-  schedule: string;
-  retention: string;
-}
-
-// ─── Audit Types ────────────────────────────────────────────────────────────
-
-export interface AuditMovementFilters {
-  dateFrom?: string;
-  dateTo?: string;
-  movementType?: "receive" | "issue";
-  itemId?: string;
-  itemSearch?: string;
-  performedBy?: string;
-  textSearch?: string;
-  page: number;
-  pageSize: number;
-}
-
-export interface AuditMovementRow {
-  id: string;
-  itemId: string;
-  itemName: string;
-  itemSku: string;
-  movementType: string;
-  quantity: number;
-  previousQuantity: number;
-  newQuantity: number;
-  reason: string | null;
-  referenceNo: string | null;
-  notes: string | null;
-  performedBy: string | null;
-  performedAt: string;
-  isAnomaly: boolean;
-}
-
-export interface AuditSummary {
-  totalMovements: number;
-  totalReceived: number;
-  totalIssued: number;
-  uniqueItems: number;
-  uniquePersonnel: number;
-}
-
-export interface AuditPageResult {
-  rows: AuditMovementRow[];
-  total: number;
-  summary: AuditSummary;
-}
-
-export interface PersonnelActivityRow {
-  performedBy: string;
-  receiveCount: number;
-  issueCount: number;
-  totalQuantity: number;
-  distinctItems: number;
-}
-
-export interface ItemActivityRow {
-  itemId: string;
-  itemName: string;
-  itemSku: string;
-  receiveCount: number;
-  issueCount: number;
-  totalReceived: number;
-  totalIssued: number;
-  netChange: number;
-  currentQuantity: number;
-}
-
-export interface AlertFrequencyRow {
-  itemId: string;
-  itemName: string;
-  itemSku: string;
-  triggerCount: number;
-  lastTriggeredAt: string;
-  currentStatus: string;
-  currentQuantity: number;
-}
-
-export interface AuditAnalyticsResult {
-  summary: AuditSummary;
-  byPersonnel: PersonnelActivityRow[];
-  byItem: ItemActivityRow[];
-  alertFrequency: AlertFrequencyRow[];
-}
-
 // ─── ID Generation ───────────────────────────────────────────────────────────
 
 let idCounter = 1;
@@ -239,7 +101,7 @@ function generateSku(): string {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function stockStatusKey(currentQuantity: number, reorderQuantity: number): string {
+function stockStatusKey(currentQuantity: number, reorderQuantity: number): import("../../shared/types").StockStatus {
   if (currentQuantity <= 0) return "out_of_stock";
   if (currentQuantity <= reorderQuantity) return "low_stock";
   return "in_stock";
@@ -631,7 +493,7 @@ export function makeDatabaseService(
       .all() as Array<{ id: string; name: string }>;
 
     const targetPath = readSetting(db, "backup.target_path") ?? "";
-    const targetType = readSetting(db, "backup.target_type") ?? "local_folder";
+    const targetType = (readSetting(db, "backup.target_type") ?? "local_folder") as import("../../shared/types").BackupTargetType;
     const schedule = readSetting(db, "backup.schedule") ?? "";
     const retention = readSetting(db, "backup.retention") ?? "";
     const lastSuccessful = readSetting(db, "backup.last_successful") ?? "";

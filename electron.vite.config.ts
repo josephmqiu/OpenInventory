@@ -17,6 +17,27 @@ function copyInfrastructurePlugin(): Plugin {
   };
 }
 
+/** Rewrite /issue/* requests to serve issue.html through Vite's HTML pipeline.
+ *  Registered BEFORE Vite's SPA fallback so it intercepts the route first. */
+function issueRouteRewritePlugin(): Plugin {
+  return {
+    name: "issue-route-rewrite",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url && /^\/issue\/[^.]+/.test(req.url)) {
+          const htmlPath = resolve("src/renderer/issue.html");
+          let html = fs.readFileSync(htmlPath, "utf-8");
+          html = await server.transformIndexHtml(req.url, html);
+          res.writeHead(200, { "Content-Type": "text/html" });
+          res.end(html);
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin(), copyInfrastructurePlugin()],
@@ -41,10 +62,13 @@ export default defineConfig({
     root: resolve("src/renderer"),
     build: {
       rollupOptions: {
-        input: resolve("src/renderer/index.html"),
+        input: {
+          index: resolve("src/renderer/index.html"),
+          issue: resolve("src/renderer/issue.html"),
+        },
       },
     },
-    plugins: [react()],
+    plugins: [react(), issueRouteRewritePlugin()],
     server: {
       proxy: {
         "/api": "http://localhost:4123",

@@ -17,5 +17,5 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src/renderer/src"]
+  "include": ["src/shared", "src/renderer/src"]
 }
