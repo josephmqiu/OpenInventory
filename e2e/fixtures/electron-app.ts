@@ -13,7 +13,9 @@ import os from "os";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Worker-scoped: one Electron app shared across all serial tests
+// Worker-scoped: one Electron app shared across all serial tests in a worker.
+// Serial test suites (theme-and-language, lan-access, inventory-workflow) build
+// on shared state, so each test must NOT get a fresh app instance.
 export const test = base.extend<
   { page: Page; browserPage: Page },
   { electronApp: ElectronApplication; sharedPage: Page }
@@ -34,7 +36,22 @@ export const test = base.extend<
 
     await use(electronApp);
     await electronApp.close();
-    fs.rmSync(tempDir, { recursive: true, force: true });
+
+    // On Windows, SQLite file handles may not release immediately.
+    // Retry with back-off to avoid EBUSY in CI.
+    for (let i = 0; i < 5; i++) {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        break;
+      } catch {
+        if (i === 4) {
+          console.warn(`[e2e] Could not clean temp dir after 5 retries: ${tempDir}`);
+          break;
+        }
+        const delay = 100 * Math.pow(2, i);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
   }, { scope: "worker" }],
 
   sharedPage: [async ({ electronApp }, use) => {

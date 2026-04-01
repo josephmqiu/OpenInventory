@@ -1,4 +1,4 @@
-PRAGMA foreign_keys = ON;
+-- Pragmas are set by configureSqlitePragmas() in sqlite-pragmas.ts.
 
 CREATE TABLE IF NOT EXISTS suppliers (
     id TEXT PRIMARY KEY,

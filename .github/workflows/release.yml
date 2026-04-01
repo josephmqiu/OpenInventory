@@ -54,3 +54,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build && npx electron-builder --win --publish always
+      - name: Smoke test packaged app
+        shell: pwsh
+        run: |
+          # Use the unpacked app exe, not the NSIS installer
+          $exe = Get-ChildItem dist\win-unpacked\*.exe | Select-Object -First 1
+          if (-not $exe) { throw "No .exe found in dist/win-unpacked/" }
+          $tempDir = Join-Path $env:TEMP "oi-smoke-$(Get-Random)"
+          New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+          $proc = Start-Process -FilePath $exe.FullName -ArgumentList "--smoke-test","--user-data-dir=$tempDir" -PassThru
+          $proc | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue
+          if (-not $proc.HasExited) { $proc.Kill(); throw "Smoke test timed out after 60 seconds" }
+          if ($proc.ExitCode -ne 0) { throw "Smoke test failed with exit code $($proc.ExitCode)" }
+          Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue

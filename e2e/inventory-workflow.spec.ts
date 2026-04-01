@@ -151,14 +151,18 @@ test.describe.serial("inventory workflow", () => {
     await page.click("button.nav-item:has-text('Dashboard')");
     await expect(page.locator(".metrics-grid")).toBeVisible();
 
-    // Total Items = 3
+    // At least 3 items (this suite creates Bolts, Washers, Nuts; other suites in
+    // the same worker may have added more).
     const totalItems = page.locator(".metric-card", { has: page.locator(".metric-card__label:has-text('Total Items')") });
-    await expect(totalItems.locator(".metric-card__value")).toHaveText("3");
+    await expect.poll(
+      async () => Number(await totalItems.locator(".metric-card__value").textContent()),
+    ).toBeGreaterThanOrEqual(3);
 
     // Low Stock >= 1
     const lowStock = page.locator(".metric-card", { has: page.locator(".metric-card__label:has-text('Low Stock')") });
-    const lowStockValue = await lowStock.locator(".metric-card__value").textContent();
-    expect(Number(lowStockValue)).toBeGreaterThanOrEqual(1);
+    await expect.poll(
+      async () => Number(await lowStock.locator(".metric-card__value").textContent()),
+    ).toBeGreaterThanOrEqual(1);
   });
 
   test("alerts section shows low-stock alerts", async ({ page }) => {
@@ -169,10 +173,11 @@ test.describe.serial("inventory workflow", () => {
     await expect(page.locator(".alert-card").first()).toBeVisible({ timeout: 10_000 });
 
     // Verify at least one alert mentions an item we know is low
-    const alertTexts = await page.locator(".alert-card").allTextContents();
-    const hasRelevantAlert = alertTexts.some(
-      (text) => text.includes("Bolts M6") || text.includes("Washers M6"),
-    );
-    expect(hasRelevantAlert).toBe(true);
+    await expect.poll(async () => {
+      const alertTexts = await page.locator(".alert-card").allTextContents();
+      return alertTexts.some(
+        (text) => text.includes("Bolts M6") || text.includes("Washers M6"),
+      );
+    }).toBe(true);
   });
 });

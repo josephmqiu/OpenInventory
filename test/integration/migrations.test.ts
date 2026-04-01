@@ -1,16 +1,22 @@
 /**
- * Category E: Migration tests (5 tests)
+ * Category E: Migration tests
  *
- * Tests the migration system that will be ported from
- * src-tauri/src/infrastructure/migrations.rs.
- * Verifies fresh DB, idempotent re-run, legacy column cleanup, and schema shape.
+ * Tests the production migration runner from src/main/infrastructure/migrations.ts.
+ * Verifies fresh DB, idempotent re-run, legacy column cleanup, child-row safety,
+ * and final schema shape.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import Database from "better-sqlite3";
+import {
+  runPendingMigrations,
+  ensureMigrationsTable,
+  currentVersion,
+} from "../../src/main/infrastructure/migrations";
 import {
   createTestDb,
   createLegacyTestDb,
-  type TestDb,
+  seedItem,
+  seedMovement,
+  seedAlert,
 } from "../setup/test-db";
 
 const cleanups: (() => void)[] = [];
@@ -18,153 +24,6 @@ const cleanups: (() => void)[] = [];
 afterEach(() => {
   for (const fn of cleanups.splice(0)) fn();
 });
-
-// ─── Migration helpers matching the Rust implementation ──────────────────────
-
-function ensureMigrationsTable(db: Database.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-        version INTEGER PRIMARY KEY,
-        applied_at TEXT NOT NULL
-    );
-  `);
-}
-
-function currentVersion(db: Database.Database): number {
-  const row = db
-    .prepare("SELECT COALESCE(MAX(version), 0) as v FROM schema_migrations")
-    .get() as { v: number };
-  return row.v;
-}
-
-interface Migration {
-  version: number;
-  apply: (db: Database.Database) => void;
-}
-
-const MIGRATIONS: Migration[] = [
-  {
-    version: 1,
-    apply: () => {
-      /* baseline — no-op */
-    },
-  },
-  {
-    version: 2,
-    apply: (db: Database.Database) => {
-      // Drop dead columns from inventory_items
-      const hasDeadColumns = db
-        .prepare(
-          "SELECT COUNT(*) as c FROM pragma_table_info('inventory_items') WHERE name = 'min_quantity'",
-        )
-        .get() as { c: number };
-
-      if (hasDeadColumns.c === 0) return;
-
-      db.exec(`
-        CREATE TABLE inventory_items_new (
-            id TEXT PRIMARY KEY,
-            sku TEXT NOT NULL UNIQUE,
-            barcode TEXT,
-            name TEXT NOT NULL,
-            category TEXT NOT NULL,
-            location_id TEXT,
-            supplier_id TEXT,
-            unit_of_measure TEXT NOT NULL,
-            reorder_quantity INTEGER NOT NULL,
-            current_quantity INTEGER NOT NULL,
-            status TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY(location_id) REFERENCES locations(id),
-            FOREIGN KEY(supplier_id) REFERENCES suppliers(id)
-        );
-
-        INSERT INTO inventory_items_new
-            SELECT id, sku, barcode, name, category, location_id, supplier_id,
-                   unit_of_measure, reorder_quantity, current_quantity, status,
-                   created_at, updated_at
-            FROM inventory_items;
-
-        DROP TABLE inventory_items;
-        ALTER TABLE inventory_items_new RENAME TO inventory_items;
-
-        CREATE INDEX IF NOT EXISTS idx_inventory_items_name ON inventory_items(name);
-        CREATE INDEX IF NOT EXISTS idx_inventory_items_current_quantity ON inventory_items(current_quantity);
-      `);
-
-      // Drop dead columns from suppliers
-      const hasSupplierDeadColumns = db
-        .prepare(
-          "SELECT COUNT(*) as c FROM pragma_table_info('suppliers') WHERE name = 'contact_name'",
-        )
-        .get() as { c: number };
-
-      if (hasSupplierDeadColumns.c > 0) {
-        db.exec(`
-          CREATE TABLE suppliers_new (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-          );
-          INSERT INTO suppliers_new SELECT id, name, created_at, updated_at FROM suppliers;
-          DROP TABLE suppliers;
-          ALTER TABLE suppliers_new RENAME TO suppliers;
-        `);
-      }
-
-      // Drop dead columns from low_stock_alerts
-      const hasAlertDeadColumns = db
-        .prepare(
-          "SELECT COUNT(*) as c FROM pragma_table_info('low_stock_alerts') WHERE name = 'acknowledged_by'",
-        )
-        .get() as { c: number };
-
-      if (hasAlertDeadColumns.c > 0) {
-        db.exec(`
-          CREATE TABLE low_stock_alerts_new (
-              id TEXT PRIMARY KEY,
-              item_id TEXT NOT NULL,
-              threshold_quantity INTEGER NOT NULL,
-              quantity_at_trigger INTEGER NOT NULL,
-              status TEXT NOT NULL,
-              triggered_at TEXT NOT NULL,
-              resolved_at TEXT,
-              channel_summary TEXT,
-              FOREIGN KEY(item_id) REFERENCES inventory_items(id)
-          );
-          INSERT INTO low_stock_alerts_new
-              SELECT id, item_id, threshold_quantity, quantity_at_trigger,
-                     status, triggered_at, resolved_at, channel_summary
-              FROM low_stock_alerts;
-          DROP TABLE low_stock_alerts;
-          ALTER TABLE low_stock_alerts_new RENAME TO low_stock_alerts;
-
-          CREATE INDEX IF NOT EXISTS idx_low_stock_alerts_item_status ON low_stock_alerts(item_id, status);
-        `);
-      }
-
-      // Drop audit_logs table
-      db.exec("DROP TABLE IF EXISTS audit_logs;");
-    },
-  },
-];
-
-function runPendingMigrations(db: Database.Database): void {
-  ensureMigrationsTable(db);
-  const current = currentVersion(db);
-
-  for (const migration of MIGRATIONS.filter((m) => m.version > current)) {
-    const applyInTransaction = db.transaction(() => {
-      migration.apply(db);
-      db.prepare(
-        "INSERT INTO schema_migrations (version, applied_at) VALUES (?, datetime('now', 'localtime'))",
-      ).run(migration.version);
-    });
-    applyInTransaction();
-  }
-}
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -176,12 +35,12 @@ describe("migration system", () => {
     runPendingMigrations(t.db);
 
     const version = currentVersion(t.db);
-    expect(version).toBe(2);
+    expect(version).toBe(3);
 
     const count = t.db
       .prepare("SELECT COUNT(*) as c FROM schema_migrations")
       .get() as { c: number };
-    expect(count.c).toBe(2);
+    expect(count.c).toBe(3);
   });
 
   it("is idempotent — running twice does not duplicate entries", () => {
@@ -194,8 +53,8 @@ describe("migration system", () => {
     const count = t.db
       .prepare("SELECT COUNT(*) as c FROM schema_migrations")
       .get() as { c: number };
-    expect(count.c).toBe(2);
-    expect(currentVersion(t.db)).toBe(2);
+    expect(count.c).toBe(3);
+    expect(currentVersion(t.db)).toBe(3);
   });
 
   it("migration v2 removes dead columns from legacy database", () => {
@@ -235,6 +94,42 @@ describe("migration system", () => {
     expect(alertCols.c).toBe(0);
   });
 
+  it("migration v2 succeeds with existing child rows (movements + alerts)", () => {
+    const t = createLegacyTestDb();
+    cleanups.push(t.cleanup);
+
+    // Seed data with child rows referencing inventory_items
+    const itemId = seedItem(t.db, { currentQuantity: 5, reorderQuantity: 10 });
+    seedMovement(t.db, itemId, { type: "receive", quantity: 50 });
+    seedMovement(t.db, itemId, { type: "issue", quantity: 10 });
+    seedAlert(t.db, itemId, { status: "open" });
+
+    // This is the critical test: migration must succeed with child rows present.
+    // The old table-rebuild approach (DROP TABLE + RENAME) would fail here because
+    // foreign key constraints on inventory_movements and low_stock_alerts reference
+    // inventory_items. ALTER TABLE DROP COLUMN avoids this entirely.
+    runPendingMigrations(t.db);
+
+    expect(currentVersion(t.db)).toBe(3);
+
+    // Verify child data is preserved
+    const movements = t.db
+      .prepare("SELECT COUNT(*) as c FROM inventory_movements WHERE item_id = ?")
+      .get(itemId) as { c: number };
+    expect(movements.c).toBe(2);
+
+    const alerts = t.db
+      .prepare("SELECT COUNT(*) as c FROM low_stock_alerts WHERE item_id = ?")
+      .get(itemId) as { c: number };
+    expect(alerts.c).toBe(1);
+
+    // Verify dead columns are gone
+    const deadCol = t.db
+      .prepare("SELECT COUNT(*) as c FROM pragma_table_info('inventory_items') WHERE name = 'min_quantity'")
+      .get() as { c: number };
+    expect(deadCol.c).toBe(0);
+  });
+
   it("migration v2 is a no-op on clean databases (no dead columns)", () => {
     const t = createTestDb();
     cleanups.push(t.cleanup);
@@ -242,7 +137,7 @@ describe("migration system", () => {
     // Clean DB has no dead columns — migration 2 should not error
     runPendingMigrations(t.db);
 
-    expect(currentVersion(t.db)).toBe(2);
+    expect(currentVersion(t.db)).toBe(3);
 
     // Schema still intact
     const items = t.db
