@@ -1,7 +1,7 @@
 {
   "name": "inventory-monitor",
   "private": true,
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Desktop inventory monitoring and material issue tracking",
   "author": "OpenInventory",
   "license": "UNLICENSED",
