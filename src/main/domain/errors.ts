@@ -177,9 +177,22 @@ export type AppError =
   | ServerError
   | DatabaseError;
 
-/** Serialize any AppError to a plain string for IPC transport */
-export function serializeError(error: AppError): string {
-  return error.message;
+/** Serialize an AppError to a transport-safe object preserving _tag. */
+export function serializeAppError(error: unknown): { _tag: string; message: string; available?: number; requested?: number; language?: string } {
+  if (error && typeof error === "object" && "_tag" in error) {
+    const appError = error as AppError;
+    const base = { _tag: appError._tag, message: appError.message };
+    if (appError._tag === "InsufficientStockError") {
+      return {
+        ...base,
+        available: appError.available,
+        requested: appError.requested,
+        language: appError.language,
+      };
+    }
+    return base;
+  }
+  return { _tag: "ServerError", message: String(error) };
 }
 
 /** Map AppError to HTTP status code for LAN API */

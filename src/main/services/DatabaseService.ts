@@ -1469,13 +1469,16 @@ export function makeDatabaseService(
   };
 }
 
-/** Create a DatabaseService Layer from a db file path */
+/** Create a scoped DatabaseService Layer that closes the DB on scope finalization. */
 export function makeDatabaseLayer(
   dbPath: string,
   qrCodeGenerator?: (itemId: string, sku: string) => string,
 ): Layer.Layer<DatabaseService> {
-  return Layer.succeed(
+  return Layer.scoped(
     DatabaseService,
-    makeDatabaseService(dbPath, qrCodeGenerator),
+    Effect.acquireRelease(
+      Effect.sync(() => makeDatabaseService(dbPath, qrCodeGenerator)),
+      (service) => Effect.sync(() => service.close()),
+    ),
   );
 }

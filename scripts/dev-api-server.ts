@@ -7,8 +7,20 @@ import http from "http";
 import path from "path";
 import fs from "fs";
 import Database from "better-sqlite3";
+import { Schema } from "@effect/schema";
 import { makeDatabaseService } from "../src/main/services/DatabaseService";
 import { runPendingMigrations } from "../src/main/infrastructure/migrations";
+import { ValidationError } from "../src/main/domain/errors";
+import {
+  CreateInventoryItemBody,
+  UpdateInventoryItemBody,
+  StockMutationBody,
+  BatchIssueMaterialBody,
+  AddPersonnelBody,
+  UpdateLanguageBody,
+  UpdateBackupPlanBody,
+  PublicIssueBody,
+} from "../src/shared/schemas";
 
 const PORT = 4123;
 const DATA_DIR = path.join(process.cwd(), ".dev-data");
@@ -47,7 +59,7 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
   res.end(JSON.stringify(body));
 }
 
-function readBody(req: http.IncomingMessage): Promise<Json> {
+function readBody(req: http.IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let data = "";
     req.on("data", (chunk: string) => (data += chunk));
@@ -55,11 +67,21 @@ function readBody(req: http.IncomingMessage): Promise<Json> {
       try {
         resolve(data ? JSON.parse(data) : {});
       } catch {
-        reject(new Error("Invalid JSON body"));
+        reject(new ValidationError({ message: "Invalid JSON body" }));
       }
     });
     req.on("error", reject);
   });
+}
+
+function decodeBody<A, I>(schema: Schema.Schema<A, I>, raw: unknown): A {
+  try {
+    return Schema.decodeUnknownSync(schema)(raw);
+  } catch (e) {
+    throw new ValidationError({
+      message: e instanceof Error ? e.message : "Invalid request body.",
+    });
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -93,8 +115,9 @@ const server = http.createServer(async (req, res) => {
 
     // Create item
     if (pathname === "/api/items" && method === "POST") {
-      const body = await readBody(req);
-      const result = await runEffect(dbService.createInventoryItem(body as never));
+      const raw = await readBody(req);
+      const body = decodeBody(CreateInventoryItemBody, raw);
+      const result = await runEffect(dbService.createInventoryItem(body));
       sendJson(res, 201, result.snapshot);
       return;
     }
@@ -102,9 +125,10 @@ const server = http.createServer(async (req, res) => {
     // Item routes
     const itemMatch = pathname.match(/^\/api\/items\/([^/]+)$/);
     if (itemMatch && method === "PUT") {
-      const body = await readBody(req);
-      body.itemId = itemMatch[1];
-      const result = await runEffect(dbService.updateInventoryItem(body as never));
+      const raw = await readBody(req);
+      const decoded = decodeBody(UpdateInventoryItemBody, raw);
+      const body = { ...decoded, itemId: itemMatch[1] };
+      const result = await runEffect(dbService.updateInventoryItem(body));
       sendJson(res, 200, result.snapshot);
       return;
     }
@@ -116,9 +140,10 @@ const server = http.createServer(async (req, res) => {
     // Receive stock
     const receiveMatch = pathname.match(/^\/api\/items\/([^/]+)\/receive$/);
     if (receiveMatch && method === "POST") {
-      const body = await readBody(req);
-      body.itemId = receiveMatch[1];
-      const result = await runEffect(dbService.receiveStock(body as never));
+      const raw = await readBody(req);
+      const decoded = decodeBody(StockMutationBody, raw);
+      const body = { ...decoded, itemId: receiveMatch[1] };
+      const result = await runEffect(dbService.receiveStock(body));
       sendJson(res, 200, result.snapshot);
       return;
     }
@@ -126,9 +151,10 @@ const server = http.createServer(async (req, res) => {
     // Issue material
     const issueMatch = pathname.match(/^\/api\/items\/([^/]+)\/issue$/);
     if (issueMatch && method === "POST") {
-      const body = await readBody(req);
-      body.itemId = issueMatch[1];
-      const result = await runEffect(dbService.issueMaterial(body as never));
+      const raw = await readBody(req);
+      const decoded = decodeBody(StockMutationBody, raw);
+      const body = { ...decoded, itemId: issueMatch[1] };
+      const result = await runEffect(dbService.issueMaterial(body));
       sendJson(res, 200, result.snapshot);
       return;
     }
@@ -142,16 +168,18 @@ const server = http.createServer(async (req, res) => {
 
     // Batch issue
     if (pathname === "/api/items/batch-issue" && method === "POST") {
-      const body = await readBody(req);
-      const result = await runEffect(dbService.batchIssueMaterial(body as never));
+      const raw = await readBody(req);
+      const body = decodeBody(BatchIssueMaterialBody, raw);
+      const result = await runEffect(dbService.batchIssueMaterial(body));
       sendJson(res, 200, result.snapshot);
       return;
     }
 
     // Personnel
     if (pathname === "/api/personnel" && method === "POST") {
-      const body = await readBody(req);
-      sendJson(res, 201, await runEffect(dbService.addPersonnel(body as never)));
+      const raw = await readBody(req);
+      const body = decodeBody(AddPersonnelBody, raw);
+      sendJson(res, 201, await runEffect(dbService.addPersonnel(body)));
       return;
     }
     const personnelMatch = pathname.match(/^\/api\/personnel\/([^/]+)$/);
@@ -162,8 +190,9 @@ const server = http.createServer(async (req, res) => {
 
     // Backup
     if (pathname === "/api/backup-plan" && method === "PUT") {
-      const body = await readBody(req);
-      sendJson(res, 200, await runEffect(dbService.updateBackupPlan(body as never)));
+      const raw = await readBody(req);
+      const body = decodeBody(UpdateBackupPlanBody, raw);
+      sendJson(res, 200, await runEffect(dbService.updateBackupPlan(body)));
       return;
     }
     if (pathname === "/api/backup-now" && method === "POST") {
@@ -173,8 +202,9 @@ const server = http.createServer(async (req, res) => {
 
     // Language
     if (pathname === "/api/language" && method === "PUT") {
-      const body = await readBody(req);
-      await runEffect(dbService.updateLanguage(body.language as string));
+      const raw = await readBody(req);
+      const body = decodeBody(UpdateLanguageBody, raw);
+      await runEffect(dbService.updateLanguage(body.language));
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -195,9 +225,10 @@ const server = http.createServer(async (req, res) => {
     // Public issue — return PublicIssueContext shape (not full snapshot)
     const publicIssueMatch = pathname.match(/^\/public\/items\/([^/]+)\/issue$/);
     if (publicIssueMatch && method === "POST") {
-      const body = await readBody(req);
-      body.itemId = publicIssueMatch[1];
-      const result = await runEffect(dbService.issueMaterial(body as never));
+      const raw = await readBody(req);
+      const body = decodeBody(PublicIssueBody, raw);
+      const input = { ...body, itemId: publicIssueMatch[1] };
+      const result = await runEffect(dbService.issueMaterial(input));
       const item = result.snapshot.items.find((i) => i.id === publicIssueMatch[1]);
       sendJson(res, 200, { item: item ?? null, personnel: result.snapshot.personnel, language: result.snapshot.language });
       return;
@@ -239,9 +270,9 @@ const server = http.createServer(async (req, res) => {
   } catch (error: unknown) {
     if (error && typeof error === "object" && "_tag" in error) {
       const appError = error as AppError;
-      sendJson(res, errorToHttpStatus(appError), { message: appError.message });
+      sendJson(res, errorToHttpStatus(appError), { _tag: appError._tag, message: appError.message });
     } else {
-      sendJson(res, 500, { message: String(error) });
+      sendJson(res, 500, { _tag: "ServerError", message: String(error) });
     }
   }
 });

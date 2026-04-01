@@ -97,6 +97,18 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
     );
   }
 
+  if (!issueContext.item) {
+    return (
+      <>
+        <TopBar theme={theme} cycleTheme={cycleTheme} />
+        <div className="qi-state-screen">
+          <h2>{dictionary.appName}</h2>
+          <p>{dictionary.itemNotFound ?? "Item not found."}</p>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <TopBar theme={theme} cycleTheme={cycleTheme} />

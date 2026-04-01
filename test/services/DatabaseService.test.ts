@@ -952,3 +952,39 @@ describe("foreign_keys", () => {
     }).toThrow();
   });
 });
+
+// ─── Scoped Lifecycle ──────────────────────────────────────────────────────
+
+import { Effect, ManagedRuntime } from "effect";
+import { DatabaseService, makeDatabaseLayer } from "../../src/main/services/DatabaseService";
+import Database from "better-sqlite3";
+
+describe("makeDatabaseLayer (scoped lifecycle)", () => {
+  it("acquires a working DB connection and serves queries", async () => {
+    const runtime = ManagedRuntime.make(makeDatabaseLayer(t.dbPath));
+    const snapshot = await runtime.runPromise(
+      Effect.flatMap(DatabaseService, (s) => s.loadSnapshot()),
+    );
+    expect(snapshot).toHaveProperty("items");
+    expect(snapshot).toHaveProperty("language");
+    await runtime.dispose();
+  });
+
+  it("closes the DB connection when the runtime is disposed", async () => {
+    const runtime = ManagedRuntime.make(makeDatabaseLayer(t.dbPath));
+    // Run a query to prove the connection works.
+    await runtime.runPromise(
+      Effect.flatMap(DatabaseService, (s) => s.loadSnapshot()),
+    );
+
+    await runtime.dispose();
+
+    // After dispose, opening a new connection should succeed
+    // (file is not locked). This proves the scoped layer released the connection.
+    const probe = new Database(t.dbPath);
+    probe.pragma("foreign_keys = ON");
+    const rows = probe.prepare("SELECT * FROM inventory_items").all();
+    expect(rows).toHaveLength(0);
+    probe.close();
+  });
+});

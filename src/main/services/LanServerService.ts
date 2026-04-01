@@ -1,20 +1,14 @@
 import { Effect, Context, Layer } from "effect";
 import http from "http";
 import os from "os";
-import path from "path";
 import { createLanRouter } from "../infrastructure/lan/router";
 import { generateAccessKey } from "../infrastructure/lan/auth";
-import type { DatabaseServiceApi, LanAccessSettings } from "./DatabaseService";
+import { DatabaseService, type DatabaseServiceApi, type LanAccessSettings } from "./DatabaseService";
 import { backendMessages, normalizeBackendLanguage, ServerError, type AppError } from "../domain/errors";
+import type { LanAccessState } from "../../shared/types";
+export type { LanAccessState } from "../../shared/types";
 
-export interface LanAccessState {
-  enabled: boolean;
-  port: number;
-  accessKey: string;
-  urls: string[];
-  status: "running" | "stopped" | "error";
-  statusMessage: string;
-}
+// ─── Service Interface ───────────────────────────────────────────────────────
 
 export interface LanServerServiceApi {
   readonly loadState: () => Effect.Effect<LanAccessState, AppError>;
@@ -31,6 +25,256 @@ export class LanServerService extends Context.Tag("LanServerService")<
   LanServerServiceApi
 >() {}
 
+// ─── Shared Helpers ──────────────────────────────────────────────────────────
+
+function getLocalIps(): string[] {
+  const interfaces = os.networkInterfaces();
+  const ips: string[] = [];
+  for (const [, addrs] of Object.entries(interfaces)) {
+    if (!addrs) continue;
+    for (const addr of addrs) {
+      if (addr.family === "IPv4" && !addr.internal) {
+        ips.push(addr.address);
+      }
+    }
+  }
+  return ips;
+}
+
+function buildUrls(port: number): string[] {
+  return getLocalIps().map((ip) => `http://${ip}:${port}`);
+}
+
+// ─── Scoped Layer (production) ───────────────────────────────────────────────
+
+export function makeLanServerLayer(
+  rendererDir: string,
+): Layer.Layer<LanServerService, never, DatabaseService> {
+  return Layer.scoped(
+    LanServerService,
+    Effect.acquireRelease(
+      Effect.gen(function* () {
+        const db = yield* DatabaseService;
+        const mutex = yield* Effect.makeSemaphore(1);
+        const serialized = <A, E>(eff: Effect.Effect<A, E>) =>
+          mutex.withPermits(1)(eff);
+
+        // Mutable closure state
+        let server: http.Server | null = null;
+        let currentSettings: LanAccessSettings = {
+          enabled: false,
+          port: 4123,
+          accessKey: "",
+          primaryUrl: "",
+        };
+        let actualPort = 0;
+
+        function buildState(
+          status: "running" | "stopped" | "error",
+          statusMessage = "",
+        ): LanAccessState {
+          const port = actualPort || currentSettings.port;
+          return {
+            enabled: currentSettings.enabled,
+            port,
+            accessKey: currentSettings.accessKey,
+            urls: status === "running" ? buildUrls(port) : [],
+            status,
+            statusMessage,
+          };
+        }
+
+        // Wrap Node callback APIs as Effects
+        const startServerEffect: Effect.Effect<void, Error> = Effect.async<void, Error>(
+          (resume) => {
+            const doStart = (): void => {
+              const router = createLanRouter({
+                dbService: db,
+                getAccessKey: () => currentSettings.accessKey,
+                rendererDir,
+              });
+              server = http.createServer(router);
+              server.listen(currentSettings.port, () => {
+                const addr = server!.address();
+                actualPort =
+                  typeof addr === "object" && addr
+                    ? addr.port
+                    : currentSettings.port;
+                resume(Effect.void);
+              });
+              server.on("error", (err) => {
+                server = null;
+                resume(Effect.fail(err));
+              });
+            };
+            if (server) {
+              server.close(() => {
+                server = null;
+                doStart();
+              });
+            } else {
+              doStart();
+            }
+          },
+        );
+
+        const stopServerEffect: Effect.Effect<void> = Effect.async<void>(
+          (resume) => {
+            if (!server) {
+              resume(Effect.void);
+              return;
+            }
+            server.close(() => {
+              server = null;
+              resume(Effect.void);
+            });
+          },
+        );
+
+        const resolveMessages = db.loadSnapshot().pipe(
+          Effect.map((s) =>
+            backendMessages(normalizeBackendLanguage(s.language)),
+          ),
+          Effect.catchAll(() => Effect.succeed(backendMessages("en"))),
+        );
+
+        const api: LanServerServiceApi = {
+          loadState: () =>
+            serialized(
+              Effect.gen(function* () {
+                const messages = yield* resolveMessages;
+                const settings = yield* db.loadLanAccessSettings();
+                currentSettings = settings;
+
+                if (!settings.accessKey) {
+                  currentSettings.accessKey = generateAccessKey();
+                  yield* db.saveLanAccessSettings(currentSettings);
+                }
+
+                if (settings.enabled && !server) {
+                  const started = yield* startServerEffect.pipe(
+                    Effect.as(true),
+                    Effect.catchAll(() => Effect.succeed(false)),
+                  );
+                  if (started) {
+                    const urls = buildUrls(
+                      actualPort || currentSettings.port,
+                    );
+                    if (urls.length > 0) {
+                      currentSettings.primaryUrl = urls[0];
+                    }
+                    yield* db.saveLanAccessSettings(currentSettings);
+                    return buildState(
+                      "running",
+                      messages.lanServerRunning,
+                    );
+                  }
+                  return buildState("error", messages.lanServerError);
+                }
+
+                return buildState(
+                  server ? "running" : "stopped",
+                  server
+                    ? messages.lanServerRunning
+                    : messages.lanServerStopped,
+                );
+              }).pipe(
+                Effect.catchAll(() =>
+                  Effect.fail(
+                    new ServerError({
+                      message: backendMessages("en").serverError,
+                    }),
+                  ),
+                ),
+              ),
+            ),
+
+          updateAccess: (input) =>
+            serialized(
+              Effect.gen(function* () {
+                const messages = yield* resolveMessages;
+                currentSettings.enabled = input.enabled;
+                currentSettings.port = input.port;
+
+                if (input.enabled) {
+                  const started = yield* startServerEffect.pipe(
+                    Effect.as(true),
+                    Effect.catchAll(() => Effect.succeed(false)),
+                  );
+                  if (started) {
+                    const urls = buildUrls(input.port);
+                    currentSettings.primaryUrl = urls[0] ?? "";
+                  } else {
+                    currentSettings.primaryUrl = "";
+                  }
+                  yield* db.saveLanAccessSettings(currentSettings);
+                  return started
+                    ? buildState("running", messages.lanServerRunning)
+                    : buildState("error", messages.lanServerError);
+                }
+
+                yield* stopServerEffect;
+                currentSettings.primaryUrl = "";
+                yield* db.saveLanAccessSettings(currentSettings);
+                return buildState("stopped", messages.lanServerStopped);
+              }).pipe(
+                Effect.catchAll(() =>
+                  Effect.fail(
+                    new ServerError({
+                      message: backendMessages("en").serverError,
+                    }),
+                  ),
+                ),
+              ),
+            ),
+
+          regenerateAccessKey: () =>
+            serialized(
+              Effect.gen(function* () {
+                const messages = yield* resolveMessages;
+                currentSettings.accessKey = generateAccessKey();
+                yield* db.saveLanAccessSettings(currentSettings);
+
+                if (currentSettings.enabled && server) {
+                  yield* stopServerEffect;
+                  yield* startServerEffect.pipe(
+                    Effect.catchAll(() => Effect.void),
+                  );
+                }
+
+                return buildState(
+                  server ? "running" : "stopped",
+                  server
+                    ? messages.lanServerRunning
+                    : messages.lanServerStopped,
+                );
+              }).pipe(
+                Effect.catchAll(() =>
+                  Effect.fail(
+                    new ServerError({
+                      message: backendMessages("en").serverError,
+                    }),
+                  ),
+                ),
+              ),
+            ),
+
+          shutdown: () =>
+            stopServerEffect.pipe(
+              Effect.catchAll(() => Effect.void),
+            ) as Effect.Effect<void, AppError>,
+        };
+
+        return api;
+      }),
+      // Finalizer: stop the server when the scope closes
+      (api) => api.shutdown().pipe(Effect.catchAll(() => Effect.void)),
+    ),
+  );
+}
+
+// ─── Test-Only Factory (backward compatible, no layer) ───────────────────────
+
 export function makeLanServerService(
   dbService: DatabaseServiceApi,
   rendererDir: string,
@@ -43,27 +287,11 @@ export function makeLanServerService(
     primaryUrl: "",
   };
 
-  function getLocalIps(): string[] {
-    const interfaces = os.networkInterfaces();
-    const ips: string[] = [];
-    for (const [, addrs] of Object.entries(interfaces)) {
-      if (!addrs) continue;
-      for (const addr of addrs) {
-        if (addr.family === "IPv4" && !addr.internal) {
-          ips.push(addr.address);
-        }
-      }
-    }
-    return ips;
-  }
-
-  function buildUrls(port: number): string[] {
-    return getLocalIps().map((ip) => `http://${ip}:${port}`);
-  }
+  let actualPort = 0;
 
   function buildState(
     status: "running" | "stopped" | "error",
-    statusMessage: string = "",
+    statusMessage = "",
   ): LanAccessState {
     const port = actualPort || currentSettings.port;
     return {
@@ -75,9 +303,6 @@ export function makeLanServerService(
       statusMessage,
     };
   }
-
-  /** The actual port the server is listening on (may differ from config when port is 0). */
-  let actualPort = 0;
 
   async function startServer(): Promise<void> {
     if (server) {
@@ -95,7 +320,10 @@ export function makeLanServerService(
     return new Promise<void>((resolve, reject) => {
       server!.listen(currentSettings.port, () => {
         const addr = server!.address();
-        actualPort = typeof addr === "object" && addr ? addr.port : currentSettings.port;
+        actualPort =
+          typeof addr === "object" && addr
+            ? addr.port
+            : currentSettings.port;
         resolve();
       });
       server!.on("error", (err) => {
@@ -130,13 +358,17 @@ export function makeLanServerService(
       return Effect.tryPromise({
         try: async () => {
           messages = await resolveMessages();
-          const settings = await Effect.runPromise(dbService.loadLanAccessSettings());
+          const settings = await Effect.runPromise(
+            dbService.loadLanAccessSettings(),
+          );
           currentSettings = settings;
 
           if (!settings.accessKey) {
             const newKey = generateAccessKey();
             currentSettings.accessKey = newKey;
-            await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
+            await Effect.runPromise(
+              dbService.saveLanAccessSettings(currentSettings),
+            );
           }
 
           if (settings.enabled && !server) {
@@ -145,7 +377,9 @@ export function makeLanServerService(
               const urls = buildUrls(currentSettings.port);
               if (urls.length > 0) {
                 currentSettings.primaryUrl = urls[0];
-                await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
+                await Effect.runPromise(
+                  dbService.saveLanAccessSettings(currentSettings),
+                );
               }
               return buildState("running", messages.lanServerRunning);
             } catch {
@@ -175,17 +409,23 @@ export function makeLanServerService(
               await startServer();
               const urls = buildUrls(input.port);
               currentSettings.primaryUrl = urls[0] ?? "";
-              await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
+              await Effect.runPromise(
+                dbService.saveLanAccessSettings(currentSettings),
+              );
               return buildState("running", messages.lanServerRunning);
             } catch {
-              await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
+              await Effect.runPromise(
+                dbService.saveLanAccessSettings(currentSettings),
+              );
               return buildState("error", messages.lanServerError);
             }
           }
 
           await stopServer();
           currentSettings.primaryUrl = "";
-          await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
+          await Effect.runPromise(
+            dbService.saveLanAccessSettings(currentSettings),
+          );
           return buildState("stopped", messages.lanServerStopped);
         },
         catch: () => new ServerError({ message: messages.serverError }),
@@ -199,10 +439,11 @@ export function makeLanServerService(
           messages = await resolveMessages();
           const newKey = generateAccessKey();
           currentSettings.accessKey = newKey;
-          await Effect.runPromise(dbService.saveLanAccessSettings(currentSettings));
+          await Effect.runPromise(
+            dbService.saveLanAccessSettings(currentSettings),
+          );
 
           if (currentSettings.enabled && server) {
-            // Restart server to pick up new key
             await stopServer();
             await startServer();
           }
