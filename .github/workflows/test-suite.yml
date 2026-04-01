@@ -54,4 +54,11 @@ jobs:
       - name: Build app
         run: npm run build
       - name: Run end-to-end tests
-        run: npm run test:e2e
+        run: npm run test:e2e:run
+      - name: Upload Playwright traces
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces-${{ matrix.os }}
+          path: test-results/
+          retention-days: 7

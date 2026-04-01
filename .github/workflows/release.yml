@@ -31,12 +31,43 @@ jobs:
       - run: npm ci
       - name: Rebuild better-sqlite3 for Electron
         run: npx electron-rebuild -f -o better-sqlite3
-      - name: Build and publish
+      - name: Build app
+        run: npm run build && npx electron-builder --mac --${{ matrix.arch }}
+      - name: Smoke test packaged app
+        if: matrix.arch == 'x64'
+        run: |
+          APP=$(find dist/mac -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP" ]; then echo "No .app found in dist/mac/"; exit 1; fi
+          TEMP_DIR=$(mktemp -d)
+          EXECUTABLE=$(defaults read "$APP/Contents/Info" CFBundleExecutable)
+          # --smoke-test mode: app verifies DB init then calls app.exit(0)
+          "$APP/Contents/MacOS/$EXECUTABLE" --smoke-test --user-data-dir="$TEMP_DIR" &
+          PID=$!
+          # Wait up to 60s for the process to exit on its own
+          for i in $(seq 1 60); do
+            if ! kill -0 $PID 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if kill -0 $PID 2>/dev/null; then
+            kill $PID
+            rm -rf "$TEMP_DIR"
+            echo "Smoke test timed out after 60s"
+            exit 1
+          fi
+          wait $PID
+          EXIT=$?
+          rm -rf "$TEMP_DIR"
+          if [ "$EXIT" -ne 0 ]; then
+            echo "Smoke test failed with exit code $EXIT"
+            exit 1
+          fi
+          echo "Smoke test passed (exit code 0)"
+      - name: Publish release artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-        run: npm run build && npx electron-builder --mac --${{ matrix.arch }} --publish always
+        run: npx electron-builder --mac --${{ matrix.arch }} --publish always
 
   build-windows:
     needs: [test-suite]
@@ -50,14 +81,11 @@ jobs:
       - run: npm ci
       - name: Rebuild better-sqlite3 for Electron
         run: npx electron-rebuild -f -o better-sqlite3
-      - name: Build and publish
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build && npx electron-builder --win --publish always
+      - name: Build app
+        run: npm run build && npx electron-builder --win
       - name: Smoke test packaged app
         shell: pwsh
         run: |
-          # Use the unpacked app exe, not the NSIS installer
           $exe = Get-ChildItem dist\win-unpacked\*.exe | Select-Object -First 1
           if (-not $exe) { throw "No .exe found in dist/win-unpacked/" }
           $tempDir = Join-Path $env:TEMP "oi-smoke-$(Get-Random)"
@@ -67,3 +95,7 @@ jobs:
           if (-not $proc.HasExited) { $proc.Kill(); throw "Smoke test timed out after 60 seconds" }
           if ($proc.ExitCode -ne 0) { throw "Smoke test failed with exit code $($proc.ExitCode)" }
           Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
+      - name: Publish release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish always
