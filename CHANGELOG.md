@@ -2,7 +2,7 @@
 
 All notable changes to OpenInventory will be documented in this file.
 
-## [0.0.2] - 2026-03-31
+## [0.0.4] - 2026-03-31
 
 ### Changed
 - Database lifecycle is now a scoped Effect resource that closes the connection on app shutdown via ManagedRuntime
