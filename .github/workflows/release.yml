@@ -9,7 +9,11 @@ permissions:
   contents: write
 
 jobs:
+  test-suite:
+    uses: ./.github/workflows/test-suite.yml
+
   build-mac:
+    needs: [test-suite]
     strategy:
       matrix:
         include:
@@ -25,8 +29,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Run tests
-        run: npm run test && npm run test:backend
       - name: Rebuild better-sqlite3 for Electron
         run: npx electron-rebuild -f -o better-sqlite3
       - name: Build and publish
@@ -37,6 +39,7 @@ jobs:
         run: npm run build && npx electron-builder --mac --${{ matrix.arch }} --publish always
 
   build-windows:
+    needs: [test-suite]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,8 +48,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Run tests
-        run: npm run test && npm run test:backend
       - name: Rebuild better-sqlite3 for Electron
         run: npx electron-rebuild -f -o better-sqlite3
       - name: Build and publish
