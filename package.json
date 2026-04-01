@@ -23,7 +23,8 @@
     "test:e2e": "electron-vite build && npx tsx scripts/prepare-e2e.ts && npx playwright test",
     "test:e2e:cleanup": "npm rebuild better-sqlite3",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "prepare": "husky"
   },
   "dependencies": {
     "@effect/platform": "^0.96.0",
@@ -55,6 +56,7 @@
     "electron-vite": "^5.0.0",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
+    "husky": "^9.1.7",
     "jsdom": "^29.0.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
