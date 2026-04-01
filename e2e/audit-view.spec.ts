@@ -175,9 +175,7 @@ test.describe.serial("audit view", () => {
     await expect(page.locator("button:has-text('Back To List')")).toBeVisible();
 
     // Drill-down table should have Balance column
-    const headers = page.locator("table thead th");
-    const headerTexts = await headers.allTextContents();
-    expect(headerTexts).toContain("Balance");
+    await expect(page.locator("table thead th:has-text('Balance')")).toBeVisible({ timeout: 5_000 });
 
     // Should show movements for Audit Widget
     await expect(page.locator("table tbody tr").first()).toBeVisible();
