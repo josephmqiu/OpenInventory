@@ -5,6 +5,31 @@ interface Migration {
   apply: (db: Database.Database) => void;
 }
 
+/** Check whether a column exists on a table. */
+function hasColumn(
+  db: Database.Database,
+  table: string,
+  column: string,
+): boolean {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) as c FROM pragma_table_info('${table}') WHERE name = ?`,
+    )
+    .get(column) as { c: number };
+  return row.c > 0;
+}
+
+/** Drop a column if it exists (idempotent). Requires SQLite 3.35+. */
+function dropColumnIfExists(
+  db: Database.Database,
+  table: string,
+  column: string,
+): void {
+  if (hasColumn(db, table, column)) {
+    db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+  }
+}
+
 const MIGRATIONS: Migration[] = [
   {
     version: 1,
@@ -15,104 +40,33 @@ const MIGRATIONS: Migration[] = [
   {
     version: 2,
     apply: (db) => {
-      // Drop dead columns from inventory_items
-      const hasDeadColumns = db
-        .prepare(
-          "SELECT COUNT(*) as c FROM pragma_table_info('inventory_items') WHERE name = 'min_quantity'",
-        )
-        .get() as { c: number };
+      // Remove dead columns from inventory_items
+      dropColumnIfExists(db, "inventory_items", "min_quantity");
+      dropColumnIfExists(db, "inventory_items", "description");
+      dropColumnIfExists(db, "inventory_items", "cost_per_unit");
 
-      if (hasDeadColumns.c === 0) return;
-
-      // Temporarily disable FK enforcement so DROP TABLE succeeds even
-      // when child rows exist in inventory_movements / low_stock_alerts.
-      db.pragma("foreign_keys = OFF");
-
+      // Ensure indexes exist on inventory_items (may not exist on older DBs)
       db.exec(`
-        CREATE TABLE inventory_items_new (
-            id TEXT PRIMARY KEY,
-            sku TEXT NOT NULL UNIQUE,
-            barcode TEXT,
-            name TEXT NOT NULL,
-            category TEXT NOT NULL,
-            location_id TEXT,
-            supplier_id TEXT,
-            unit_of_measure TEXT NOT NULL,
-            reorder_quantity INTEGER NOT NULL,
-            current_quantity INTEGER NOT NULL,
-            status TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY(location_id) REFERENCES locations(id),
-            FOREIGN KEY(supplier_id) REFERENCES suppliers(id)
-        );
-        INSERT INTO inventory_items_new
-            SELECT id, sku, barcode, name, category, location_id, supplier_id,
-                   unit_of_measure, reorder_quantity, current_quantity, status,
-                   created_at, updated_at
-            FROM inventory_items;
-        DROP TABLE inventory_items;
-        ALTER TABLE inventory_items_new RENAME TO inventory_items;
         CREATE INDEX IF NOT EXISTS idx_inventory_items_name ON inventory_items(name);
         CREATE INDEX IF NOT EXISTS idx_inventory_items_current_quantity ON inventory_items(current_quantity);
       `);
 
-      // Drop dead columns from suppliers
-      const hasSupplierDeadColumns = db
-        .prepare(
-          "SELECT COUNT(*) as c FROM pragma_table_info('suppliers') WHERE name = 'contact_name'",
-        )
-        .get() as { c: number };
+      // Remove dead columns from suppliers
+      dropColumnIfExists(db, "suppliers", "contact_name");
+      dropColumnIfExists(db, "suppliers", "phone");
+      dropColumnIfExists(db, "suppliers", "email");
 
-      if (hasSupplierDeadColumns.c > 0) {
-        db.exec(`
-          CREATE TABLE suppliers_new (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-          );
-          INSERT INTO suppliers_new SELECT id, name, created_at, updated_at FROM suppliers;
-          DROP TABLE suppliers;
-          ALTER TABLE suppliers_new RENAME TO suppliers;
-        `);
-      }
+      // Remove dead columns from low_stock_alerts
+      dropColumnIfExists(db, "low_stock_alerts", "acknowledged_by");
+      dropColumnIfExists(db, "low_stock_alerts", "acknowledged_at");
 
-      // Drop dead columns from low_stock_alerts
-      const hasAlertDeadColumns = db
-        .prepare(
-          "SELECT COUNT(*) as c FROM pragma_table_info('low_stock_alerts') WHERE name = 'acknowledged_by'",
-        )
-        .get() as { c: number };
-
-      if (hasAlertDeadColumns.c > 0) {
-        db.exec(`
-          CREATE TABLE low_stock_alerts_new (
-              id TEXT PRIMARY KEY,
-              item_id TEXT NOT NULL,
-              threshold_quantity INTEGER NOT NULL,
-              quantity_at_trigger INTEGER NOT NULL,
-              status TEXT NOT NULL,
-              triggered_at TEXT NOT NULL,
-              resolved_at TEXT,
-              channel_summary TEXT,
-              FOREIGN KEY(item_id) REFERENCES inventory_items(id)
-          );
-          INSERT INTO low_stock_alerts_new
-              SELECT id, item_id, threshold_quantity, quantity_at_trigger,
-                     status, triggered_at, resolved_at, channel_summary
-              FROM low_stock_alerts;
-          DROP TABLE low_stock_alerts;
-          ALTER TABLE low_stock_alerts_new RENAME TO low_stock_alerts;
-          CREATE INDEX IF NOT EXISTS idx_low_stock_alerts_item_status ON low_stock_alerts(item_id, status);
-        `);
-      }
+      // Ensure index exists on low_stock_alerts
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_low_stock_alerts_item_status ON low_stock_alerts(item_id, status);
+      `);
 
       // Drop audit_logs table
       db.exec("DROP TABLE IF EXISTS audit_logs;");
-
-      // Re-enable FK enforcement after all table rebuilds are complete.
-      db.pragma("foreign_keys = ON");
     },
   },
   {
@@ -130,7 +84,7 @@ const MIGRATIONS: Migration[] = [
   },
 ];
 
-function ensureMigrationsTable(db: Database.Database): void {
+export function ensureMigrationsTable(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
         version INTEGER PRIMARY KEY,
@@ -139,7 +93,7 @@ function ensureMigrationsTable(db: Database.Database): void {
   `);
 }
 
-function currentVersion(db: Database.Database): number {
+export function currentVersion(db: Database.Database): number {
   const row = db
     .prepare("SELECT COALESCE(MAX(version), 0) as v FROM schema_migrations")
     .get() as { v: number };

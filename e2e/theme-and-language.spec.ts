@@ -1,58 +1,52 @@
 import { test, expect } from "./fixtures/electron-app";
 
+// empty seed — no data needed for theme/language tests
+
 test.describe.serial("theme and language", () => {
   // ── Theme cycling ──────────────────────────────────────────────────
 
-  test("starts in auto mode (no data-theme attribute)", async ({ page }) => {
-    const themeBtn = page.locator(".topbar__controls button[aria-label]").first();
+  test("starts in auto mode", async ({ page }) => {
+    const themeBtn = page.getByTestId("theme-toggle");
     await expect(themeBtn).toHaveAttribute("aria-label", "Auto");
 
     // Auto mode: no data-theme on <html> (defaults to dark unless system prefers light)
     const dataTheme = await page.locator("html").getAttribute("data-theme");
-    // In auto mode it's either "light" or absent depending on system preference
     expect(dataTheme === null || dataTheme === "light").toBe(true);
   });
 
   test("cycles to light mode", async ({ page }) => {
-    const themeBtn = page.locator(".topbar__controls button[aria-label='Auto']");
-    await themeBtn.click();
+    await page.getByTestId("theme-toggle").click();
 
-    // After clicking auto → goes to light
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    await expect(page.locator(".topbar__controls button[aria-label='Light']")).toBeVisible();
+    await expect(page.getByTestId("theme-toggle")).toHaveAttribute("aria-label", "Light");
   });
 
   test("cycles to dark mode", async ({ page }) => {
-    const themeBtn = page.locator(".topbar__controls button[aria-label='Light']");
-    await themeBtn.click();
+    await page.getByTestId("theme-toggle").click();
 
-    // After clicking light → goes to dark (no data-theme attribute)
-    await expect(page.locator(".topbar__controls button[aria-label='Dark']")).toBeVisible();
+    await expect(page.getByTestId("theme-toggle")).toHaveAttribute("aria-label", "Dark");
     const dataTheme = await page.locator("html").getAttribute("data-theme");
     expect(dataTheme).toBeNull();
   });
 
   test("cycles back to auto mode", async ({ page }) => {
-    const themeBtn = page.locator(".topbar__controls button[aria-label='Dark']");
-    await themeBtn.click();
+    await page.getByTestId("theme-toggle").click();
 
-    await expect(page.locator(".topbar__controls button[aria-label='Auto']")).toBeVisible();
+    await expect(page.getByTestId("theme-toggle")).toHaveAttribute("aria-label", "Auto");
   });
 
   // ── Language switching ─────────────────────────────────────────────
 
-  test("switches to Chinese (zh-CN)", async ({ page }) => {
+  test("switches to Chinese and verifies labels", async ({ page }) => {
     // Navigate to Dashboard so we have a known section
-    await page.click("button.nav-item:has-text('Dashboard')");
+    await page.getByTestId("nav-dashboard").click();
     await expect(page.locator("button.nav-item").first()).toHaveText("Dashboard");
 
-    // Switch to Chinese via language toggle button (shows "中" when in English)
-    await page.click(".topbar__controls button:has-text('中')");
+    // Switch to Chinese
+    await page.getByTestId("lang-toggle").click();
 
     // Verify nav items switched to Chinese
     await expect(page.locator("button.nav-item").first()).toHaveText("概览");
-
-    // Verify topbar title switched
     await expect(page.locator(".topbar h2")).toHaveText("概览");
 
     // Verify other nav items
@@ -61,34 +55,21 @@ test.describe.serial("theme and language", () => {
     await expect(page.locator("button.nav-item:has-text('预警')")).toBeVisible();
     await expect(page.locator("button.nav-item:has-text('人员管理')")).toBeVisible();
     await expect(page.locator("button.nav-item:has-text('设置')")).toBeVisible();
-  });
 
-  test("Chinese labels apply to section content", async ({ page }) => {
-    // Navigate to a section and verify content is in Chinese
-    await page.click("button.nav-item:has-text('人员管理')");
+    // Verify section content in Chinese
+    await page.locator("button.nav-item:has-text('人员管理')").click();
     await expect(page.locator(".topbar h2")).toHaveText("人员管理");
+
+    // Theme button aria-label should be in Chinese
+    await expect(page.getByTestId("theme-toggle")).toHaveAttribute("aria-label", "自动");
   });
 
   test("switches back to English", async ({ page }) => {
-    // Click language toggle (shows "EN" when in Chinese)
-    await page.click(".topbar__controls button:has-text('EN')");
+    await page.getByTestId("lang-toggle").click();
 
-    // Verify nav items back to English
     await expect(page.locator("button.nav-item").first()).toHaveText("Dashboard");
     await expect(page.locator("button.nav-item:has-text('Inventory')")).toBeVisible();
     await expect(page.locator("button.nav-item:has-text('Personnel')")).toBeVisible();
-  });
-
-  test("theme button labels update with language", async ({ page }) => {
-    // Switch to Chinese
-    await page.click(".topbar__controls button:has-text('中')");
-
-    // Theme button aria-label should now be in Chinese
-    const themeBtn = page.locator(".topbar__controls button[aria-label='自动']");
-    await expect(themeBtn).toBeVisible();
-
-    // Switch back to English
-    await page.click(".topbar__controls button:has-text('EN')");
-    await expect(page.locator(".topbar__controls button[aria-label='Auto']")).toBeVisible();
+    await expect(page.getByTestId("theme-toggle")).toHaveAttribute("aria-label", "Auto");
   });
 });

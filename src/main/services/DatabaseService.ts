@@ -13,6 +13,7 @@ import {
   normalizeBackendLanguage,
   type AppError,
 } from "../domain/errors";
+import { configureSqlitePragmas } from "../infrastructure/sqlite-pragmas";
 
 // ─── Shared Types (imported from single source of truth) ────────────────────
 
@@ -126,6 +127,31 @@ function optionalText(value: string): string | null {
 
 function backupStatusKey(targetPath: string): string {
   return targetPath.trim() === "" ? "warning" : "healthy";
+}
+
+/**
+ * Validate a backup target path: must be absolute and writable.
+ * Throws ValidationError with a localized message on failure.
+ */
+function validateBackupPath(
+  targetPath: string,
+  messages: ReturnType<typeof backendMessages>,
+): void {
+  if (targetPath === "") return; // empty is allowed (clears the path)
+  // Resolve to canonical form and reject paths with traversal segments.
+  const resolved = path.resolve(targetPath);
+  if (!path.isAbsolute(resolved) || resolved !== path.resolve(path.normalize(targetPath))) {
+    throw new ValidationError({ message: messages.backupTargetPathNotAbsolute });
+  }
+  // Probe write access: create a temp file, then delete it.
+  try {
+    fs.mkdirSync(resolved, { recursive: true });
+    const probe = path.join(resolved, `.oi-write-probe-${Date.now()}`);
+    fs.writeFileSync(probe, "");
+    fs.unlinkSync(probe);
+  } catch {
+    throw new ValidationError({ message: messages.backupTargetPathNotWritable });
+  }
 }
 
 function localizedDatabaseError(db: Database.Database): DatabaseError {
@@ -414,7 +440,7 @@ export function makeDatabaseService(
 
   // Init DB
   const db = new Database(dbPath);
-  db.pragma("foreign_keys = ON");
+  configureSqlitePragmas(db);
 
   // Generate QR data URL (or empty string if no generator)
   const qrDataUrl = qrCodeGenerator ?? (() => "");
@@ -948,7 +974,9 @@ export function makeDatabaseService(
     updateBackupPlan: (input) =>
       Effect.try({
         try: () => {
+          const messages = backendMessages(currentLanguage(db));
           const targetPath = input.targetPath.trim();
+          validateBackupPath(targetPath, messages);
           const schedule = input.schedule.trim();
           const retention = input.retention.trim();
           const status = backupStatusKey(targetPath);
@@ -964,7 +992,10 @@ export function makeDatabaseService(
 
           return loadSnapshotSync();
         },
-        catch: () => localizedDatabaseError(db),
+        catch: (e) => {
+          if (e instanceof ValidationError) return e;
+          return localizedDatabaseError(db);
+        },
       }),
 
     backupNow: () =>
@@ -977,6 +1008,7 @@ export function makeDatabaseService(
               message: messages.backupTargetPathRequired,
             });
           }
+          validateBackupPath(targetPath, messages);
 
           // Create timestamped backup
           const timestamp = new Date()

@@ -128,6 +128,7 @@ export function AuditPanel({ dictionary, language, personnel }: AuditPanelProps)
         <button
           type="button"
           className={`audit-tab${tab === "log" ? " audit-tab--active" : ""}`}
+          data-testid="audit-tab-log"
           role="tab"
           aria-selected={tab === "log"}
           onClick={() => handleTabChange("log")}
@@ -137,6 +138,7 @@ export function AuditPanel({ dictionary, language, personnel }: AuditPanelProps)
         <button
           type="button"
           className={`audit-tab${tab === "summary" ? " audit-tab--active" : ""}`}
+          data-testid="audit-tab-summary"
           role="tab"
           aria-selected={tab === "summary"}
           onClick={() => handleTabChange("summary")}

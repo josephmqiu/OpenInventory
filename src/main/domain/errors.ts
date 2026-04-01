@@ -33,6 +33,8 @@ type BackendMessages = {
   batchIssueItemNotFound: (itemId: string) => string;
   batchIssueInsufficientStock: (itemName: string, sku: string, requested: number, available: number) => string;
   backupTargetPathRequired: string;
+  backupTargetPathNotAbsolute: string;
+  backupTargetPathNotWritable: string;
   requestBodyTooLarge: string;
   invalidJsonBody: string;
   forbidden: string;
@@ -76,6 +78,8 @@ const BACKEND_MESSAGES: Record<BackendLanguage, BackendMessages> = {
     batchIssueInsufficientStock: (itemName, sku, requested, available) =>
       `Batch issue failed for ${itemName} (${sku}): cannot issue ${requested} units because only ${available} are available.`,
     backupTargetPathRequired: "Backup target path is required before running a backup.",
+    backupTargetPathNotAbsolute: "Backup target path must be an absolute path (e.g. C:\\Backups or /backups).",
+    backupTargetPathNotWritable: "Cannot write to the backup target path. Check that the directory exists and you have write permissions.",
     requestBodyTooLarge: "Request body is too large.",
     invalidJsonBody: "Invalid JSON body.",
     forbidden: "Forbidden.",
@@ -116,6 +120,8 @@ const BACKEND_MESSAGES: Record<BackendLanguage, BackendMessages> = {
     batchIssueInsufficientStock: (itemName, sku, requested, available) =>
       `批量出库失败：${itemName}（${sku}）最多只能出库 ${available} 件，不能出库 ${requested} 件。`,
     backupTargetPathRequired: "执行备份前需要先填写备份目标路径。",
+    backupTargetPathNotAbsolute: "备份目标路径必须是绝对路径（例如 C:\\Backups 或 /backups）。",
+    backupTargetPathNotWritable: "无法写入备份目标路径。请检查目录是否存在以及是否有写入权限。",
     requestBodyTooLarge: "请求体过大。",
     invalidJsonBody: "JSON 请求体无效。",
     forbidden: "禁止访问。",

@@ -415,6 +415,7 @@ export function ActionPanel({
           <div className="action-panel__footer">
             <button
               className={action === "removeItem" ? "button-danger" : undefined}
+              data-testid="action-submit"
               onClick={() => void handleSubmit()}
               disabled={submitDisabled}
               type="button"

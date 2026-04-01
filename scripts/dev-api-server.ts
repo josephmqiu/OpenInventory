@@ -10,6 +10,7 @@ import Database from "better-sqlite3";
 import { Schema } from "@effect/schema";
 import { makeDatabaseService } from "../src/main/services/DatabaseService";
 import { runPendingMigrations } from "../src/main/infrastructure/migrations";
+import { configureSqlitePragmas } from "../src/main/infrastructure/sqlite-pragmas";
 import { ValidationError } from "../src/main/domain/errors";
 import {
   CreateInventoryItemBody,
@@ -30,7 +31,7 @@ const SCHEMA_PATH = path.join(process.cwd(), "src/main/infrastructure/schema.sql
 // Initialize DB
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const initDb = new Database(DB_PATH);
-initDb.pragma("foreign_keys = ON");
+configureSqlitePragmas(initDb);
 if (fs.existsSync(SCHEMA_PATH)) {
   initDb.exec(fs.readFileSync(SCHEMA_PATH, "utf-8"));
 }

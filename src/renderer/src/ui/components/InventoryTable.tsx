@@ -88,6 +88,7 @@ export function InventoryTable({
                       <button
                         aria-label={`${dictionary.issueMaterial}: ${item.name}`}
                         className="button-secondary button-inline button-icon"
+                        data-testid={`issue-btn-${item.sku}`}
                         disabled={busy}
                         onClick={() => onIssueMaterial(item.id)}
                         type="button"

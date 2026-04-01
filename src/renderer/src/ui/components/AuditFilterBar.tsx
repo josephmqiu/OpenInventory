@@ -195,10 +195,10 @@ export function AuditFilterBar({
           aria-label={dictionary.textSearch}
         />
         <div className="audit-filter-bar__actions">
-          <button type="button" onClick={applyFilters} disabled={disabled}>
+          <button type="button" data-testid="audit-filter-apply" onClick={applyFilters} disabled={disabled}>
             {dictionary.applyFilters}
           </button>
-          <button type="button" className="button-secondary" onClick={clearFilters} disabled={disabled}>
+          <button type="button" className="button-secondary" data-testid="audit-filter-clear" onClick={clearFilters} disabled={disabled}>
             {dictionary.clearFilters}
           </button>
         </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { localizeUnit, type Dictionary } from "../../app/i18n";
 import type { BatchIssueMaterialInput, InventoryItem, Language, PersonnelMember } from "../../domain/models";
 
@@ -37,14 +37,27 @@ export function BatchIssuePanel({
   const [reason, setReason] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [localSuccess, setLocalSuccess] = useState<string | null>(null);
+  const previousItemIdsKeyRef = useRef<string | null>(null);
+  const itemIdsKey = useMemo(
+    () => JSON.stringify(items.map((item) => item.id).sort()),
+    [items],
+  );
 
   useEffect(() => {
+    const itemIdsChanged = previousItemIdsKeyRef.current !== itemIdsKey;
+    previousItemIdsKeyRef.current = itemIdsKey;
+
+    if (!itemIdsChanged) {
+      setPerformedBy((current) => current || personnel[0]?.name || "");
+      return;
+    }
+
     setQuantities(Object.fromEntries(items.map((item) => [item.id, ""])));
     setPerformedBy((current) => current || personnel[0]?.name || "");
     setReason("");
     setLocalError(null);
     setLocalSuccess(null);
-  }, [items, personnel]);
+  }, [itemIdsKey, items, personnel]);
 
   const issueItems = useMemo(
     () =>
@@ -188,7 +201,7 @@ export function BatchIssuePanel({
                 <button className="button-secondary" onClick={onClose} type="button">
                   {dictionary.cancel}
                 </button>
-                <button disabled={busy || personnel.length === 0} onClick={() => void handleSubmit()} type="button">
+                <button data-testid="batch-submit" disabled={busy || personnel.length === 0} onClick={() => void handleSubmit()} type="button">
                   {busy ? `${dictionary.save}...` : dictionary.batchIssue}
                 </button>
               </div>

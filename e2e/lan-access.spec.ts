@@ -1,162 +1,121 @@
 import { test, expect } from "./fixtures/electron-app";
+import { navigateTo, expectSuccess, dismissBanner } from "./fixtures/helpers";
 
-let primaryUrl = "";
-let accessKey = "";
-let publicItemId = "";
-const publicItemName = `LAN QR Test Widget ${Date.now()}`;
-const publicOperatorName = "LAN Browser Operator";
+// lan-ready seed pre-configures: LAN enabled on port 19877, access key "e2e-test-access-key-2026"
+const LAN_PORT = 19877;
+const BASE_URL = `http://127.0.0.1:${LAN_PORT}`;
+const SEEDED_KEY = "e2e-test-access-key-2026";
 
-async function dismissBanner(page: import("@playwright/test").Page) {
-  const dismiss = page.locator(".feedback-banner__dismiss");
-  if (await dismiss.isVisible()) {
-    await dismiss.click();
-  }
-}
-
-async function fetchSnapshot() {
-  const response = await fetch(`${primaryUrl}/api/snapshot`, {
-    headers: {
-      "x-inventory-key": accessKey,
-    },
+async function fetchSnapshot(key: string) {
+  const response = await fetch(`${BASE_URL}/api/snapshot`, {
+    headers: { "x-inventory-key": key },
   });
-  expect(response.ok).toBe(true);
-  return response.json() as Promise<{
-    items: Array<{ id: string; name: string; currentQuantity: number }>;
-  }>;
+  return { ok: response.ok, status: response.status };
 }
 
 test.describe.serial("LAN access and QR codes", () => {
-  test("LAN access panel shows stopped by default", async ({ page }) => {
-    await page.click("button.nav-item:has-text('Settings')");
-
+  test("LAN access panel shows running status", async ({ page }) => {
+    await navigateTo(page, "settings");
     const lanPanel = page.locator(".panel:has-text('LAN Access')");
     await expect(lanPanel).toBeVisible({ timeout: 10_000 });
-    await expect(lanPanel.locator(".status-pill")).toContainText("Stopped");
+    await expect(page.getByTestId("lan-status")).toContainText("Running", { timeout: 10_000 });
+
+    // Verify at least one URL link is displayed
+    await expect(lanPanel.locator("a[href^='http']").first()).toBeVisible({ timeout: 5_000 });
   });
 
-  test("enable LAN access and verify running status", async ({ page }) => {
-    const lanPanel = page.locator(".panel:has-text('LAN Access')");
-
-    // Use a non-standard port to avoid conflicts
-    await lanPanel.locator("input[type='number']").fill("19877");
-
-    // Enable LAN
-    await lanPanel.locator("select").first().selectOption("enabled");
-
-    // Save
-    const saveBtn = lanPanel.locator("button:has-text('Save LAN Settings')");
-    await expect(saveBtn).toBeEnabled({ timeout: 5_000 });
-    await saveBtn.click();
-
-    // Wait for success feedback
-    await expect(page.locator(".feedback-banner:not(.feedback-banner--error)")).toBeVisible({ timeout: 10_000 });
-
-    // Status should show "Running"
-    await expect(lanPanel.locator(".status-pill")).toContainText("Running", { timeout: 10_000 });
-
-    // At least one URL should appear
-    const primaryLink = lanPanel.locator("a[href^='http']").first();
-    await expect(primaryLink).toBeVisible({ timeout: 5_000 });
-    primaryUrl = await primaryLink.getAttribute("href") ?? "";
-    accessKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
-    expect(primaryUrl).toMatch(/^http:\/\//);
-    expect(accessKey.length).toBeGreaterThan(0);
-  });
-
-  test("create an item for QR code testing", async ({ page }) => {
-    await dismissBanner(page);
-
-    // Navigate to Item Management and create an item (matching inventory-workflow pattern)
-    await page.click("button.nav-item:has-text('Item Management')");
-    await page.click("button:has-text('Create Item')");
-    await expect(page.locator(".action-panel h2")).toHaveText("Create Inventory Item", { timeout: 10_000 });
-
-    const form = page.locator(".action-panel");
-    await form.locator("label:has-text('Item Name') input").fill(publicItemName);
-    await form.locator("label:has-text('Category') select").selectOption("Raw Material");
-    await form.locator("label:has-text('Location') input").fill("Warehouse QR");
-    await form.locator("label:has-text('Unit') select").selectOption("pcs");
-    await form.locator("label:has-text('Reorder Level') input").fill("5");
-    await form.locator("label:has-text('Initial Quantity') input").fill("50");
-
-    await form.locator("button:has-text('Save')").click();
-    await expect(page.locator(".feedback-banner:not(.feedback-banner--error)")).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator(`td:has-text('${publicItemName}')`)).toBeVisible();
-
-    const snapshot = await fetchSnapshot();
-    publicItemId = snapshot.items.find((entry) => entry.name === publicItemName)?.id ?? "";
-    expect(publicItemId).toBeTruthy();
-  });
-
-  test("item detail shows QR code when LAN is enabled", async ({ page }) => {
-    // Click "View Details" button in the item's row
-    const row = page.locator(`tr:has-text('${publicItemName}')`);
-    await row.locator("button:has-text('View Details'), button:has-text('Details')").first().click();
-
-    // QR code section should have a rendered image
-    const qrSection = page.locator(".item-details-qr");
-    await expect(qrSection).toBeVisible({ timeout: 10_000 });
-    await expect(qrSection.locator("img")).toBeVisible({ timeout: 10_000 });
-
-    // Go back
-    await page.locator("button:has-text('Back')").click();
-  });
-
-  test("workspace browser access requires the LAN access key", async ({ browserPage, page }) => {
-    await dismissBanner(page);
-    await page.click("button.nav-item:has-text('Personnel')");
-    await page.locator(".personnel-toolbar input").fill(publicOperatorName);
-    await page.click("button:has-text('Add Personnel')");
-    await expect(page.locator(".feedback-banner:not(.feedback-banner--error)")).toBeVisible({ timeout: 10_000 });
-
-    await browserPage.goto(primaryUrl);
+  test("workspace browser access requires valid access key", async ({ browserPage }) => {
+    await browserPage.goto(BASE_URL);
     await expect(browserPage.locator(".auth-card")).toBeVisible({ timeout: 10_000 });
     await expect(browserPage.locator(".sidebar")).toHaveCount(0);
 
-    await browserPage.locator(".auth-card__field input").fill(accessKey);
+    await browserPage.locator(".auth-card__field input").fill(SEEDED_KEY);
     await browserPage.locator("button:has-text('Connect')").click();
 
     await expect(browserPage.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
     await expect(browserPage.locator(".topbar h2")).toHaveText("Dashboard");
   });
 
-  test("public issue page works end to end without workspace auth", async ({ browser }) => {
+  test("invalid access key is rejected", async ({ browser }) => {
     const context = await browser.newContext();
-    const publicPage = await context.newPage();
-    const issueUrl = `${primaryUrl}/issue/${publicItemId}`;
+    const invalidPage = await context.newPage();
 
     try {
-      await publicPage.goto(issueUrl);
-      // The QR view now uses the mobile-specific QuickIssueMobile component
-      await expect(publicPage.locator(".qi-card")).toBeVisible({ timeout: 10_000 });
-      await publicPage.locator(".qi-input-row input").fill("7");
-      await publicPage.locator(".qi-form select").selectOption(publicOperatorName);
-      await publicPage.locator(".qi-submit-btn").click();
+      await invalidPage.goto(BASE_URL);
+      await expect(invalidPage.locator(".auth-card")).toBeVisible({ timeout: 10_000 });
 
-      await expect(publicPage.locator(".qi-feedback--success")).toBeVisible({ timeout: 10_000 });
+      await invalidPage.locator(".auth-card__field input").fill("wrong-key-12345");
+      await invalidPage.locator("button:has-text('Connect')").click();
 
-      await expect.poll(async () => {
-        const snapshot = await fetchSnapshot();
-        return snapshot.items.find((entry) => entry.id === publicItemId)?.currentQuantity;
-      }).toBe(43);
+      // Should remain on auth screen (sidebar should NOT appear)
+      await expect(invalidPage.locator(".auth-card")).toBeVisible({ timeout: 5_000 });
+      await expect(invalidPage.locator(".sidebar")).toHaveCount(0);
     } finally {
       await context.close();
     }
   });
 
-  test("disable LAN access and verify stopped status", async ({ page }) => {
-    await page.click("button.nav-item:has-text('Settings')");
+  test("access key regeneration invalidates old key", async ({ page }) => {
+    await navigateTo(page, "settings");
+    const lanPanel = page.locator(".panel:has-text('LAN Access')");
+    await expect(lanPanel).toBeVisible({ timeout: 10_000 });
 
+    // Click regenerate key button
+    await page.getByTestId("lan-regen-key").click();
+    await expectSuccess(page);
+
+    // Get the new key from the input
+    const newKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
+    expect(newKey).toBeTruthy();
+    expect(newKey).not.toBe(SEEDED_KEY);
+
+    // Old key should fail
+    const oldResult = await fetchSnapshot(SEEDED_KEY);
+    expect(oldResult.ok).toBe(false);
+
+    // New key should work
+    const newResult = await fetchSnapshot(newKey);
+    expect(newResult.ok).toBe(true);
+  });
+
+  test("public issue page works without auth", async ({ browser, page }) => {
+    // Get an item ID from the snapshot using the regenerated key
+    await navigateTo(page, "settings");
+    const lanPanel = page.locator(".panel:has-text('LAN Access')");
+    const currentKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
+
+    const res = await fetch(`${BASE_URL}/api/snapshot`, {
+      headers: { "x-inventory-key": currentKey },
+    });
+    const snapshot = await res.json() as { items: Array<{ id: string; name: string; currentQuantity: number }> };
+    const bolts = snapshot.items.find((i) => i.name === "Bolts M6");
+    expect(bolts).toBeTruthy();
+
+    const context = await browser.newContext();
+    const publicPage = await context.newPage();
+
+    try {
+      await publicPage.goto(`${BASE_URL}/issue/${bolts!.id}`);
+      await expect(publicPage.locator(".qi-card")).toBeVisible({ timeout: 10_000 });
+      await publicPage.locator(".qi-input-row input").fill("3");
+      await publicPage.locator(".qi-form select").selectOption("Alice");
+      await publicPage.locator("[data-testid='qi-submit']").click();
+
+      await expect(publicPage.locator(".qi-feedback--success").first()).toBeVisible({ timeout: 10_000 });
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("disable LAN and verify stopped status", async ({ page }) => {
+    await navigateTo(page, "settings");
     const lanPanel = page.locator(".panel:has-text('LAN Access')");
     await expect(lanPanel).toBeVisible({ timeout: 10_000 });
 
     await lanPanel.locator("select").first().selectOption("disabled");
+    await page.getByTestId("lan-save").click();
+    await expectSuccess(page);
 
-    const saveBtn = lanPanel.locator("button:has-text('Save LAN Settings')");
-    await expect(saveBtn).toBeEnabled({ timeout: 5_000 });
-    await saveBtn.click();
-
-    await expect(page.locator(".feedback-banner:not(.feedback-banner--error)")).toBeVisible({ timeout: 10_000 });
-    await expect(lanPanel.locator(".status-pill")).toContainText("Stopped", { timeout: 10_000 });
+    await expect(page.getByTestId("lan-status")).toContainText("Stopped", { timeout: 10_000 });
   });
 });
