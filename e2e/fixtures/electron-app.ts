@@ -13,15 +13,38 @@ import os from "os";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Worker-scoped: one Electron app shared across all serial tests in a worker.
-// Serial test suites (theme-and-language, lan-access, inventory-workflow) build
-// on shared state, so each test must NOT get a fresh app instance.
+const SEED_CACHE = path.join(__dirname, "../.seed-cache");
+
+// Extend Playwright's use options to include our seedScenario
+declare module "@playwright/test" {
+  interface TestOptions {
+    seedScenario: string;
+  }
+}
+
+// Worker-scoped: one Electron app per Playwright project.
+// Each project gets a fresh temp dir with a pre-seeded database.
 export const test = base.extend<
   { page: Page; browserPage: Page },
-  { electronApp: ElectronApplication; sharedPage: Page }
+  { electronApp: ElectronApplication; sharedPage: Page; seedScenario: string }
 >({
-  electronApp: [async ({}, use) => {
+  seedScenario: ["empty", { scope: "worker", option: true }],
+
+  electronApp: [async ({ seedScenario }, use) => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-e2e-"));
+
+    // Copy pre-built seed database if scenario is not "none"
+    if (seedScenario !== "none") {
+      const seedDb = path.join(SEED_CACHE, `${seedScenario}.db`);
+      if (!fs.existsSync(seedDb)) {
+        throw new Error(
+          `Seed database not found: ${seedDb}. Run 'npx tsx e2e/scripts/generate-seeds.ts' first.`,
+        );
+      }
+      const dataDir = path.join(tempDir, "data");
+      fs.mkdirSync(dataDir, { recursive: true });
+      fs.copyFileSync(seedDb, path.join(dataDir, "inventory-monitor.db"));
+    }
 
     const appRoot = path.join(__dirname, "../..");
     const electronApp = await electron.launch({
