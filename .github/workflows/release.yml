@@ -14,14 +14,7 @@ jobs:
 
   build-mac:
     needs: [test-suite]
-    strategy:
-      matrix:
-        include:
-          - os: macos-latest
-            arch: x64
-          - os: macos-latest
-            arch: arm64
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,18 +25,15 @@ jobs:
       - name: Rebuild better-sqlite3 for Electron
         run: npx electron-rebuild -f -o better-sqlite3
       - name: Build app
-        run: npm run build && npx electron-builder --mac --${{ matrix.arch }}
+        run: npm run build && npx electron-builder --mac --arm64
       - name: Smoke test packaged app
-        if: matrix.arch == 'x64'
         run: |
-          APP=$(find dist/mac -maxdepth 1 -name "*.app" | head -1)
-          if [ -z "$APP" ]; then echo "No .app found in dist/mac/"; exit 1; fi
+          APP=$(find dist/mac-arm64 -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP" ]; then echo "No .app found in dist/mac-arm64/"; exit 1; fi
           TEMP_DIR=$(mktemp -d)
           EXECUTABLE=$(defaults read "$APP/Contents/Info" CFBundleExecutable)
-          # --smoke-test mode: app verifies DB init then calls app.exit(0)
           "$APP/Contents/MacOS/$EXECUTABLE" --smoke-test --user-data-dir="$TEMP_DIR" &
           PID=$!
-          # Wait up to 60s for the process to exit on its own
           for i in $(seq 1 60); do
             if ! kill -0 $PID 2>/dev/null; then break; fi
             sleep 1
@@ -67,7 +57,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-        run: npx electron-builder --mac --${{ matrix.arch }} --publish always
+        run: npx electron-builder --mac --arm64 --publish always
 
   build-windows:
     needs: [test-suite]
