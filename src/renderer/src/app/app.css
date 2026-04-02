@@ -1043,6 +1043,313 @@ button.button-icon-only svg {
   font-size: 13px;
 }
 
+/* Status strip (new backup panel) */
+.backup-status-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+  border: 1px solid var(--border);
+}
+
+.backup-status-strip__cell dt {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.backup-status-strip__cell dd {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+}
+
+.backup-status-strip__badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 2px;
+  margin-left: auto;
+}
+
+.backup-status-strip__badge--warning {
+  color: var(--warning);
+  background: var(--warning-muted);
+}
+
+/* Backup actions row */
+.backup-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* Path row: read-only input + browse button */
+.backup-path-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.backup-path-input {
+  flex: 1;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.backup-browse-btn {
+  flex-shrink: 0;
+}
+
+/* Cloud detection info */
+.backup-cloud-info {
+  font-size: 12px;
+  color: var(--info);
+  margin: -8px 0 8px;
+  padding-left: 2px;
+}
+
+/* Schedule row */
+.backup-schedule-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.backup-schedule-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.backup-schedule-number {
+  width: 60px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+}
+
+.backup-schedule-unit {
+  font-size: 13px;
+}
+
+.backup-startup-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Status pills for backup */
+.status-pill--backup-healthy,
+.status-pill--backup-configured {
+  color: var(--success);
+  background: var(--success-muted);
+}
+
+.status-pill--backup-warning {
+  color: var(--warning);
+  background: var(--warning-muted);
+}
+
+.status-pill--backup-error {
+  color: var(--danger);
+  background: var(--danger-muted);
+}
+
+/* Panel banner variants */
+.panel-banner--warning {
+  border-left: 2px solid var(--warning);
+  background: var(--warning-muted);
+  color: var(--warning);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.panel-banner--error {
+  border-left: 2px solid var(--danger);
+  background: var(--danger-muted);
+  color: var(--danger);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+/* ---- Restore Dialog ---- */
+
+.restore-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.restore-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  max-width: 480px;
+  width: 90%;
+  padding: 20px;
+}
+
+.restore-dialog__title {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  margin: 0 0 16px;
+}
+
+.restore-dialog__comparison {
+  margin-bottom: 16px;
+}
+
+.restore-dialog__section {
+  padding: 12px;
+  border-radius: 3px;
+  background: var(--raised);
+  margin-bottom: 8px;
+}
+
+.restore-dialog__section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 4px;
+}
+
+.restore-dialog__section-date {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  margin: 0 0 2px;
+}
+
+.restore-dialog__section-stats {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.restore-dialog__warning {
+  border-left: 2px solid var(--warning);
+  background: var(--warning-muted);
+  color: var(--warning);
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.restore-dialog__notice {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 8px 0;
+}
+
+.restore-dialog__details-toggle {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.restore-dialog__details-content {
+  font-size: 12px;
+  padding: 8px 0;
+}
+
+.restore-dialog__details-content dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.restore-dialog__details-content dt {
+  color: var(--text-dim);
+}
+
+.restore-dialog__details-content dd {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.restore-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.button-secondary--danger {
+  color: var(--danger);
+}
+
+.button-secondary--danger:hover {
+  background: var(--danger-muted);
+}
+
+/* ---- Welcome Screen ---- */
+
+.welcome-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.welcome-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 32px;
+  text-align: center;
+  min-width: 280px;
+}
+
+.welcome-dialog__title {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 700;
+  font-size: 24px;
+  margin: 0 0 4px;
+  letter-spacing: 0.02em;
+}
+
+.welcome-dialog__version {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 24px;
+}
+
+.welcome-dialog__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.welcome-dialog__btn {
+  width: 100%;
+  padding: 10px 16px;
+}
+
 .lan-access-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

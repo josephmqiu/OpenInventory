@@ -8,12 +8,13 @@ const snapshot: AppSnapshot = {
   personnel: [],
   backupPlan: {
     targetPath: "",
-    targetType: "local_folder",
-    schedule: "",
-    retention: "",
+    schedule: { intervalValue: 0, intervalUnit: "hours", onStartup: false },
     lastSuccessfulBackup: "",
-    nextScheduledBackup: "",
+    lastFileSize: 0,
+    lastVerified: false,
+    lastError: "",
     status: "healthy",
+    cloudProvider: "",
   },
   language: "en",
 };

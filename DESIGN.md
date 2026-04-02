@@ -163,32 +163,31 @@ The sidebar is the structural frame of the app. Dark in dark theme, warm stone i
 
 ## Responsive Strategy
 
-The same React frontend is served in two contexts:
-- **Desktop (Electron):** Window with sidebar layout, `data-platform="desktop"` on `<html>`
-- **Web/LAN (mobile/tablet):** Served via LAN HTTP server, `data-platform="web"` on `<html>`
+Two separate frontends serve different audiences:
 
-### Breakpoints
-| Breakpoint | Applies to | Effect |
-|------------|-----------|--------|
-| 1200px | Both | Reduces grid columns (metrics 5->3, backup 3->2). Desktop sidebar narrows 220->180px, content padding tightens. |
-| 960px | Web only | Major layout transform: sidebar collapses to horizontal top nav, single-column layout. |
-| 720px | Web only | Further mobile optimizations: 2-column nav, 2-column metrics, horizontal table scroll. |
+- **Desktop app (Electron):** `src/renderer/index.html` + `App.tsx`. The main admin interface for inventory management, settings, backup, and reporting. Desktop-only, minimum 900x600px. `data-platform="desktop"` on `<html>`.
+- **QR scanner (mobile/tablet):** `src/renderer/issue.html` + `QuickIssueApp.tsx`. A separate entry point served over LAN HTTP for warehouse floor workers scanning QR codes. Mobile-only. `data-platform="web"` on `<html>`.
+
+These are **separate apps** sharing some code. The desktop app does NOT need mobile-responsive design. The QR scanner does NOT need desktop layout.
+
+### Desktop App
+- Minimum: 900x600px (set via BrowserWindow minWidth/minHeight)
+- Default: 1480x960px
+- The sidebar always remains visible regardless of window size
+- At narrow widths (< 1200px): grid columns reduce, sidebar narrows 220->180px, content padding tightens
+- No hamburger menus, no collapsed nav, no mobile layout transforms
+
+### QR Scanner (Mobile)
+- Served via LAN HTTP server to phones/tablets
+- The 960px and 720px breakpoints apply only here (`[data-platform="web"]` selector prefix)
+- 960px: sidebar collapses to horizontal top nav, single-column layout
+- 720px: further mobile optimizations, 2-column nav, horizontal table scroll
 
 ### Platform Detection
 The `data-platform` attribute is set on `<html>` before first paint:
 - **Electron:** Inline `<script>` in index.html checks `window.electronAPI` (exposed by preload contextBridge)
 - **LAN web:** The LAN HTTP server injects `data-platform="web"` into the HTML during serving
 - **React:** `main.tsx` reinforces the attribute via `detectRuntime()` as a safety net
-
-### Desktop Window Constraints
-- Minimum: 900x600px (set via BrowserWindow minWidth/minHeight)
-- Default: 1480x960px
-- The sidebar always remains visible on desktop regardless of window size
-
-### Rules
-- The 960px and 720px breakpoints use `[data-platform="web"]` selector prefix
-- The 1200px breakpoint applies universally (no platform prefix) plus desktop-specific compression rules
-- Desktop compression at narrow widths is handled by platform-specific rules, not by collapsing to mobile layout
 
 ## Motion
 - **Approach:** Minimal-functional — only transitions that aid comprehension

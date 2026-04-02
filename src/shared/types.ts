@@ -6,8 +6,8 @@ export type Language = "en" | "zh-CN";
 
 export type StockStatus = "in_stock" | "low_stock" | "out_of_stock";
 export type AlertStatus = "open" | "resolved";
-export type BackupTargetType = "local_folder" | "lan_share" | "cloud_folder";
-export type BackupStatus = "healthy" | "warning";
+export type BackupIntervalUnit = "hours" | "days" | "weeks";
+export type BackupStatus = "healthy" | "warning" | "error" | "backing_up";
 export type LanAccessStatus = "running" | "stopped" | "error";
 
 export type UpdateStatus =
@@ -59,14 +59,21 @@ export interface PersonnelMember {
   name: string;
 }
 
+export interface BackupSchedule {
+  intervalValue: number;
+  intervalUnit: BackupIntervalUnit;
+  onStartup: boolean;
+}
+
 export interface BackupPlan {
   targetPath: string;
-  targetType: BackupTargetType;
-  schedule: string;
-  retention: string;
+  schedule: BackupSchedule;
   lastSuccessfulBackup: string;
-  nextScheduledBackup: string;
+  lastFileSize: number;
+  lastVerified: boolean;
+  lastError: string;
   status: BackupStatus;
+  cloudProvider: string;
 }
 
 export interface LanAccessState {
@@ -148,9 +155,44 @@ export interface AddPersonnelInput {
 
 export interface UpdateBackupPlanInput {
   targetPath: string;
-  targetType: BackupTargetType;
-  schedule: string;
-  retention: string;
+  intervalValue: number;
+  intervalUnit: BackupIntervalUnit;
+  onStartup: boolean;
+}
+
+export interface BackupValidationResult {
+  valid: boolean;
+  error?: string;
+  manifest?: BackupManifest;
+  stats?: { items: number; movements: number; personnel: number };
+}
+
+export interface BackupManifest {
+  formatVersion: number;
+  appVersion: string;
+  schemaVersion: number;
+  createdAt: string;
+  platform: string;
+  stats: { items: number; movements: number; personnel: number };
+  checksums: { database: string };
+}
+
+export interface RestoreComparisonData {
+  backup: {
+    createdAt: string;
+    items: number;
+    movements: number;
+    personnel: number;
+    schemaVersion: number;
+    appVersion: string;
+  };
+  current: {
+    lastActivity: string;
+    items: number;
+    movements: number;
+    personnel: number;
+  };
+  backupIsNewer: boolean;
 }
 
 export interface UpdateLanAccessInput {

@@ -35,12 +35,12 @@ describe("migration system", () => {
     runPendingMigrations(t.db);
 
     const version = currentVersion(t.db);
-    expect(version).toBe(3);
+    expect(version).toBe(4);
 
     const count = t.db
       .prepare("SELECT COUNT(*) as c FROM schema_migrations")
       .get() as { c: number };
-    expect(count.c).toBe(3);
+    expect(count.c).toBe(4);
   });
 
   it("is idempotent — running twice does not duplicate entries", () => {
@@ -53,8 +53,8 @@ describe("migration system", () => {
     const count = t.db
       .prepare("SELECT COUNT(*) as c FROM schema_migrations")
       .get() as { c: number };
-    expect(count.c).toBe(3);
-    expect(currentVersion(t.db)).toBe(3);
+    expect(count.c).toBe(4);
+    expect(currentVersion(t.db)).toBe(4);
   });
 
   it("migration v2 removes dead columns from legacy database", () => {
@@ -110,7 +110,7 @@ describe("migration system", () => {
     // inventory_items. ALTER TABLE DROP COLUMN avoids this entirely.
     runPendingMigrations(t.db);
 
-    expect(currentVersion(t.db)).toBe(3);
+    expect(currentVersion(t.db)).toBe(4);
 
     // Verify child data is preserved
     const movements = t.db
@@ -137,7 +137,7 @@ describe("migration system", () => {
     // Clean DB has no dead columns — migration 2 should not error
     runPendingMigrations(t.db);
 
-    expect(currentVersion(t.db)).toBe(3);
+    expect(currentVersion(t.db)).toBe(4);
 
     // Schema still intact
     const items = t.db
@@ -184,5 +184,61 @@ describe("migration system", () => {
     expect(colNames).not.toContain("min_quantity");
     expect(colNames).not.toContain("description");
     expect(colNames).not.toContain("cost_per_unit");
+  });
+
+  it("migration v4 converts freeform 'daily' schedule to structured format", () => {
+    const t = createTestDb();
+    cleanups.push(t.cleanup);
+
+    // Simulate old freeform schedule
+    t.db.exec("INSERT INTO app_settings (key, value) VALUES ('backup.schedule', 'daily')");
+    t.db.exec("INSERT INTO app_settings (key, value) VALUES ('backup.retention', '7 days')");
+    t.db.exec("INSERT INTO app_settings (key, value) VALUES ('backup.target_type', 'local_folder')");
+
+    runPendingMigrations(t.db);
+
+    const getSetting = (key: string) =>
+      (t.db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
+
+    // New structured keys
+    expect(getSetting("backup.interval_value")).toBe("1");
+    expect(getSetting("backup.interval_unit")).toBe("days");
+    expect(getSetting("backup.on_startup")).toBe("false");
+
+    // Old keys removed
+    expect(getSetting("backup.schedule")).toBeUndefined();
+    expect(getSetting("backup.retention")).toBeUndefined();
+    expect(getSetting("backup.target_type")).toBeUndefined();
+    expect(getSetting("backup.next_scheduled")).toBeUndefined();
+  });
+
+  it("migration v4 defaults unknown schedule strings to 0 (no schedule)", () => {
+    const t = createTestDb();
+    cleanups.push(t.cleanup);
+
+    t.db.exec("INSERT INTO app_settings (key, value) VALUES ('backup.schedule', 'banana')");
+
+    runPendingMigrations(t.db);
+
+    const getSetting = (key: string) =>
+      (t.db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
+
+    expect(getSetting("backup.interval_value")).toBe("0");
+    expect(getSetting("backup.interval_unit")).toBe("hours");
+  });
+
+  it("migration v4 converts numeric hour schedules", () => {
+    const t = createTestDb();
+    cleanups.push(t.cleanup);
+
+    t.db.exec("INSERT INTO app_settings (key, value) VALUES ('backup.schedule', '4h')");
+
+    runPendingMigrations(t.db);
+
+    const getSetting = (key: string) =>
+      (t.db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
+
+    expect(getSetting("backup.interval_value")).toBe("4");
+    expect(getSetting("backup.interval_unit")).toBe("hours");
   });
 });

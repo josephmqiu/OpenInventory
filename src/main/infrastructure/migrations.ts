@@ -82,7 +82,62 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    apply: (db) => {
+      // Migrate freeform backup schedule/retention to structured format.
+      // Read old values (tolerant: unknown → defaults).
+      const getSetting = db.prepare(
+        "SELECT value FROM app_settings WHERE key = ?",
+      );
+      const upsertSetting = db.prepare(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      );
+      const deleteSetting = db.prepare(
+        "DELETE FROM app_settings WHERE key = ?",
+      );
+
+      const oldSchedule =
+        (getSetting.get("backup.schedule") as { value: string } | undefined)
+          ?.value ?? "";
+      const lower = oldSchedule.toLowerCase().trim();
+
+      // Parse old freeform schedule into structured values.
+      let intervalValue = 0;
+      let intervalUnit = "hours";
+      let onStartup = false;
+
+      if (lower === "daily" || lower === "1d" || lower === "24h") {
+        intervalValue = 1;
+        intervalUnit = "days";
+      } else if (lower === "weekly" || lower === "7d") {
+        intervalValue = 1;
+        intervalUnit = "weeks";
+      } else {
+        // Try to parse numeric hours like "4h", "8h", "12h", "4", "8"
+        const match = lower.match(/^(\d+)\s*h?$/);
+        if (match) {
+          intervalValue = parseInt(match[1], 10);
+          intervalUnit = "hours";
+        }
+        // Unknown values → 0 (no schedule), which is the safe default.
+      }
+
+      upsertSetting.run("backup.interval_value", String(intervalValue));
+      upsertSetting.run("backup.interval_unit", intervalUnit);
+      upsertSetting.run("backup.on_startup", onStartup ? "true" : "false");
+
+      // Clean up old keys that are no longer used.
+      deleteSetting.run("backup.schedule");
+      deleteSetting.run("backup.retention");
+      deleteSetting.run("backup.target_type");
+      deleteSetting.run("backup.next_scheduled");
+    },
+  },
 ];
+
+/** The highest migration version in this app build. Used by backup validation to reject future schemas. */
+export const LATEST_MIGRATION_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
 
 export function ensureMigrationsTable(db: Database.Database): void {
   db.exec(`

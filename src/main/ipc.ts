@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { ipcMain, dialog, BrowserWindow } from "electron";
 import { Effect, Either, type ManagedRuntime } from "effect";
 import { Schema } from "@effect/schema";
 import { DatabaseService, type MutationResult } from "./services/DatabaseService";
@@ -6,6 +6,7 @@ import { NotificationService } from "./services/NotificationService";
 import { LanServerService } from "./services/LanServerService";
 import { serializeAppError, ValidationError, type AppError } from "./domain/errors";
 import type { AutoUpdateServiceApi } from "./services/AutoUpdateService";
+import type { BackupCoordinator } from "./services/BackupCoordinator";
 import type { LanState } from "./index";
 import type { IpcResult, TransportError } from "../shared/schemas";
 import {
@@ -23,8 +24,10 @@ import {
   AuditAnalyticsFilterArgs,
 } from "../shared/schemas";
 
+import { BackupService } from "./services/BackupService";
+
 type AppRuntime = ManagedRuntime.ManagedRuntime<
-  DatabaseService | NotificationService | LanServerService,
+  DatabaseService | NotificationService | LanServerService | BackupService,
   never
 >;
 
@@ -57,6 +60,7 @@ export function registerIpcHandlers(
   runtime: AppRuntime,
   lanState: LanState,
   autoUpdateService: AutoUpdateServiceApi,
+  backupCoordinator?: BackupCoordinator,
 ): void {
   /** Run an Effect through the managed runtime, return a result envelope. */
   async function run<A>(
@@ -180,7 +184,68 @@ export function registerIpcHandlers(
 
   ipcMain.handle("backup-now", async () => {
     try {
+      if (backupCoordinator) {
+        const snapshot = await backupCoordinator.backupNow();
+        return ok(snapshot);
+      }
       return await run(Effect.flatMap(DatabaseService, (s) => s.backupNow()));
+    } catch (error) {
+      return fail(serializeAppError(error));
+    }
+  });
+
+  ipcMain.handle("select-backup-directory", async () => {
+    try {
+      const win = BrowserWindow.getFocusedWindow();
+      if (!win) return ok(null);
+      const result = await dialog.showOpenDialog(win, {
+        properties: ["openDirectory", "createDirectory"],
+        title: "Select Backup Destination",
+      });
+      if (result.canceled || result.filePaths.length === 0) return ok(null);
+      return ok(result.filePaths[0]);
+    } catch (error) {
+      return fail(serializeAppError(error));
+    }
+  });
+
+  ipcMain.handle("select-restore-source", async () => {
+    try {
+      const win = BrowserWindow.getFocusedWindow();
+      if (!win) return ok(null);
+      const result = await dialog.showOpenDialog(win, {
+        properties: ["openDirectory"],
+        title: "Select Backup to Restore",
+      });
+      if (result.canceled || result.filePaths.length === 0) return ok(null);
+      return ok(result.filePaths[0]);
+    } catch (error) {
+      return fail(serializeAppError(error));
+    }
+  });
+
+  ipcMain.handle("validate-backup", async (_event, rawArgs: unknown) => {
+    try {
+      if (!backupCoordinator) return fail({ _tag: "ValidationError", message: "Backup coordinator not available" });
+      const parsed = rawArgs as Record<string, unknown> | null;
+      const dirPath = typeof parsed?.dirPath === "string" ? parsed.dirPath : "";
+      if (!dirPath) throw new ValidationError({ message: "dirPath is required" });
+      const result = await backupCoordinator.validateBackup(dirPath);
+      return ok(result);
+    } catch (error) {
+      return fail(serializeAppError(error));
+    }
+  });
+
+  ipcMain.handle("restore-from-backup", async (_event, rawArgs: unknown) => {
+    try {
+      if (!backupCoordinator) return fail({ _tag: "ValidationError", message: "Backup coordinator not available" });
+      const parsed = rawArgs as Record<string, unknown> | null;
+      const dirPath = typeof parsed?.dirPath === "string" ? parsed.dirPath : "";
+      if (!dirPath) throw new ValidationError({ message: "dirPath is required" });
+      await backupCoordinator.restoreFromBackup(dirPath);
+      // Won't reach here — app.relaunch() + app.exit() fires during restore
+      return ok(null);
     } catch (error) {
       return fail(serializeAppError(error));
     }

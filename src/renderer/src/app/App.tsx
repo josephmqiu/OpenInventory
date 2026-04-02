@@ -10,6 +10,7 @@ import { MetricCard } from "../ui/components/MetricCard";
 import { PersonnelPanel } from "../ui/components/PersonnelPanel";
 import { ActionPanel } from "../ui/components/ActionPanel";
 import { BatchIssuePanel } from "../ui/components/BatchIssuePanel";
+import { WelcomeScreen } from "../ui/components/WelcomeScreen";
 import { LanAccessPanel } from "../ui/components/LanAccessPanel";
 import { AuditPanel } from "../ui/components/AuditPanel";
 import type { Dictionary } from "./i18n";
@@ -95,6 +96,8 @@ export function App() {
     handleRemoveItem,
     handleBackupPlanSave,
     handleBackupNow,
+    handleSelectBackupDirectory,
+    handleRestoreFromBackup,
     handleAddPersonnel,
     handleRemovePersonnel,
     handleLanguageChange,
@@ -112,6 +115,7 @@ export function App() {
   const [systemDark, setSystemDark] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : true,
   );
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
 
   useEffect(() => {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -261,8 +265,17 @@ export function App() {
   const headerTitle = dictionary[section];
   const headerSubtitle = sectionSubtitle(section, dictionary);
 
+  const isFirstLaunch = snapshot.items.length === 0 && !snapshot.backupPlan.targetPath && !welcomeDismissed;
+
   return (
     <div className={`app-shell${sidebarCollapsed ? " app-shell--collapsed" : ""}`}>
+      {isFirstLaunch && (
+        <WelcomeScreen
+          appVersion={process.env.npm_package_version ?? "0.0.0"}
+          onStartFresh={() => setWelcomeDismissed(true)}
+          onRestore={() => { setWelcomeDismissed(true); void handleRestoreFromBackup(); }}
+        />
+      )}
       <aside className={`sidebar${sidebarCollapsed ? " sidebar--collapsed" : ""}`}>
         {!sidebarCollapsed && (
           <div className="sidebar__brand">
@@ -463,6 +476,8 @@ export function App() {
                     language={language}
                     onBackupNow={onBackupNow}
                     onSave={onBackupPlanSave}
+                    onBrowse={handleSelectBackupDirectory}
+                    onRestore={() => void handleRestoreFromBackup()}
                   />
                   {lanAccess && (
                     <LanAccessPanel

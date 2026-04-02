@@ -318,6 +318,31 @@ export async function backupNow(): Promise<AppSnapshot> {
   throw unsupportedRuntimeError("Running a backup");
 }
 
+// ─── Backup-specific gateway functions (desktop IPC only) ──────────────────
+
+export async function selectBackupDirectory(): Promise<string | null> {
+  if (detectRuntime() !== "desktop") return null;
+  return invokeCommand<string | null>("select_backup_directory");
+}
+
+export async function selectRestoreSource(): Promise<string | null> {
+  if (detectRuntime() !== "desktop") return null;
+  return invokeCommand<string | null>("select_restore_source");
+}
+
+export async function validateBackup(dirPath: string): Promise<{
+  validation: import("../domain/models").BackupValidationResult;
+  comparison?: import("../domain/models").RestoreComparisonData;
+}> {
+  return invokeCommand("validate_backup", { dirPath });
+}
+
+export async function restoreFromBackup(dirPath: string): Promise<void> {
+  await invokeCommand("restore_from_backup", { dirPath });
+}
+
+// ─── Inventory mutations ───────────────────────────────────────────────────
+
 export async function removeInventoryItem(itemId: string): Promise<AppSnapshot> {
   if (supportsHttpApi()) {
     return fetchJson<AppSnapshot>(`/api/items/${encodeURIComponent(itemId)}`, {

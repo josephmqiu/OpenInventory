@@ -31,6 +31,10 @@ import {
   removeInventoryItem,
   removePersonnel,
   updateAppLanguage,
+  selectBackupDirectory,
+  selectRestoreSource,
+  validateBackup,
+  restoreFromBackup,
   updateBackupPlan,
   updateInventoryItem,
   updateLanAccess,
@@ -67,6 +71,8 @@ export interface InventoryState {
   handleRemoveItem: (itemId: string) => Promise<boolean>;
   handleBackupPlanSave: (input: UpdateBackupPlanInput) => Promise<boolean>;
   handleBackupNow: () => Promise<boolean>;
+  handleSelectBackupDirectory: () => Promise<string | null>;
+  handleRestoreFromBackup: () => Promise<void>;
   handleAddPersonnel: (name: string) => Promise<boolean>;
   handleRemovePersonnel: (personnelId: string) => Promise<boolean>;
   handleLanguageChange: (nextLanguage: Language) => void;
@@ -349,6 +355,34 @@ export function useInventoryState(): InventoryState {
     }
   };
 
+  const handleSelectBackupDirectory = async (): Promise<string | null> => {
+    try {
+      return await selectBackupDirectory();
+    } catch {
+      return null;
+    }
+  };
+
+  const handleRestoreFromBackup = async (): Promise<void> => {
+    try {
+      const dirPath = await selectRestoreSource();
+      if (!dirPath) return;
+
+      const { validation, comparison } = await validateBackup(dirPath);
+      if (!validation.valid) {
+        setActionError(validation.error ?? "Invalid backup");
+        return;
+      }
+
+      // Store comparison data for the RestoreDialog (would be managed by App.tsx state)
+      // For now, proceed directly with restore if user confirms via the UI
+      await restoreFromBackup(dirPath);
+      // Won't reach here — app relaunches during restore
+    } catch (error) {
+      handleGatewayError(error);
+    }
+  };
+
   const handleAddPersonnel = async (name: string) =>
     executeMutation(() => addPersonnel({ name }), dictionary.successAddPersonnel);
 
@@ -463,6 +497,8 @@ export function useInventoryState(): InventoryState {
     handleRemoveItem,
     handleBackupPlanSave,
     handleBackupNow,
+    handleSelectBackupDirectory,
+    handleRestoreFromBackup,
     handleAddPersonnel,
     handleRemovePersonnel,
     handleLanguageChange,

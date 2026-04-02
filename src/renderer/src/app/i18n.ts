@@ -1,4 +1,4 @@
-﻿import type { ActionKind, AlertStatus, BackupTargetType, Language, StockStatus } from "../domain/models";
+﻿import type { ActionKind, AlertStatus, Language, StockStatus } from "../domain/models";
 
 export const DEFAULT_CATEGORIES = [
   "Raw Material",
@@ -85,19 +85,6 @@ const unitLabels: Record<Language, Record<string, string>> = {
   },
 };
 
-const backupTargetTypeLabels: Record<Language, Record<BackupTargetType, string>> = {
-  en: {
-    local_folder: "Local Folder",
-    lan_share: "LAN Share",
-    cloud_folder: "Cloud Folder",
-  },
-  "zh-CN": {
-    local_folder: "本地文件夹",
-    lan_share: "局域网共享",
-    cloud_folder: "云同步文件夹",
-  },
-};
-
 const stockStatusLabels: Record<Language, Record<StockStatus, string>> = {
   en: {
     in_stock: "In Stock",
@@ -133,10 +120,6 @@ export function localizeCategory(value: string, language: Language): string {
 
 export function localizeUnit(value: string, language: Language): string {
   return unitLabels[language][value] ?? value;
-}
-
-export function localizeBackupTargetType(value: BackupTargetType, language: Language): string {
-  return backupTargetTypeLabels[language][value];
 }
 
 export function localizeStockStatus(value: StockStatus, language: Language): string {
@@ -228,11 +211,8 @@ export interface Dictionary {
   supplier: string;
   backupPlan: string;
   targetPath: string;
-  targetType: string;
   schedule: string;
-  retention: string;
   lastBackup: string;
-  nextBackup: string;
   language: string;
   backupReady: string;
   needsAttention: string;
@@ -348,6 +328,13 @@ export interface Dictionary {
   backupNow: string;
   backupNowInProgress: string;
   backupCompleted: string;
+  restoreFromBackup: string;
+  startFresh: string;
+  restoreAnyway: string;
+  backupOverdue: string;
+  noBackupsYet: string;
+  destinationUnreachable: string;
+  backupManagedFromDesktop: string;
   disconnect: string;
   qrItemNotFound: string;
   qrIssueReason: string;
@@ -455,11 +442,8 @@ export const dictionaries: Record<Language, Dictionary> = {
     supplier: "Supplier",
     backupPlan: "Backup Plan",
     targetPath: "Target Path",
-    targetType: "Target Type",
     schedule: "Schedule",
-    retention: "Retention",
     lastBackup: "Last Backup",
-    nextBackup: "Next Backup",
     language: "Language",
     backupReady: "Configured",
     needsAttention: "Needs attention",
@@ -589,6 +573,13 @@ export const dictionaries: Record<Language, Dictionary> = {
     backupNow: "Backup Now",
     backupNowInProgress: "Backing Up...",
     backupCompleted: "Backup completed.",
+    restoreFromBackup: "Restore from Backup",
+    startFresh: "Start Fresh",
+    restoreAnyway: "Restore Anyway",
+    backupOverdue: "Overdue",
+    noBackupsYet: "No backups yet",
+    destinationUnreachable: "Backup destination is no longer accessible",
+    backupManagedFromDesktop: "Backup is managed from the desktop app",
     disconnect: "Disconnect",
     qrItemNotFound: "This QR code points to an item that is not available in the current inventory database.",
     qrIssueReason: "QR issue",
@@ -694,11 +685,8 @@ export const dictionaries: Record<Language, Dictionary> = {
     supplier: "供应商",
     backupPlan: "备份方案",
     targetPath: "目标路径",
-    targetType: "目标类型",
     schedule: "计划",
-    retention: "保留策略",
     lastBackup: "上次备份",
-    nextBackup: "下次备份",
     language: "语言",
     backupReady: "已配置",
     needsAttention: "需要处理",
@@ -828,6 +816,13 @@ export const dictionaries: Record<Language, Dictionary> = {
     backupNow: "立即备份",
     backupNowInProgress: "正在备份...",
     backupCompleted: "备份完成。",
+    restoreFromBackup: "从备份恢复",
+    startFresh: "全新开始",
+    restoreAnyway: "仍然恢复",
+    backupOverdue: "已逾期",
+    noBackupsYet: "尚未备份",
+    destinationUnreachable: "备份目标路径不可访问",
+    backupManagedFromDesktop: "备份由桌面应用管理",
     disconnect: "断开连接",
     qrItemNotFound: "此二维码指向的物品在当前库存数据库中不可用。",
     qrIssueReason: "二维码出库",
