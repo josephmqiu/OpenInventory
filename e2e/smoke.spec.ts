@@ -1,14 +1,10 @@
 import { test, expect } from "./fixtures/electron-app";
-import { navigateTo, dismissWelcomeScreen } from "./fixtures/helpers";
+import { navigateTo } from "./fixtures/helpers";
 
 const topbarTitle = (page: import("@playwright/test").Page) =>
   page.locator(".topbar h2");
 
 test.describe.serial("smoke tests (empty seed)", () => {
-  test("dismiss welcome screen on empty database", async ({ page }) => {
-    await dismissWelcomeScreen(page);
-  });
-
   test("all 7 sidebar nav sections render", async ({ page }) => {
     const sections: Array<{ id: string; title: string }> = [
       { id: "dashboard", title: "Dashboard" },

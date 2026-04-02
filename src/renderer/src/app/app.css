@@ -1303,52 +1303,6 @@ button.button-icon-only svg {
   background: var(--danger-muted);
 }
 
-/* ---- Welcome Screen ---- */
-
-.welcome-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.welcome-dialog {
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  padding: 32px;
-  text-align: center;
-  min-width: 280px;
-}
-
-.welcome-dialog__title {
-  font-family: 'IBM Plex Sans', sans-serif;
-  font-weight: 700;
-  font-size: 24px;
-  margin: 0 0 4px;
-  letter-spacing: 0.02em;
-}
-
-.welcome-dialog__version {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  color: var(--text-muted);
-  margin: 0 0 24px;
-}
-
-.welcome-dialog__actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.welcome-dialog__btn {
-  width: 100%;
-  padding: 10px 16px;
-}
 
 .lan-access-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -1,14 +1,10 @@
 import { test, expect } from "./fixtures/electron-app";
-import { dismissBanner, dismissWelcomeScreen, expectSuccess, navigateTo } from "./fixtures/helpers";
+import { dismissBanner, expectSuccess, navigateTo } from "./fixtures/helpers";
 
 const topbarTitle = (page: import("@playwright/test").Page) =>
   page.locator(".topbar h2");
 
 test.describe.serial("inventory CRUD (empty seed)", () => {
-  test("dismiss welcome screen", async ({ page }) => {
-    await dismissWelcomeScreen(page);
-  });
-
   test("create an inventory item", async ({ page }) => {
     await navigateTo(page, "itemManagement");
     await expect(topbarTitle(page)).toHaveText("Item Management");
