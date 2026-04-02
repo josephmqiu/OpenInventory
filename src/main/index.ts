@@ -12,6 +12,10 @@ process.on("uncaughtException", (err) => {
 import { DatabaseService, makeDatabaseLayer } from "./services/DatabaseService";
 import { NotificationService, NotificationServiceLive } from "./services/NotificationService";
 import { LanServerService, makeLanServerLayer } from "./services/LanServerService";
+import { BackupService, BackupServiceLive } from "./services/BackupService";
+import { BackupCoordinator } from "./services/BackupCoordinator";
+import { BackupScheduler } from "./services/BackupScheduler";
+import { applyRestorePending } from "./services/restorePending";
 import { makeAutoUpdateService, type AutoUpdateServiceApi } from "./services/AutoUpdateService";
 import { runPendingMigrations } from "./infrastructure/migrations";
 import { configureSqlitePragmas } from "./infrastructure/sqlite-pragmas";
@@ -30,7 +34,7 @@ function resolveDbPath(): string {
   return join(dataDir, "inventory-monitor.db");
 }
 
-function initializeDatabase(dbPath: string): void {
+function initializeDatabase(dbPath: string): { restored: boolean } {
   const db = new Database(dbPath);
   configureSqlitePragmas(db);
 
@@ -40,7 +44,22 @@ function initializeDatabase(dbPath: string): void {
   }
 
   runPendingMigrations(db);
+
+  // Apply .restore-pending.json if present (post-restore startup)
+  const result = applyRestorePending(
+    dbPath,
+    (key: string, value: string) => {
+      db.prepare(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ).run(key, value);
+    },
+  );
+  if (result.restored) {
+    console.log(`[Backup] Restored from backup (${result.restoredAt}). Settings preserved.`);
+  }
+
   db.close();
+  return { restored: result.restored };
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -92,7 +111,7 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     const dbPath = resolveDbPath();
-    initializeDatabase(dbPath);
+    const { restored } = initializeDatabase(dbPath);
 
     // ─── Smoke test mode ───────────────────────────────────────────────
     // Launched by CI to verify the packaged app starts and initializes.
@@ -119,12 +138,13 @@ if (!gotLock) {
       : join(__dirname, "../renderer").replace("app.asar", "app.asar.unpacked");
     console.log(`[LAN] rendererDir=${rendererDir}, exists=${fs.existsSync(rendererDir)}`);
 
-    // Merged layer: DB (scoped) + Notifications + LAN server (scoped, depends on DB)
+    // Merged layer: DB (scoped) + Notifications + LAN server (scoped, depends on DB) + Backup
     // IMPORTANT: reuse the same DbLayer reference so Effect memoizes a single connection.
     const DbLayer = makeDatabaseLayer(dbPath, qrCodeGenerator);
     const DbAndNotifications = Layer.merge(DbLayer, NotificationServiceLive);
     const LanLayer = makeLanServerLayer(rendererDir).pipe(Layer.provide(DbLayer));
-    const AppLayer = Layer.merge(DbAndNotifications, LanLayer);
+    const CoreLayer = Layer.merge(DbAndNotifications, LanLayer);
+    const AppLayer = Layer.merge(CoreLayer, BackupServiceLive);
 
     const managedRuntime = ManagedRuntime.make(AppLayer);
 
@@ -150,7 +170,25 @@ if (!gotLock) {
       }
     });
 
-    registerIpcHandlers(managedRuntime, lanState, autoUpdateService);
+    // ─── Backup coordinator + scheduler ─────────────────────────────────
+    const backupCoordinator = new BackupCoordinator(managedRuntime, dbPath);
+
+    const backupScheduler = new BackupScheduler(
+      backupCoordinator,
+      async () => {
+        const snapshot = await managedRuntime.runPromise(
+          Effect.flatMap(DatabaseService, (s) => s.loadSnapshot()),
+        );
+        return {
+          intervalValue: snapshot.backupPlan.schedule.intervalValue,
+          intervalUnit: snapshot.backupPlan.schedule.intervalUnit,
+          onStartup: snapshot.backupPlan.schedule.onStartup,
+          lastSuccessful: snapshot.backupPlan.lastSuccessfulBackup,
+        };
+      },
+    );
+
+    registerIpcHandlers(managedRuntime, lanState, autoUpdateService, backupCoordinator);
 
     createWindow();
 
@@ -165,18 +203,28 @@ if (!gotLock) {
     // Check for updates shortly after launch (non-blocking).
     setTimeout(() => autoUpdateService.checkForUpdates(), 3000);
 
+    // Start backup scheduler (non-blocking).
+    if (!isSmokeTest) {
+      backupScheduler.start().catch((e) => {
+        console.error("[BackupScheduler] Failed to start:", e);
+      });
+    }
+
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
 
     // ─── Graceful shutdown ─────────────────────────────────────────────
-    // Dispose the runtime to close DB + stop LAN server.
+    // Await in-flight backup, stop scheduler, dispose runtime.
     // Idempotent: may fire from multiple hooks (before-quit, will-quit, session-end).
     let disposed = false;
     const gracefulShutdown = (): void => {
       if (disposed) return;
       disposed = true;
-      managedRuntime.dispose().catch(() => {});
+      backupScheduler.stop();
+      backupCoordinator.awaitPendingBackup()
+        .then(() => managedRuntime.dispose())
+        .catch(() => {});
     };
 
     app.on("before-quit", gracefulShutdown);

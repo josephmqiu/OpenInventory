@@ -138,11 +138,10 @@ function validateBackupPath(
   messages: ReturnType<typeof backendMessages>,
 ): void {
   if (targetPath === "") return; // empty is allowed (clears the path)
-  // Resolve to canonical form and reject paths with traversal segments.
-  const resolved = path.resolve(targetPath);
-  if (!path.isAbsolute(resolved) || resolved !== path.resolve(path.normalize(targetPath))) {
+  if (!path.isAbsolute(targetPath)) {
     throw new ValidationError({ message: messages.backupTargetPathNotAbsolute });
   }
+  const resolved = path.resolve(path.normalize(targetPath));
   // Probe write access: create a temp file, then delete it.
   try {
     fs.mkdirSync(resolved, { recursive: true });
@@ -152,6 +151,29 @@ function validateBackupPath(
   } catch {
     throw new ValidationError({ message: messages.backupTargetPathNotWritable });
   }
+}
+
+/** Detect if a path is inside a known cloud sync folder. */
+function detectCloudProvider(targetPath: string): string {
+  if (!targetPath) return "";
+  const normalized = targetPath.replace(/\\/g, "/").toLowerCase();
+  const home = (process.env.HOME || process.env.USERPROFILE || "").replace(/\\/g, "/").toLowerCase();
+
+  // macOS: ~/Library/CloudStorage/<Provider>-*
+  if (normalized.includes("/library/cloudstorage/dropbox")) return "Dropbox";
+  if (normalized.includes("/library/cloudstorage/onedrive")) return "OneDrive";
+  if (normalized.includes("/library/cloudstorage/googledrive")) return "Google Drive";
+  if (normalized.includes("/library/cloudstorage/icloud")) return "iCloud";
+
+  // Windows / cross-platform: ~/Dropbox, ~/OneDrive, ~/Google Drive
+  if (home) {
+    const rel = normalized.startsWith(home) ? normalized.slice(home.length) : "";
+    if (rel.startsWith("/dropbox")) return "Dropbox";
+    if (rel.startsWith("/onedrive")) return "OneDrive";
+    if (rel.startsWith("/google drive")) return "Google Drive";
+  }
+
+  return "";
 }
 
 function localizedDatabaseError(db: Database.Database): DatabaseError {
@@ -519,13 +541,22 @@ export function makeDatabaseService(
       .all() as Array<{ id: string; name: string }>;
 
     const targetPath = readSetting(db, "backup.target_path") ?? "";
-    const targetType = (readSetting(db, "backup.target_type") ?? "local_folder") as import("../../shared/types").BackupTargetType;
-    const schedule = readSetting(db, "backup.schedule") ?? "";
-    const retention = readSetting(db, "backup.retention") ?? "";
+    const intervalValue = parseInt(readSetting(db, "backup.interval_value") ?? "0", 10) || 0;
+    const rawUnit = readSetting(db, "backup.interval_unit") ?? "hours";
+    const intervalUnit = (rawUnit === "days" || rawUnit === "weeks" ? rawUnit : "hours") as import("../../shared/types").BackupIntervalUnit;
+    const onStartup = readSetting(db, "backup.on_startup") === "true";
     const lastSuccessful = readSetting(db, "backup.last_successful") ?? "";
-    const nextScheduled = readSetting(db, "backup.next_scheduled") ?? "";
+    const lastFileSize = parseInt(readSetting(db, "backup.last_file_size") ?? "0", 10) || 0;
+    const lastVerified = readSetting(db, "backup.last_verified") === "true";
+    const lastError = readSetting(db, "backup.last_error") ?? "";
     const bkStatus = readSetting(db, "backup.status") ?? "warning";
+    const cloudProvider = readSetting(db, "backup.cloud_provider") ?? "";
     const language = normalizeBackendLanguage(readSetting(db, "app.language"));
+
+    const validStatuses = ["healthy", "warning", "error", "backing_up"] as const;
+    const status = validStatuses.includes(bkStatus as typeof validStatuses[number])
+      ? (bkStatus as import("../../shared/types").BackupStatus)
+      : "warning";
 
     return {
       items: mappedItems,
@@ -533,12 +564,13 @@ export function makeDatabaseService(
       personnel,
       backupPlan: {
         targetPath,
-        targetType,
-        schedule,
-        retention,
+        schedule: { intervalValue, intervalUnit, onStartup },
         lastSuccessfulBackup: lastSuccessful,
-        nextScheduledBackup: nextScheduled,
-        status: bkStatus === "healthy" ? "healthy" : "warning",
+        lastFileSize,
+        lastVerified,
+        lastError,
+        status,
+        cloudProvider,
       },
       language,
     };
@@ -977,16 +1009,18 @@ export function makeDatabaseService(
           const messages = backendMessages(currentLanguage(db));
           const targetPath = input.targetPath.trim();
           validateBackupPath(targetPath, messages);
-          const schedule = input.schedule.trim();
-          const retention = input.retention.trim();
           const status = backupStatusKey(targetPath);
+
+          // Detect cloud sync provider from path
+          const cloudProvider = detectCloudProvider(targetPath);
 
           const updateFn = db.transaction(() => {
             writeSetting(db, "backup.target_path", targetPath);
-            writeSetting(db, "backup.target_type", input.targetType);
-            writeSetting(db, "backup.schedule", schedule);
-            writeSetting(db, "backup.retention", retention);
+            writeSetting(db, "backup.interval_value", String(input.intervalValue));
+            writeSetting(db, "backup.interval_unit", input.intervalUnit);
+            writeSetting(db, "backup.on_startup", input.onStartup ? "true" : "false");
             writeSetting(db, "backup.status", status);
+            writeSetting(db, "backup.cloud_provider", cloudProvider);
           });
           updateFn();
 
@@ -1010,32 +1044,59 @@ export function makeDatabaseService(
           }
           validateBackupPath(targetPath, messages);
 
-          // Create timestamped backup
-          const timestamp = new Date()
-            .toISOString()
-            .replace(/[:.]/g, "-")
-            .replace("T", "_")
-            .slice(0, 19);
-          const backupFile = path.join(
-            targetPath,
-            `inventory-monitor-${timestamp}.db`,
-          );
-          fs.mkdirSync(targetPath, { recursive: true });
+          // Directory backup: write to {targetPath}/OpenInventory-Backup/
+          const backupDir = path.join(targetPath, "OpenInventory-Backup");
+          const tempFile = path.join(backupDir, "database.tmp.db");
+          const finalFile = path.join(backupDir, "database.db");
+          fs.mkdirSync(backupDir, { recursive: true });
 
-          // Await the backup so we only mark success after it completes.
+          // Step 1: Backup to temp file
           const source = new Database(dbPath, { readonly: true });
           try {
-            await source.backup(backupFile);
+            await source.backup(tempFile);
           } finally {
             source.close();
           }
 
+          // Step 2: Atomic rename (temp → final)
+          fs.renameSync(tempFile, finalFile);
+
+          const fileSize = fs.statSync(finalFile).size;
+
+          // Step 3: Write manifest
+          const manifestPath = path.join(backupDir, "manifest.json");
+          const manifest = {
+            formatVersion: 1,
+            appVersion: process.env.npm_package_version || "unknown",
+            schemaVersion: 0,
+            createdAt: new Date().toISOString(),
+            platform: process.platform,
+            stats: { items: 0, movements: 0, personnel: 0 },
+            checksums: { database: "" },
+          };
+          let verified = false;
+          try {
+            // Read stats + verify the backup
+            const verifyDb = new Database(finalFile, { readonly: true });
+            try {
+              verifyDb.pragma("trusted_schema = OFF");
+              const integrity = verifyDb.prepare("PRAGMA integrity_check(1)").get() as { integrity_check: string };
+              verified = integrity.integrity_check === "ok";
+              manifest.schemaVersion = (verifyDb.prepare("SELECT COALESCE(MAX(version), 0) as v FROM schema_migrations").get() as { v: number }).v;
+              manifest.stats.items = (verifyDb.prepare("SELECT COUNT(*) as c FROM inventory_items").get() as { c: number }).c;
+              manifest.stats.movements = (verifyDb.prepare("SELECT COUNT(*) as c FROM inventory_movements").get() as { c: number }).c;
+              manifest.stats.personnel = (verifyDb.prepare("SELECT COUNT(*) as c FROM personnel").get() as { c: number }).c;
+            } finally {
+              verifyDb.close();
+            }
+          } catch { /* manifest stats are best-effort, verification status already false */ }
+          fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
           const updateFn = db.transaction(() => {
-            writeSetting(
-              db,
-              "backup.last_successful",
-              new Date().toISOString(),
-            );
+            writeSetting(db, "backup.last_successful", new Date().toISOString());
+            writeSetting(db, "backup.last_file_size", String(fileSize));
+            writeSetting(db, "backup.last_verified", verified ? "true" : "false");
+            writeSetting(db, "backup.last_error", "");
             writeSetting(db, "backup.status", backupStatusKey(targetPath));
           });
           updateFn();

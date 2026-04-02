@@ -6,6 +6,7 @@ import type {
   InventoryAlert,
   Language,
   LanAccessState,
+  RestoreComparisonData,
   StockMutationInput,
   UpdateBackupPlanInput,
   UpdateInventoryItemInput,
@@ -31,6 +32,10 @@ import {
   removeInventoryItem,
   removePersonnel,
   updateAppLanguage,
+  selectBackupDirectory,
+  selectRestoreSource,
+  validateBackup,
+  restoreFromBackup,
   updateBackupPlan,
   updateInventoryItem,
   updateLanAccess,
@@ -52,6 +57,7 @@ export interface InventoryState {
   actionError: string | null;
   notice: InventoryNotice | null;
   busy: boolean;
+  pendingRestoreComparison: RestoreComparisonData | null;
   accessKeyInput: string;
   setAccessKeyInput: Dispatch<SetStateAction<string>>;
   requiresBrowserAuth: boolean;
@@ -67,6 +73,10 @@ export interface InventoryState {
   handleRemoveItem: (itemId: string) => Promise<boolean>;
   handleBackupPlanSave: (input: UpdateBackupPlanInput) => Promise<boolean>;
   handleBackupNow: () => Promise<boolean>;
+  handleSelectBackupDirectory: () => Promise<string | null>;
+  startRestoreFromBackup: () => Promise<void>;
+  confirmRestoreFromBackup: () => Promise<void>;
+  cancelRestoreFromBackup: () => void;
   handleAddPersonnel: (name: string) => Promise<boolean>;
   handleRemovePersonnel: (personnelId: string) => Promise<boolean>;
   handleLanguageChange: (nextLanguage: Language) => void;
@@ -118,6 +128,10 @@ export function useInventoryState(): InventoryState {
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<InventoryNotice | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingRestore, setPendingRestore] = useState<{
+    dirPath: string;
+    comparison: RestoreComparisonData;
+  } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [accessKeyInput, setAccessKeyInput] = useState(() => readPersistedLanAccessKey());
   const dictionary = dictionaries[language];
@@ -349,6 +363,61 @@ export function useInventoryState(): InventoryState {
     }
   };
 
+  const handleSelectBackupDirectory = async (): Promise<string | null> => {
+    try {
+      return await selectBackupDirectory();
+    } catch {
+      return null;
+    }
+  };
+
+  const startRestoreFromBackup = async (): Promise<void> => {
+    try {
+      setBusy(true);
+      setActionError(null);
+      const dirPath = await selectRestoreSource();
+      if (!dirPath) return;
+
+      const { validation, comparison } = await validateBackup(dirPath);
+      if (!validation.valid) {
+        setPendingRestore(null);
+        setActionError(validation.error ?? "Invalid backup");
+        return;
+      }
+      if (!comparison) {
+        setPendingRestore(null);
+        setActionError("Unable to compare the selected backup.");
+        return;
+      }
+      setPendingRestore({ dirPath, comparison });
+    } catch (error) {
+      setPendingRestore(null);
+      handleGatewayError(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmRestoreFromBackup = async (): Promise<void> => {
+    if (!pendingRestore) return;
+
+    try {
+      setBusy(true);
+      setActionError(null);
+      await restoreFromBackup(pendingRestore.dirPath);
+      setPendingRestore(null);
+    } catch (error) {
+      setPendingRestore(null);
+      handleGatewayError(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelRestoreFromBackup = () => {
+    setPendingRestore(null);
+  };
+
   const handleAddPersonnel = async (name: string) =>
     executeMutation(() => addPersonnel({ name }), dictionary.successAddPersonnel);
 
@@ -448,6 +517,7 @@ export function useInventoryState(): InventoryState {
     actionError,
     notice,
     busy,
+    pendingRestoreComparison: pendingRestore?.comparison ?? null,
     accessKeyInput,
     setAccessKeyInput,
     requiresBrowserAuth,
@@ -463,6 +533,10 @@ export function useInventoryState(): InventoryState {
     handleRemoveItem,
     handleBackupPlanSave,
     handleBackupNow,
+    handleSelectBackupDirectory,
+    startRestoreFromBackup,
+    confirmRestoreFromBackup,
+    cancelRestoreFromBackup,
     handleAddPersonnel,
     handleRemovePersonnel,
     handleLanguageChange,

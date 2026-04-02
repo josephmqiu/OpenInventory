@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatDate } from "../../app/formatDate";
-import { localizeBackupTargetType, type Dictionary } from "../../app/i18n";
-import type { BackupPlan, BackupTargetType, Language, UpdateBackupPlanInput } from "../../domain/models";
+import type { Dictionary } from "../../app/i18n";
+import type { BackupPlan, BackupIntervalUnit, Language, UpdateBackupPlanInput } from "../../domain/models";
 
 interface BackupPanelProps {
   busy: boolean;
@@ -10,24 +10,42 @@ interface BackupPanelProps {
   backupPlan: BackupPlan;
   onBackupNow: () => Promise<void>;
   onSave: (input: UpdateBackupPlanInput) => Promise<void>;
+  onBrowse?: () => Promise<string | null>;
+  onRestore?: () => void;
 }
 
-const TARGET_TYPES: BackupTargetType[] = ["local_folder", "lan_share", "cloud_folder"];
-
-function displayValue(value: string, fallback: string): string {
-  return value.trim().length > 0 ? value : fallback;
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function createFormState(backupPlan: BackupPlan): UpdateBackupPlanInput {
   return {
     targetPath: backupPlan.targetPath,
-    targetType: backupPlan.targetType,
-    schedule: backupPlan.schedule,
-    retention: backupPlan.retention,
+    intervalValue: backupPlan.schedule.intervalValue,
+    intervalUnit: backupPlan.schedule.intervalUnit,
+    onStartup: backupPlan.schedule.onStartup,
   };
 }
 
-export function BackupPanel({ busy, dictionary, language, backupPlan, onBackupNow, onSave }: BackupPanelProps) {
+const INTERVAL_UNITS: { value: BackupIntervalUnit; label: string }[] = [
+  { value: "hours", label: "hours" },
+  { value: "days", label: "days" },
+  { value: "weeks", label: "weeks" },
+];
+
+export function BackupPanel({
+  busy,
+  dictionary,
+  language,
+  backupPlan,
+  onBackupNow,
+  onSave,
+  onBrowse,
+  onRestore,
+}: BackupPanelProps) {
   const [form, setForm] = useState<UpdateBackupPlanInput>(() => createFormState(backupPlan));
 
   useEffect(() => {
@@ -40,74 +58,183 @@ export function BackupPanel({ busy, dictionary, language, backupPlan, onBackupNo
     [backupPlan, form],
   );
 
+  const isBacking = backupPlan.status === "backing_up";
+  const isConfigured = backupPlan.targetPath.trim().length > 0;
+  const hasBackedUp = backupPlan.lastSuccessfulBackup.length > 0;
+  const isOverdue =
+    isConfigured &&
+    hasBackedUp &&
+    backupPlan.schedule.intervalValue > 0 &&
+    (() => {
+      const lastMs = new Date(backupPlan.lastSuccessfulBackup).getTime();
+      const unitMs = backupPlan.schedule.intervalUnit === "weeks" ? 604800000
+        : backupPlan.schedule.intervalUnit === "days" ? 86400000
+        : 3600000;
+      return Date.now() - lastMs > backupPlan.schedule.intervalValue * unitMs * 1.5;
+    })();
+
+  // Status pill
+  const statusLabel =
+    backupPlan.status === "error" ? dictionary.needsAttention
+    : !isConfigured ? dictionary.needsAttention
+    : dictionary.backupReady;
+  const statusClass =
+    backupPlan.status === "error" ? "backup-error"
+    : !isConfigured ? "backup-warning"
+    : "backup-healthy";
+
+  const handleBrowse = async () => {
+    if (!onBrowse) return;
+    const selectedPath = await onBrowse();
+    if (selectedPath) {
+      setForm({ ...form, targetPath: selectedPath });
+    }
+  };
+
   return (
     <section className="panel">
+      {/* Header */}
       <div className="panel__header">
         <div>
           <h2>{dictionary.backupPlan}</h2>
           <p>{dictionary.backupStorageHint}</p>
         </div>
-        <span className={`status-pill status-pill--backup-${backupPlan.status}`}>
-          {backupPlan.status === "healthy" ? dictionary.backupReady : dictionary.needsAttention}
+        <span className={`status-pill status-pill--${statusClass}`}>
+          {statusLabel}
         </span>
       </div>
-      {!hasTargetPath && <div className="panel-banner">{dictionary.backupNotConfigured}</div>}
-      <div className="form-grid">
-        <label>
-          <span>{dictionary.targetPath}</span>
-          <input
-            value={form.targetPath}
-            onChange={(event) => setForm({ ...form, targetPath: event.target.value })}
-          />
-        </label>
-        <label>
-          <span>{dictionary.targetType}</span>
-          <select
-            value={form.targetType}
-            onChange={(event) => setForm({ ...form, targetType: event.target.value as BackupTargetType })}
-          >
-            {TARGET_TYPES.map((value) => (
-              <option key={value} value={value}>
-                {localizeBackupTargetType(value, language)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>{dictionary.schedule}</span>
-          <input
-            value={form.schedule}
-            onChange={(event) => setForm({ ...form, schedule: event.target.value })}
-          />
-        </label>
-        <label>
-          <span>{dictionary.retention}</span>
-          <input
-            value={form.retention}
-            onChange={(event) => setForm({ ...form, retention: event.target.value })}
-          />
-        </label>
-      </div>
-      <dl className="backup-grid">
-        <div>
-          <dt>{dictionary.lastBackup}</dt>
-          <dd>{displayValue(formatDate(backupPlan.lastSuccessfulBackup, language), dictionary.notProvided)}</dd>
-        </div>
-        <div>
-          <dt>{dictionary.nextBackup}</dt>
-          <dd>{displayValue(formatDate(backupPlan.nextScheduledBackup, language), dictionary.notProvided)}</dd>
-        </div>
-      </dl>
-      <div className="action-panel__footer action-panel__footer--spread">
+
+      {/* Status strip — visible when configured */}
+      {isConfigured && (
+        <dl className="backup-status-strip" aria-live="polite">
+          <div className="backup-status-strip__cell">
+            <dt>{dictionary.lastBackup}</dt>
+            <dd>
+              {hasBackedUp ? (
+                <>
+                  {formatDate(backupPlan.lastSuccessfulBackup, language)}
+                  {backupPlan.lastFileSize > 0 && `, ${formatFileSize(backupPlan.lastFileSize)}`}
+                  {backupPlan.lastVerified && ", verified"}
+                </>
+              ) : (
+                <span className="text-muted">No backups yet</span>
+              )}
+            </dd>
+          </div>
+          {isOverdue && (
+            <div className="backup-status-strip__badge backup-status-strip__badge--warning">
+              Overdue
+            </div>
+          )}
+        </dl>
+      )}
+
+      {/* Warning banners */}
+      {!isConfigured && (
+        <div className="panel-banner panel-banner--warning">{dictionary.backupNotConfigured}</div>
+      )}
+      {backupPlan.lastError && (
+        <div className="panel-banner panel-banner--error" role="alert">{backupPlan.lastError}</div>
+      )}
+
+      {/* Actions */}
+      <div className="backup-actions">
         <button
           className="button-secondary"
           data-testid="backup-now"
-          disabled={busy || !backupPlan.targetPath.trim()}
+          disabled={busy || !isConfigured || isBacking}
           onClick={() => void onBackupNow()}
           type="button"
         >
-          {busy ? dictionary.backupNowInProgress : dictionary.backupNow}
+          {isBacking ? dictionary.backupNowInProgress : dictionary.backupNow}
         </button>
+        {onRestore && (
+          <button
+            className="button-secondary"
+            data-testid="backup-restore"
+            disabled={busy || isBacking}
+            onClick={onRestore}
+            type="button"
+          >
+            Restore from Backup
+          </button>
+        )}
+      </div>
+
+      {/* Config section */}
+      <div className="form-grid">
+        {/* Destination: read-only input + Browse button */}
+        <label>
+          <span>{dictionary.targetPath}</span>
+          <div className="backup-path-row">
+            <input
+              className="backup-path-input"
+              value={form.targetPath}
+              placeholder="No destination selected"
+              onChange={(e) => setForm({ ...form, targetPath: e.target.value })}
+              onClick={() => void handleBrowse()}
+            />
+            <button
+              className="button-secondary backup-browse-btn"
+              type="button"
+              disabled={busy || isBacking}
+              onClick={() => void handleBrowse()}
+              aria-label="Choose backup destination folder"
+            >
+              Browse
+            </button>
+          </div>
+        </label>
+
+        {/* Cloud detection info */}
+        {backupPlan.cloudProvider && (
+          <p className="backup-cloud-info">
+            This folder is synced by {backupPlan.cloudProvider}
+          </p>
+        )}
+
+        {/* Schedule: number + unit + startup checkbox */}
+        <label>
+          <span>{dictionary.schedule}</span>
+          <div className="backup-schedule-row">
+            <span className="backup-schedule-label">Every</span>
+            <input
+              type="number"
+              min={0}
+              className="backup-schedule-number"
+              value={form.intervalValue}
+              onChange={(e) =>
+                setForm({ ...form, intervalValue: parseInt(e.target.value, 10) || 0 })
+              }
+            />
+            <select
+              className="backup-schedule-unit"
+              value={form.intervalUnit}
+              onChange={(e) =>
+                setForm({ ...form, intervalUnit: e.target.value as BackupIntervalUnit })
+              }
+            >
+              {INTERVAL_UNITS.map((u) => (
+                <option key={u.value} value={u.value}>
+                  {u.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </label>
+        <label className="backup-startup-check">
+          <input
+            type="checkbox"
+            checked={form.onStartup}
+            onChange={(e) => setForm({ ...form, onStartup: e.target.checked })}
+          />
+          <span>Also back up when the app starts</span>
+        </label>
+      </div>
+
+      {/* Save */}
+      <div className="action-panel__footer action-panel__footer--spread">
+        <div />
         <button
           className="button-secondary"
           data-testid="backup-save"

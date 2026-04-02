@@ -23,6 +23,7 @@ test.describe.serial("smoke tests (empty seed)", () => {
   });
 
   test("empty inventory table shows no-data state", async ({ page }) => {
+
     await navigateTo(page, "inventory");
     await expect(topbarTitle(page)).toHaveText("Inventory");
 
@@ -40,6 +41,7 @@ test.describe.serial("smoke tests (empty seed)", () => {
   });
 
   test("empty personnel section shows no cards", async ({ page }) => {
+
     await navigateTo(page, "personnel");
     await expect(topbarTitle(page)).toHaveText("Personnel");
 
@@ -47,6 +49,7 @@ test.describe.serial("smoke tests (empty seed)", () => {
   });
 
   test("empty alerts section shows no alert cards", async ({ page }) => {
+
     await navigateTo(page, "alerts");
     await expect(topbarTitle(page)).toHaveText("Alerts");
 
@@ -54,6 +57,7 @@ test.describe.serial("smoke tests (empty seed)", () => {
   });
 
   test("no quick-issue CSS classes in desktop DOM", async ({ page }) => {
+
     await navigateTo(page, "dashboard");
     await expect(topbarTitle(page)).toHaveText("Dashboard");
 

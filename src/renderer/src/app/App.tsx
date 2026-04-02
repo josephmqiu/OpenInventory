@@ -12,6 +12,7 @@ import { ActionPanel } from "../ui/components/ActionPanel";
 import { BatchIssuePanel } from "../ui/components/BatchIssuePanel";
 import { LanAccessPanel } from "../ui/components/LanAccessPanel";
 import { AuditPanel } from "../ui/components/AuditPanel";
+import { RestoreDialog } from "../ui/components/RestoreDialog";
 import type { Dictionary } from "./i18n";
 import { useInventoryState } from "./useInventoryState";
 import { useAutoUpdate } from "./useAutoUpdate";
@@ -80,6 +81,7 @@ export function App() {
     actionError,
     notice,
     busy,
+    pendingRestoreComparison,
     accessKeyInput,
     setAccessKeyInput,
     requiresBrowserAuth,
@@ -95,6 +97,10 @@ export function App() {
     handleRemoveItem,
     handleBackupPlanSave,
     handleBackupNow,
+    handleSelectBackupDirectory,
+    startRestoreFromBackup,
+    confirmRestoreFromBackup,
+    cancelRestoreFromBackup,
     handleAddPersonnel,
     handleRemovePersonnel,
     handleLanguageChange,
@@ -112,7 +118,6 @@ export function App() {
   const [systemDark, setSystemDark] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : true,
   );
-
   useEffect(() => {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
@@ -260,7 +265,6 @@ export function App() {
     snapshot?.items.filter((item) => batchIssueItemIds.includes(item.id)) ?? [];
   const headerTitle = dictionary[section];
   const headerSubtitle = sectionSubtitle(section, dictionary);
-
   return (
     <div className={`app-shell${sidebarCollapsed ? " app-shell--collapsed" : ""}`}>
       <aside className={`sidebar${sidebarCollapsed ? " sidebar--collapsed" : ""}`}>
@@ -371,6 +375,14 @@ export function App() {
 
         {snapshot && (
           <>
+            {pendingRestoreComparison && (
+              <RestoreDialog
+                comparison={pendingRestoreComparison}
+                language={language}
+                onCancel={cancelRestoreFromBackup}
+                onConfirm={() => void confirmRestoreFromBackup()}
+              />
+            )}
             {batchIssueItemIds.length > 0 && (
               <BatchIssuePanel
                 busy={busy}
@@ -463,6 +475,8 @@ export function App() {
                     language={language}
                     onBackupNow={onBackupNow}
                     onSave={onBackupPlanSave}
+                    onBrowse={handleSelectBackupDirectory}
+                    onRestore={() => void startRestoreFromBackup()}
                   />
                   {lanAccess && (
                     <LanAccessPanel

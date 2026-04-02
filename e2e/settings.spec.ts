@@ -1,47 +1,26 @@
 import { test, expect } from "./fixtures/electron-app";
 import { navigateTo, expectSuccess, dismissBanner } from "./fixtures/helpers";
-import fs from "fs";
-import os from "os";
-import path from "path";
-
-let backupDir = "";
 
 // inventory-basics seed: 3 items, 2 personnel (Alice, Bob)
 
-test.describe.serial("settings and backup", () => {
-  test.afterAll(() => {
-    if (backupDir) {
-      fs.rmSync(backupDir, { force: true, recursive: true });
-    }
-  });
-
-  test("configures backup settings and saves", async ({ page }) => {
-    backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-e2e-backup-"));
-
+test.describe.serial("settings", () => {
+  test("backup panel shows status-first layout", async ({ page }) => {
     await navigateTo(page, "settings");
     const backupPanel = page.locator(".panel").filter({ has: page.locator("h2:has-text('Backup Plan')") });
 
-    await backupPanel.locator("label:has-text('Target Path') input").fill(backupDir);
-    await backupPanel.locator("label:has-text('Schedule') input").fill("daily");
-    await backupPanel.locator("label:has-text('Retention') input").fill("7 days");
-    await page.getByTestId("backup-save").click();
+    // Panel header with status pill
+    await expect(backupPanel.locator(".status-pill")).toBeVisible({ timeout: 10_000 });
 
-    await expect(page.getByTestId("feedback-banner")).toContainText("Backup settings updated.", {
-      timeout: 10_000,
-    });
-  });
+    // Backup Now and Restore buttons exist
+    await expect(page.getByTestId("backup-now")).toBeVisible();
+    await expect(page.getByTestId("backup-restore")).toBeVisible();
 
-  test("backup now writes a database file", async ({ page }) => {
-    await dismissBanner(page);
-    await page.getByTestId("backup-now").click();
+    // Schedule picker with number input and unit dropdown
+    await expect(backupPanel.locator(".backup-schedule-number")).toBeVisible();
+    await expect(backupPanel.locator(".backup-schedule-unit")).toBeVisible();
 
-    await expect(page.getByTestId("feedback-banner")).toContainText("Backup completed.", {
-      timeout: 15_000,
-    });
-
-    await expect.poll(
-      () => fs.readdirSync(backupDir).filter((entry) => entry.endsWith(".db")).length,
-    ).toBe(1);
+    // Startup checkbox
+    await expect(backupPanel.locator(".backup-startup-check input[type='checkbox']")).toBeVisible();
   });
 
   test("remove a personnel member", async ({ page }) => {

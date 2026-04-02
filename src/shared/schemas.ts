@@ -8,10 +8,10 @@ import { Schema } from "@effect/schema";
 
 export const LanguageSchema = Schema.Literal("en", "zh-CN");
 
-export const BackupTargetTypeSchema = Schema.Literal(
-  "local_folder",
-  "lan_share",
-  "cloud_folder",
+export const BackupIntervalUnitSchema = Schema.Literal(
+  "hours",
+  "days",
+  "weeks",
 );
 
 export const AuditMovementTypeSchema = Schema.Literal("receive", "issue");
@@ -78,9 +78,9 @@ export const BatchIssueMaterialArgs = Schema.Struct({
 export const UpdateBackupPlanArgs = Schema.Struct({
   input: Schema.Struct({
     targetPath: Schema.String,
-    targetType: BackupTargetTypeSchema,
-    schedule: Schema.String,
-    retention: Schema.String,
+    intervalValue: NonNegativeInt,
+    intervalUnit: BackupIntervalUnitSchema,
+    onStartup: Schema.Boolean,
   }),
 });
 
@@ -179,9 +179,9 @@ export const BatchIssueMaterialBody = Schema.Struct({
 
 export const UpdateBackupPlanBody = Schema.Struct({
   targetPath: Schema.String,
-  targetType: BackupTargetTypeSchema,
-  schedule: Schema.String,
-  retention: Schema.String,
+  intervalValue: NonNegativeInt,
+  intervalUnit: BackupIntervalUnitSchema,
+  onStartup: Schema.Boolean,
 });
 
 export const AddPersonnelBody = Schema.Struct({

@@ -22,6 +22,7 @@ export default defineConfig({
     { name: "lan", testMatch: /lan-access\.spec/, use: { seedScenario: "lan-ready" } },
     { name: "mobile", testMatch: /quick-issue-mobile\.spec/, use: { seedScenario: "lan-ready" } },
     { name: "settings", testMatch: /settings\.spec/, use: { seedScenario: "inventory-basics" } },
+    { name: "backup", testMatch: /backup\.spec/, use: { seedScenario: "inventory-basics" } },
     { name: "i18n", testMatch: /theme-and-language\.spec/, use: { seedScenario: "empty" } },
     { name: "shutdown", testMatch: /graceful-shutdown\.spec/, use: { seedScenario: "none" } },
   ],

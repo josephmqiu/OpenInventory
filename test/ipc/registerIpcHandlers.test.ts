@@ -28,12 +28,13 @@ const snapshot: AppSnapshot = {
   personnel: [],
   backupPlan: {
     targetPath: "",
-    targetType: "local_folder",
-    schedule: "",
-    retention: "",
+    schedule: { intervalValue: 0, intervalUnit: "hours", onStartup: false },
     lastSuccessfulBackup: "",
-    nextScheduledBackup: "",
+    lastFileSize: 0,
+    lastVerified: false,
+    lastError: "",
     status: "warning",
+    cloudProvider: "",
   },
   language: "en",
 };
@@ -322,7 +323,7 @@ describe("registerIpcHandlers", () => {
     registerIpcHandlers(runtime, { primaryUrl: "" }, autoUpdateService);
 
     const handler = electronMocks.handlers.get("update-backup-plan");
-    const result = await handler?.({}, { input: { targetType: "invalid_type" } });
+    const result = await handler?.({}, { input: { intervalUnit: "invalid_unit" } });
 
     expect(result).toHaveProperty("ok", false);
     expect(result).toHaveProperty("error._tag", "ValidationError");

@@ -1,5 +1,4 @@
 import { test, expect } from "./fixtures/electron-app";
-
 // empty seed — no data needed for theme/language tests
 
 test.describe.serial("theme and language", () => {

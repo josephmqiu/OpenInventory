@@ -25,12 +25,12 @@ declare module "@playwright/test" {
 // Worker-scoped: one Electron app per Playwright project.
 // Each project gets a fresh temp dir with a pre-seeded database.
 export const test = base.extend<
-  { page: Page; browserPage: Page },
-  { electronApp: ElectronApplication; sharedPage: Page; seedScenario: string }
+  { page: Page; browserPage: Page; app: ElectronApplication; userDataDir: string },
+  { electronApp: ElectronApplication; sharedPage: Page; seedScenario: string; userDataDir: string }
 >({
   seedScenario: ["empty", { scope: "worker", option: true }],
 
-  electronApp: [async ({ seedScenario }, use) => {
+  userDataDir: [async ({ seedScenario }, use) => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-e2e-"));
 
     // Copy pre-built seed database if scenario is not "none"
@@ -45,6 +45,12 @@ export const test = base.extend<
       fs.mkdirSync(dataDir, { recursive: true });
       fs.copyFileSync(seedDb, path.join(dataDir, "inventory-monitor.db"));
     }
+
+    await use(tempDir);
+  }, { scope: "worker" }],
+
+  electronApp: [async ({ seedScenario, userDataDir }, use) => {
+    const tempDir = userDataDir;
 
     const appRoot = path.join(__dirname, "../..");
     const electronApp = await electron.launch({
@@ -97,6 +103,10 @@ export const test = base.extend<
     const page = await browserInstance.newPage();
     await use(page);
     await page.close();
+  },
+
+  app: async ({ electronApp }, use) => {
+    await use(electronApp);
   },
 });
 
