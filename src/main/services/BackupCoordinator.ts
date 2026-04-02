@@ -135,8 +135,12 @@ export class BackupCoordinator {
    */
   async restoreFromBackup(backupDir: string): Promise<void> {
     const dataDir = path.dirname(this.dbPath);
+    const backupDbPath = path.join(backupDir, "database.db");
+    if (!fs.existsSync(backupDbPath)) {
+      throw new Error("No database.db found in backup directory");
+    }
 
-    // Step 1: Save settings that need to survive the restore
+    // Step 1: Preflight while the runtime is still alive.
     const currentTargetPath = await this.runtime.runPromise(
       Effect.gen(function* () {
         const db = yield* DatabaseService;
@@ -145,6 +149,7 @@ export class BackupCoordinator {
       }),
     );
 
+    const restorePendingPath = path.join(dataDir, ".restore-pending.json");
     const restorePending = {
       preserveSettings: {
         "backup.target_path": currentTargetPath,
@@ -152,62 +157,77 @@ export class BackupCoordinator {
       backupDir,
       restoredAt: new Date().toISOString(),
     };
-    fs.writeFileSync(
-      path.join(dataDir, ".restore-pending.json"),
-      JSON.stringify(restorePending, null, 2),
-    );
-
-    // Step 2: Dispose the runtime (closes DB connections, stops LAN server)
-    await this.runtime.dispose();
-
-    // Step 3: Swap files (runtime is disposed, so direct fs operations)
-    const backupDbPath = path.join(backupDir, "database.db");
-    if (!fs.existsSync(backupDbPath)) {
-      throw new Error("No database.db found in backup directory");
-    }
-
-    // Safety copy: move current DB + WAL + SHM to timestamped directory
     const timestamp = new Date()
       .toISOString()
       .replace(/[:.]/g, "-")
       .replace("T", "_")
       .slice(0, 19);
     const safetyCopyDir = path.join(dataDir, `database-pre-restore-${timestamp}`);
-    fs.mkdirSync(safetyCopyDir, { recursive: true });
-
-    if (fs.existsSync(this.dbPath)) {
-      fs.renameSync(this.dbPath, path.join(safetyCopyDir, path.basename(this.dbPath)));
-    }
     const walPath = `${this.dbPath}-wal`;
-    if (fs.existsSync(walPath)) {
-      fs.renameSync(walPath, path.join(safetyCopyDir, `${path.basename(this.dbPath)}-wal`));
-    }
     const shmPath = `${this.dbPath}-shm`;
-    if (fs.existsSync(shmPath)) {
-      fs.renameSync(shmPath, path.join(safetyCopyDir, `${path.basename(this.dbPath)}-shm`));
+    const dbFilename = path.basename(this.dbPath);
+    const safetyDbPath = path.join(safetyCopyDir, dbFilename);
+    const safetyWalPath = path.join(safetyCopyDir, `${dbFilename}-wal`);
+    const safetyShmPath = path.join(safetyCopyDir, `${dbFilename}-shm`);
+
+    fs.writeFileSync(restorePendingPath, JSON.stringify(restorePending, null, 2));
+    try {
+      // Step 2: Dispose the runtime (closes DB connections, stops LAN server).
+      await this.runtime.dispose();
+    } catch (disposeError) {
+      try {
+        fs.unlinkSync(restorePendingPath);
+      } catch {
+        // Ignore cleanup failures and surface the dispose error.
+      }
+      throw disposeError;
     }
 
-    // Copy backup database with rollback on failure
+    // Step 3: Swap files (runtime is disposed, so direct fs operations).
     try {
+      fs.mkdirSync(safetyCopyDir, { recursive: true });
+
+      if (fs.existsSync(this.dbPath)) {
+        fs.renameSync(this.dbPath, safetyDbPath);
+      }
+      if (fs.existsSync(walPath)) {
+        fs.renameSync(walPath, safetyWalPath);
+      }
+      if (fs.existsSync(shmPath)) {
+        fs.renameSync(shmPath, safetyShmPath);
+      }
+
       fs.copyFileSync(backupDbPath, this.dbPath);
     } catch (copyError) {
-      // Rollback: move safety copy back to original location
-      const safetyDbPath = path.join(safetyCopyDir, path.basename(this.dbPath));
+      // Roll back the original data, clean pending state, and restart cleanly.
+      try {
+        if (fs.existsSync(this.dbPath)) {
+          fs.unlinkSync(this.dbPath);
+        }
+      } catch {
+        // Ignore cleanup failures and restore what we can.
+      }
       if (fs.existsSync(safetyDbPath)) {
         fs.renameSync(safetyDbPath, this.dbPath);
       }
-      const safetyWalPath = path.join(safetyCopyDir, `${path.basename(this.dbPath)}-wal`);
       if (fs.existsSync(safetyWalPath)) {
         fs.renameSync(safetyWalPath, walPath);
       }
-      const safetyShmPath = path.join(safetyCopyDir, `${path.basename(this.dbPath)}-shm`);
       if (fs.existsSync(safetyShmPath)) {
         fs.renameSync(safetyShmPath, shmPath);
       }
-      throw new Error(`Restore failed during file copy: ${copyError instanceof Error ? copyError.message : copyError}. Original database has been preserved.`);
+      try {
+        fs.unlinkSync(restorePendingPath);
+      } catch {
+        // Ignore cleanup failures during rollback.
+      }
+      console.error("[Backup] Restore failed after runtime disposal:", copyError);
+      app.relaunch();
+      app.exit(0);
+      return;
     }
 
-    // Step 4: Relaunch
+    // Step 4: Relaunch.
     app.relaunch();
     app.exit(0);
   }

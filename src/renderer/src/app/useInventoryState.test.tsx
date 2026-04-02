@@ -33,10 +33,14 @@ const gatewayMocks = vi.hoisted(() => ({
   regenerateLanAccessKey: vi.fn(),
   removeInventoryItem: vi.fn(),
   removePersonnel: vi.fn(),
+  restoreFromBackup: vi.fn(),
+  selectBackupDirectory: vi.fn(),
+  selectRestoreSource: vi.fn(),
   updateAppLanguage: vi.fn(),
   updateBackupPlan: vi.fn(),
   updateInventoryItem: vi.fn(),
   updateLanAccess: vi.fn(),
+  validateBackup: vi.fn(),
 }));
 
 vi.mock("./runtime", () => runtimeMocks);
@@ -165,6 +169,9 @@ beforeEach(() => {
   });
   gatewayMocks.removeInventoryItem.mockResolvedValue(createSnapshot({ items: [] }));
   gatewayMocks.removePersonnel.mockResolvedValue(createSnapshot({ personnel: [] }));
+  gatewayMocks.restoreFromBackup.mockResolvedValue(undefined);
+  gatewayMocks.selectBackupDirectory.mockResolvedValue("/tmp/openinventory-backups");
+  gatewayMocks.selectRestoreSource.mockResolvedValue(null);
   gatewayMocks.updateAppLanguage.mockResolvedValue(undefined);
   gatewayMocks.updateBackupPlan.mockResolvedValue(createSnapshot());
   gatewayMocks.updateInventoryItem.mockResolvedValue(createSnapshot());
@@ -174,6 +181,26 @@ beforeEach(() => {
     status: "running",
     statusMessage: "LAN server is running.",
     urls: ["http://127.0.0.1:4123"],
+  });
+  gatewayMocks.validateBackup.mockResolvedValue({
+    validation: { valid: true },
+    comparison: {
+      backup: {
+        createdAt: "2026-03-31T09:00:00Z",
+        items: 1,
+        movements: 2,
+        personnel: 1,
+        schemaVersion: 4,
+        appVersion: "0.0.4",
+      },
+      current: {
+        lastActivity: "2026-03-31T10:00:00Z",
+        items: 1,
+        movements: 3,
+        personnel: 1,
+      },
+      backupIsNewer: false,
+    },
   });
 });
 
@@ -305,6 +332,73 @@ describe("useInventoryState", () => {
     expect(success).toBe(false);
     expect(result.current.notice).toBeNull();
     expect(result.current.actionError).toBe(dictionary.backupTargetPathRequired);
+  });
+
+  it("stores comparison data after restore validation without restoring immediately", async () => {
+    gatewayMocks.selectRestoreSource.mockResolvedValueOnce("/tmp/backup/OpenInventory-Backup");
+
+    const { result } = renderHook(() => useInventoryState());
+
+    await waitFor(() => {
+      expect(result.current.snapshot).not.toBeNull();
+    });
+
+    await act(async () => {
+      await result.current.startRestoreFromBackup();
+    });
+
+    expect(gatewayMocks.validateBackup).toHaveBeenCalledWith("/tmp/backup/OpenInventory-Backup");
+    expect(gatewayMocks.restoreFromBackup).not.toHaveBeenCalled();
+    expect(result.current.pendingRestoreComparison).toMatchObject({
+      backup: { appVersion: "0.0.4" },
+      backupIsNewer: false,
+    });
+  });
+
+  it("confirms restore only after pending comparison data exists", async () => {
+    gatewayMocks.selectRestoreSource.mockResolvedValueOnce("/tmp/backup/OpenInventory-Backup");
+
+    const { result } = renderHook(() => useInventoryState());
+
+    await waitFor(() => {
+      expect(result.current.snapshot).not.toBeNull();
+    });
+
+    await act(async () => {
+      await result.current.confirmRestoreFromBackup();
+    });
+    expect(gatewayMocks.restoreFromBackup).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.startRestoreFromBackup();
+    });
+    await act(async () => {
+      await result.current.confirmRestoreFromBackup();
+    });
+
+    expect(gatewayMocks.restoreFromBackup).toHaveBeenCalledWith("/tmp/backup/OpenInventory-Backup");
+    expect(result.current.pendingRestoreComparison).toBeNull();
+  });
+
+  it("keeps restore dialog closed and surfaces errors when backup validation fails", async () => {
+    gatewayMocks.selectRestoreSource.mockResolvedValueOnce("/tmp/backup/OpenInventory-Backup");
+    gatewayMocks.validateBackup.mockResolvedValueOnce({
+      validation: { valid: false, error: "Backup is invalid" },
+    });
+
+    const { result } = renderHook(() => useInventoryState());
+
+    await waitFor(() => {
+      expect(result.current.snapshot).not.toBeNull();
+    });
+
+    await act(async () => {
+      await result.current.startRestoreFromBackup();
+    });
+
+    expect(result.current.pendingRestoreComparison).toBeNull();
+    expect(result.current.actionError).toBe("Backup is invalid");
+    expect(gatewayMocks.restoreFromBackup).not.toHaveBeenCalled();
   });
 
   it("warns instead of saving LAN settings outside the desktop runtime", async () => {

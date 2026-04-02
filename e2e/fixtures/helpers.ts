@@ -1,6 +1,15 @@
 import { expect, type Page } from "@playwright/test";
 
 /**
+ * Dismiss the WelcomeScreen modal if it appears on first launch.
+ * No-op if the overlay is not visible.
+ */
+export async function dismissWelcomeScreen(page: Page): Promise<void> {
+  const startFresh = page.locator(".welcome-dialog__btn", { hasText: "Start Fresh" });
+  await startFresh.click({ timeout: 3_000 }).catch(() => {});
+}
+
+/**
  * Dismiss the top-level feedback banner if visible.
  * Uses auto-wait with a short timeout + catch to avoid race conditions.
  * Banners require explicit dismiss (no auto-timeout).

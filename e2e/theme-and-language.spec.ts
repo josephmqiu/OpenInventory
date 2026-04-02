@@ -1,10 +1,12 @@
 import { test, expect } from "./fixtures/electron-app";
+import { dismissWelcomeScreen } from "./fixtures/helpers";
 // empty seed — no data needed for theme/language tests
 
 test.describe.serial("theme and language", () => {
   // ── Theme cycling ──────────────────────────────────────────────────
 
   test("starts in auto mode", async ({ page }) => {
+    await dismissWelcomeScreen(page);
     const themeBtn = page.getByTestId("theme-toggle");
     await expect(themeBtn).toHaveAttribute("aria-label", "Auto");
 

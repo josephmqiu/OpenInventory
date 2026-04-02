@@ -956,7 +956,8 @@ describe("foreign_keys", () => {
 // ─── Scoped Lifecycle ──────────────────────────────────────────────────────
 
 import { Effect, ManagedRuntime } from "effect";
-import { DatabaseService, makeDatabaseLayer } from "../../src/main/services/DatabaseService";
+import { backendMessages } from "../../src/main/domain/errors";
+import { DatabaseService, makeDatabaseLayer, makeDatabaseService } from "../../src/main/services/DatabaseService";
 import Database from "better-sqlite3";
 
 describe("makeDatabaseLayer (scoped lifecycle)", () => {
@@ -986,5 +987,47 @@ describe("makeDatabaseLayer (scoped lifecycle)", () => {
     const rows = probe.prepare("SELECT * FROM inventory_items").all();
     expect(rows).toHaveLength(0);
     probe.close();
+  });
+});
+
+describe("backup plan service validation", () => {
+  it("rejects relative backup paths through updateBackupPlan", async () => {
+    const service = makeDatabaseService(t.dbPath);
+
+    await expect(
+      Effect.runPromise(
+        service.updateBackupPlan({
+          targetPath: "relative/backups",
+          intervalValue: 4,
+          intervalUnit: "hours",
+          onStartup: false,
+        }),
+      ),
+    ).rejects.toThrow(backendMessages("en").backupTargetPathNotAbsolute);
+
+    service.close();
+  });
+
+  it("accepts absolute writable backup paths through updateBackupPlan", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    const absolutePath = `${t.dir}/backups`;
+
+    const snapshot = await Effect.runPromise(
+      service.updateBackupPlan({
+        targetPath: absolutePath,
+        intervalValue: 8,
+        intervalUnit: "hours",
+        onStartup: true,
+      }),
+    );
+
+    expect(snapshot.backupPlan.targetPath).toBe(absolutePath);
+    expect(snapshot.backupPlan.schedule).toEqual({
+      intervalValue: 8,
+      intervalUnit: "hours",
+      onStartup: true,
+    });
+
+    service.close();
   });
 });

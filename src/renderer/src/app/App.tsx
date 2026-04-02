@@ -12,6 +12,8 @@ import { ActionPanel } from "../ui/components/ActionPanel";
 import { BatchIssuePanel } from "../ui/components/BatchIssuePanel";
 import { LanAccessPanel } from "../ui/components/LanAccessPanel";
 import { AuditPanel } from "../ui/components/AuditPanel";
+import { RestoreDialog } from "../ui/components/RestoreDialog";
+import { WelcomeScreen } from "../ui/components/WelcomeScreen";
 import type { Dictionary } from "./i18n";
 import { useInventoryState } from "./useInventoryState";
 import { useAutoUpdate } from "./useAutoUpdate";
@@ -80,6 +82,7 @@ export function App() {
     actionError,
     notice,
     busy,
+    pendingRestoreComparison,
     accessKeyInput,
     setAccessKeyInput,
     requiresBrowserAuth,
@@ -96,7 +99,9 @@ export function App() {
     handleBackupPlanSave,
     handleBackupNow,
     handleSelectBackupDirectory,
-    handleRestoreFromBackup,
+    startRestoreFromBackup,
+    confirmRestoreFromBackup,
+    cancelRestoreFromBackup,
     handleAddPersonnel,
     handleRemovePersonnel,
     handleLanguageChange,
@@ -114,6 +119,7 @@ export function App() {
   const [systemDark, setSystemDark] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : true,
   );
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   useEffect(() => {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
@@ -261,9 +267,23 @@ export function App() {
     snapshot?.items.filter((item) => batchIssueItemIds.includes(item.id)) ?? [];
   const headerTitle = dictionary[section];
   const headerSubtitle = sectionSubtitle(section, dictionary);
+  const isFirstLaunch = snapshot.items.length === 0
+    && snapshot.personnel.length === 0
+    && !snapshot.backupPlan.targetPath
+    && !welcomeDismissed;
 
   return (
     <div className={`app-shell${sidebarCollapsed ? " app-shell--collapsed" : ""}`}>
+      {isFirstLaunch && (
+        <WelcomeScreen
+          appVersion={process.env.npm_package_version ?? "0.0.0"}
+          onStartFresh={() => setWelcomeDismissed(true)}
+          onRestore={() => {
+            setWelcomeDismissed(true);
+            void startRestoreFromBackup();
+          }}
+        />
+      )}
       <aside className={`sidebar${sidebarCollapsed ? " sidebar--collapsed" : ""}`}>
         {!sidebarCollapsed && (
           <div className="sidebar__brand">
@@ -372,6 +392,14 @@ export function App() {
 
         {snapshot && (
           <>
+            {pendingRestoreComparison && (
+              <RestoreDialog
+                comparison={pendingRestoreComparison}
+                language={language}
+                onCancel={cancelRestoreFromBackup}
+                onConfirm={() => void confirmRestoreFromBackup()}
+              />
+            )}
             {batchIssueItemIds.length > 0 && (
               <BatchIssuePanel
                 busy={busy}
@@ -465,7 +493,7 @@ export function App() {
                     onBackupNow={onBackupNow}
                     onSave={onBackupPlanSave}
                     onBrowse={handleSelectBackupDirectory}
-                    onRestore={() => void handleRestoreFromBackup()}
+                    onRestore={() => void startRestoreFromBackup()}
                   />
                   {lanAccess && (
                     <LanAccessPanel

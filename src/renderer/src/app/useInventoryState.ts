@@ -6,6 +6,7 @@ import type {
   InventoryAlert,
   Language,
   LanAccessState,
+  RestoreComparisonData,
   StockMutationInput,
   UpdateBackupPlanInput,
   UpdateInventoryItemInput,
@@ -56,6 +57,7 @@ export interface InventoryState {
   actionError: string | null;
   notice: InventoryNotice | null;
   busy: boolean;
+  pendingRestoreComparison: RestoreComparisonData | null;
   accessKeyInput: string;
   setAccessKeyInput: Dispatch<SetStateAction<string>>;
   requiresBrowserAuth: boolean;
@@ -72,7 +74,9 @@ export interface InventoryState {
   handleBackupPlanSave: (input: UpdateBackupPlanInput) => Promise<boolean>;
   handleBackupNow: () => Promise<boolean>;
   handleSelectBackupDirectory: () => Promise<string | null>;
-  handleRestoreFromBackup: () => Promise<void>;
+  startRestoreFromBackup: () => Promise<void>;
+  confirmRestoreFromBackup: () => Promise<void>;
+  cancelRestoreFromBackup: () => void;
   handleAddPersonnel: (name: string) => Promise<boolean>;
   handleRemovePersonnel: (personnelId: string) => Promise<boolean>;
   handleLanguageChange: (nextLanguage: Language) => void;
@@ -124,6 +128,10 @@ export function useInventoryState(): InventoryState {
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<InventoryNotice | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingRestore, setPendingRestore] = useState<{
+    dirPath: string;
+    comparison: RestoreComparisonData;
+  } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [accessKeyInput, setAccessKeyInput] = useState(() => readPersistedLanAccessKey());
   const dictionary = dictionaries[language];
@@ -363,24 +371,51 @@ export function useInventoryState(): InventoryState {
     }
   };
 
-  const handleRestoreFromBackup = async (): Promise<void> => {
+  const startRestoreFromBackup = async (): Promise<void> => {
     try {
+      setBusy(true);
+      setActionError(null);
       const dirPath = await selectRestoreSource();
       if (!dirPath) return;
 
       const { validation, comparison } = await validateBackup(dirPath);
       if (!validation.valid) {
+        setPendingRestore(null);
         setActionError(validation.error ?? "Invalid backup");
         return;
       }
-
-      // Store comparison data for the RestoreDialog (would be managed by App.tsx state)
-      // For now, proceed directly with restore if user confirms via the UI
-      await restoreFromBackup(dirPath);
-      // Won't reach here — app relaunches during restore
+      if (!comparison) {
+        setPendingRestore(null);
+        setActionError("Unable to compare the selected backup.");
+        return;
+      }
+      setPendingRestore({ dirPath, comparison });
     } catch (error) {
+      setPendingRestore(null);
       handleGatewayError(error);
+    } finally {
+      setBusy(false);
     }
+  };
+
+  const confirmRestoreFromBackup = async (): Promise<void> => {
+    if (!pendingRestore) return;
+
+    try {
+      setBusy(true);
+      setActionError(null);
+      await restoreFromBackup(pendingRestore.dirPath);
+      setPendingRestore(null);
+    } catch (error) {
+      setPendingRestore(null);
+      handleGatewayError(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelRestoreFromBackup = () => {
+    setPendingRestore(null);
   };
 
   const handleAddPersonnel = async (name: string) =>
@@ -482,6 +517,7 @@ export function useInventoryState(): InventoryState {
     actionError,
     notice,
     busy,
+    pendingRestoreComparison: pendingRestore?.comparison ?? null,
     accessKeyInput,
     setAccessKeyInput,
     requiresBrowserAuth,
@@ -498,7 +534,9 @@ export function useInventoryState(): InventoryState {
     handleBackupPlanSave,
     handleBackupNow,
     handleSelectBackupDirectory,
-    handleRestoreFromBackup,
+    startRestoreFromBackup,
+    confirmRestoreFromBackup,
+    cancelRestoreFromBackup,
     handleAddPersonnel,
     handleRemovePersonnel,
     handleLanguageChange,

@@ -18,7 +18,7 @@ export function RestoreDialog({ comparison, language, onConfirm, onCancel }: Res
     : "Your current data appears more recent than this backup. Restoring will replace newer data with older data.";
 
   return (
-    <div className="restore-dialog-backdrop" onClick={onCancel}>
+    <div className="restore-dialog-backdrop" data-testid="restore-dialog" onClick={onCancel}>
       <div
         className="restore-dialog"
         role="alertdialog"
@@ -84,6 +84,7 @@ export function RestoreDialog({ comparison, language, onConfirm, onCancel }: Res
         <div className="restore-dialog__footer">
           <button
             className="button-secondary"
+            data-testid="restore-dialog-cancel"
             onClick={onCancel}
             autoFocus
             type="button"
@@ -92,6 +93,7 @@ export function RestoreDialog({ comparison, language, onConfirm, onCancel }: Res
           </button>
           <button
             className="button-secondary button-secondary--danger"
+            data-testid="restore-dialog-confirm"
             onClick={onConfirm}
             type="button"
           >

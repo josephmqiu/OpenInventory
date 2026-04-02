@@ -138,11 +138,10 @@ function validateBackupPath(
   messages: ReturnType<typeof backendMessages>,
 ): void {
   if (targetPath === "") return; // empty is allowed (clears the path)
-  // Resolve to canonical form and reject paths with traversal segments.
-  const resolved = path.resolve(targetPath);
-  if (!path.isAbsolute(resolved) || resolved !== path.resolve(path.normalize(targetPath))) {
+  if (!path.isAbsolute(targetPath)) {
     throw new ValidationError({ message: messages.backupTargetPathNotAbsolute });
   }
+  const resolved = path.resolve(path.normalize(targetPath));
   // Probe write access: create a temp file, then delete it.
   try {
     fs.mkdirSync(resolved, { recursive: true });
