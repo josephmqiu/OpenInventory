@@ -1,8 +1,13 @@
 import { test, expect } from "./fixtures/electron-app";
+import { dismissWelcomeScreen } from "./fixtures/helpers";
 
 // empty seed — no data needed for theme/language tests
 
 test.describe.serial("theme and language", () => {
+  test("dismiss welcome screen", async ({ page }) => {
+    await dismissWelcomeScreen(page);
+  });
+
   // ── Theme cycling ──────────────────────────────────────────────────
 
   test("starts in auto mode", async ({ page }) => {

@@ -168,10 +168,10 @@ export function BackupPanel({
           <span>{dictionary.targetPath}</span>
           <div className="backup-path-row">
             <input
-              readOnly
               className="backup-path-input"
               value={form.targetPath}
               placeholder="No destination selected"
+              onChange={(e) => setForm({ ...form, targetPath: e.target.value })}
               onClick={() => void handleBrowse()}
             />
             <button
