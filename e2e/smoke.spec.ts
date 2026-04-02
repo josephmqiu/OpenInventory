@@ -1,55 +1,11 @@
 import { test, expect } from "./fixtures/electron-app";
-import { dismissWelcomeScreen, navigateTo } from "./fixtures/helpers";
-import fs from "fs";
-import os from "os";
-import path from "path";
+import { navigateTo } from "./fixtures/helpers";
 
 const topbarTitle = (page: import("@playwright/test").Page) =>
   page.locator(".topbar h2");
 
 test.describe.serial("smoke tests (empty seed)", () => {
-  test("welcome screen restore path opens comparison dialog before restoring", async ({ page }) => {
-    const restoreSourceDir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-smoke-restore-"));
-    fs.copyFileSync(
-      path.join(process.cwd(), "e2e", ".seed-cache", "inventory-basics.db"),
-      path.join(restoreSourceDir, "database.db"),
-    );
-
-    await page.evaluate(async (selectedPath) => {
-      const originalInvoke = window.electronAPI.invoke.bind(window.electronAPI);
-      let restoreCalls = 0;
-
-      Object.defineProperty(window, "__restoreTest", {
-        configurable: true,
-        value: {
-          getRestoreCalls: () => restoreCalls,
-        },
-      });
-
-      window.electronAPI.invoke = async (channel: string, args?: unknown) => {
-        if (channel === "select-restore-source") {
-          return selectedPath;
-        }
-        if (channel === "restore-from-backup") {
-          restoreCalls += 1;
-          return null;
-        }
-        return originalInvoke(channel, args);
-      };
-    }, restoreSourceDir);
-
-    await page.locator(".welcome-dialog__btn", { hasText: "Restore from Backup" }).click();
-    await expect(page.getByTestId("restore-dialog")).toBeVisible();
-    await page.getByTestId("restore-dialog-cancel").click();
-    await expect(page.getByTestId("restore-dialog")).toHaveCount(0);
-    await expect.poll(() => page.evaluate(() => (window as any).__restoreTest.getRestoreCalls())).toBe(0);
-
-    await page.locator(".welcome-dialog__btn", { hasText: "Start Fresh" }).click();
-    fs.rmSync(restoreSourceDir, { recursive: true, force: true });
-  });
-
   test("all 7 sidebar nav sections render", async ({ page }) => {
-    await dismissWelcomeScreen(page);
     const sections: Array<{ id: string; title: string }> = [
       { id: "dashboard", title: "Dashboard" },
       { id: "inventory", title: "Inventory" },
@@ -67,7 +23,7 @@ test.describe.serial("smoke tests (empty seed)", () => {
   });
 
   test("empty inventory table shows no-data state", async ({ page }) => {
-    await dismissWelcomeScreen(page);
+
     await navigateTo(page, "inventory");
     await expect(topbarTitle(page)).toHaveText("Inventory");
 
@@ -85,7 +41,7 @@ test.describe.serial("smoke tests (empty seed)", () => {
   });
 
   test("empty personnel section shows no cards", async ({ page }) => {
-    await dismissWelcomeScreen(page);
+
     await navigateTo(page, "personnel");
     await expect(topbarTitle(page)).toHaveText("Personnel");
 
@@ -93,7 +49,7 @@ test.describe.serial("smoke tests (empty seed)", () => {
   });
 
   test("empty alerts section shows no alert cards", async ({ page }) => {
-    await dismissWelcomeScreen(page);
+
     await navigateTo(page, "alerts");
     await expect(topbarTitle(page)).toHaveText("Alerts");
 
@@ -101,7 +57,7 @@ test.describe.serial("smoke tests (empty seed)", () => {
   });
 
   test("no quick-issue CSS classes in desktop DOM", async ({ page }) => {
-    await dismissWelcomeScreen(page);
+
     await navigateTo(page, "dashboard");
     await expect(topbarTitle(page)).toHaveText("Dashboard");
 

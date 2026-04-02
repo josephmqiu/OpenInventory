@@ -1888,56 +1888,6 @@ td input[type="checkbox"] {
   font-weight: 400;
 }
 
-.welcome-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: color-mix(in srgb, var(--surface-0) 40%, transparent);
-  backdrop-filter: blur(18px);
-}
-
-.welcome-dialog {
-  width: min(480px, 100%);
-  padding: 28px;
-  border-radius: 24px;
-  border: 1px solid var(--border);
-  background: var(--surface-1);
-  box-shadow: var(--shadow-lg);
-}
-
-.welcome-dialog__eyebrow {
-  display: inline-block;
-  margin: 0 0 8px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-}
-
-.welcome-dialog__title {
-  margin: 0;
-}
-
-.welcome-dialog__version,
-.welcome-dialog__body {
-  color: var(--text-muted);
-}
-
-.welcome-dialog__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 20px;
-}
-
-.welcome-dialog__btn {
-  min-width: 160px;
-}
 
 @media (max-width: 960px) {
   [data-platform="web"] .audit-filter-bar__date-row,
