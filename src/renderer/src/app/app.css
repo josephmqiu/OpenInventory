@@ -1428,7 +1428,8 @@ button.button-icon-only svg {
 }
 
 .backup-schedule-group,
-.category-group {
+.category-group,
+.unit-group {
   display: grid;
   gap: 8px;
 }
