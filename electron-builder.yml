@@ -1,6 +1,7 @@
 appId: com.openinventory.app
 productName: OpenInventory
 copyright: "Copyright © 2026 OpenInventory"
+npmRebuild: false
 directories:
   buildResources: build
 files:
@@ -15,18 +16,24 @@ files:
   - "!{coverage,.dev-data,.gstack,.claude,docs}"
   - "!{DESIGN.md,CLAUDE.md,VERSION,TODOS.md}"
   - "!.husky"
-  # Strip junk inside node_modules
-  - "!**/node_modules/**/coverage/**"
-  - "!**/node_modules/**/docs/**"
-  - "!**/node_modules/**/*.md"
-  # Strip better-sqlite3 build artifacts (21MB → ~2MB)
+  # node_modules: only better-sqlite3 + electron-updater remain in dependencies,
+  # so electron-builder only packs those (+ their transitive production deps).
+  # Strip better-sqlite3 build artifacts that leak into the ASAR.
   - "!node_modules/better-sqlite3/build/Release/obj*"
   - "!node_modules/better-sqlite3/build/Release/sqlite3.a"
   - "!node_modules/better-sqlite3/deps"
   - "!node_modules/better-sqlite3/src"
-  # Strip TypeScript declarations (not needed at runtime)
-  - "!**/node_modules/*/dist/dts"
-  - "!**/node_modules/@*/*/dist/dts"
+  - "!node_modules/better-sqlite3/prebuilds"
+  # Strip build-time transitive deps of better-sqlite3 (not needed at runtime)
+  - "!node_modules/prebuild-install/**"
+  - "!node_modules/node-abi/**"
+  - "!node_modules/tar-stream/**"
+  - "!node_modules/pump/**"
+  - "!node_modules/detect-libc/**"
+  - "!node_modules/simple-get/**"
+  - "!node_modules/napi-build-utils/**"
+  - "!node_modules/github-from-package/**"
+  - "!node_modules/rc/**"
 asarUnpack:
   - "**/*.node"
   - "out/renderer/**/*"
