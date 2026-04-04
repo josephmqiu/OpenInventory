@@ -36,7 +36,7 @@ if (existsSync(hashFile) && readFileSync(hashFile, "utf-8").trim() === cacheKey)
   console.log(
     `Rebuilding native modules for Electron ${electronVersion} (${platformArch})...`,
   );
-  execSync("npx electron-rebuild -f", { stdio: "inherit" });
+  execSync("npx electron-rebuild -f -o better-sqlite3", { stdio: "inherit" });
 
   if (process.platform === "darwin") {
     execSync(`codesign --force --sign - "${betterSqliteBinary}"`, {

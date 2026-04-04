@@ -40,10 +40,14 @@ function issueRouteRewritePlugin(): Plugin {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin(), copyInfrastructurePlugin()],
+    plugins: [copyInfrastructurePlugin()],
+    define: {
+      __dirname: "import.meta.dirname",
+      __filename: "import.meta.filename",
+    },
     build: {
       rollupOptions: {
-        external: ["better-sqlite3"],
+        external: ["better-sqlite3", "electron-updater"],
       },
     },
   },

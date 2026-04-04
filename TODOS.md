@@ -136,25 +136,3 @@ route-level permission checks in the LAN router.
 **Files:** `src/main/infrastructure/lan/auth.ts`, `src/main/infrastructure/lan/router.ts`,
 `src/main/services/LanServerService.ts`, `src/main/services/DatabaseService.ts`
 
----
-
-## Build: Bundle main-process deps with Vite
-
-Stop externalizing all dependencies in `electron.vite.config.ts` and bundle
-main-process code with Vite (tree-shaking). This is the root cause of the
-81MB ASAR — the entire `node_modules/` tree ships because `externalizeDepsPlugin()`
-prevents bundling. Only `better-sqlite3` (native module) truly needs externalizing.
-
-**Why:** The ASAR contains ~9,800 files and 81MB of node_modules. Bundling with
-Vite would tree-shake to only the code actually used, shrinking the ASAR to
-~5-10MB. This is the single highest-impact build optimization remaining.
-
-**Scope:** Medium-high. Requires removing `externalizeDepsPlugin()` for the main
-process config, keeping only `better-sqlite3` as external, and testing that all
-Effect TS runtime behavior works when bundled (dynamic requires, service layers,
-platform-specific code).
-
-**Depends on:** Nothing. Can be done independently.
-
-**Files:** `electron.vite.config.ts`, `electron-builder.yml` (may need fewer
-exclusions once node_modules is not shipped)
