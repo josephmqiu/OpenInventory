@@ -22,14 +22,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Rebuild better-sqlite3 for Electron
+      - name: Rebuild native modules for Electron
         run: npx tsx scripts/rebuild-electron-native-deps.ts
-      - name: Build and publish
+      - name: Build app
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-        run: npm run build && npx electron-builder --mac --arm64 --publish always
+        run: npm run build && npx electron-builder --mac --arm64 --publish never
       - name: Smoke test packaged app
         run: |
           APP=$(find dist/mac-arm64 -maxdepth 1 -name "*.app" | head -1)
@@ -56,6 +55,12 @@ jobs:
             exit 1
           fi
           echo "Smoke test passed (exit code 0)"
+      - name: Publish release artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+        run: npx electron-builder --mac --arm64 --publish always
 
   build-windows:
     needs: [test-suite]
@@ -67,10 +72,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Rebuild better-sqlite3 for Electron
+      - name: Rebuild native modules for Electron
         run: npx tsx scripts/rebuild-electron-native-deps.ts
       - name: Build app
-        run: npm run build && npx electron-builder --win
+        run: npm run build && npx electron-builder --win --publish never
       - name: Smoke test packaged app
         shell: pwsh
         run: |

@@ -14,7 +14,6 @@
     "build": "electron-vite build",
     "rebuild:native:node": "npm rebuild better-sqlite3",
     "rebuild:native:electron": "npx tsx scripts/rebuild-electron-native-deps.ts",
-    "postinstall": "electron-builder install-app-deps",
     "lint": "eslint src/",
     "preview": "vite preview",
     "test": "vitest run",
@@ -30,8 +29,8 @@
     "test:e2e:parallel-safe:run": "npx tsx scripts/run-e2e-lane.ts parallel-safe",
     "test:e2e:report": "npx tsx scripts/report-e2e-results.ts",
     "test:e2e:cleanup": "npm run rebuild:native:electron",
-    "pack": "npm run rebuild:native:electron && electron-builder --dir",
-    "dist": "npm run rebuild:native:electron && electron-builder",
+    "pack": "rm -rf dist && npm run rebuild:native:electron && electron-builder --dir",
+    "dist": "rm -rf dist && npm run rebuild:native:electron && electron-builder",
     "prepare": "husky"
   },
   "dependencies": {
