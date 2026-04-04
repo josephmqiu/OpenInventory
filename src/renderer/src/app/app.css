@@ -1057,6 +1057,7 @@ button.button-icon-only svg {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+  align-items: start;
 }
 
 .form-grid label,
@@ -1426,7 +1427,8 @@ button.button-icon-only svg {
   padding: 0;
 }
 
-.backup-schedule-group {
+.backup-schedule-group,
+.category-group {
   display: grid;
   gap: 8px;
 }

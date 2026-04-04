@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatNumber } from "../../app/formatters";
-import { DEFAULT_CATEGORIES, UNIT_OPTIONS, localizeCategory, localizeUnit } from "../../app/i18n";
+import { UNIT_OPTIONS, localizeCategory, localizeUnit } from "../../app/i18n";
 import { useTT } from "../hooks/useTT";
 import type {
   ActionKind,
@@ -82,14 +82,14 @@ export function ActionPanel({
   const [itemForm, setItemForm] = useState<CreateInventoryItemInput>({
     sku: "",
     name: "",
-    category: DEFAULT_CATEGORIES[0],
+    category: "",
     location: "",
     unit: UNIT_OPTIONS[0],
     supplier: "",
     reorderQuantity: 0,
     initialQuantity: 0,
   });
-  const [categoryMode, setCategoryMode] = useState<string>(DEFAULT_CATEGORIES[0]);
+  const [categoryMode, setCategoryMode] = useState<string>(NEW_CATEGORY_VALUE);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [stockForm, setStockForm] = useState<StockMutationInput>({
     itemId: "",
@@ -101,7 +101,7 @@ export function ActionPanel({
 
   const categoryOptions = useMemo(() => {
     const existing = items.map((item) => item.category.trim()).filter((value) => value.length > 0);
-    return Array.from(new Set([...DEFAULT_CATEGORIES, ...existing])).sort((left, right) => left.localeCompare(right));
+    return Array.from(new Set(existing)).sort((left, right) => left.localeCompare(right));
   }, [items]);
 
   const selectedManagedItem = useMemo(() => items.find((item) => item.id === activeItemId) ?? null, [activeItemId, items]);
@@ -121,7 +121,7 @@ export function ActionPanel({
     const currentItems = itemsRef.current;
     const currentPersonnel = personnelRef.current;
     const currentCategoryOptions = categoryOptionsRef.current;
-    const firstCategory = currentCategoryOptions[0] ?? DEFAULT_CATEGORIES[0];
+    const firstCategory = currentCategoryOptions[0] ?? "";
     const preferredItemId = activeItemId || currentItems[0]?.id || "";
     const preferredPersonnel = currentPersonnel[0]?.name ?? "";
     const managedItem = currentItems.find((item) => item.id === activeItemId) ?? null;
@@ -281,23 +281,34 @@ export function ActionPanel({
                 <FieldLabel label={tt("itemName", "Item Name")} required />
                 <input disabled={busy} required value={itemForm.name} onChange={(event) => setItemForm({ ...itemForm, name: event.target.value })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
               </label>
-              <label>
-                <FieldLabel label={tt("category", "Category")} required />
-                <select disabled={busy} required value={categoryMode} onChange={(event) => handleCategoryChange(event.target.value)}>
-                  {categoryOptions.map((category) => (
-                    <option key={category} value={category}>
-                      {localizeCategory(category, language)}
-                    </option>
-                  ))}
-                  <option value={NEW_CATEGORY_VALUE}>{tt("addNewCategory", "Add New Category")}</option>
-                </select>
-              </label>
-              {categoryMode === NEW_CATEGORY_VALUE && (
-                <label>
-                  <FieldLabel label={tt("newCategoryName", "New Category Name")} required />
-                  <input disabled={busy} required value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} />
-                </label>
-              )}
+              <div className="category-group">
+                {categoryOptions.length > 0 ? (
+                  <>
+                    <label>
+                      <FieldLabel label={tt("category", "Category")} required />
+                      <select disabled={busy} required value={categoryMode} onChange={(event) => handleCategoryChange(event.target.value)}>
+                        {categoryOptions.map((category) => (
+                          <option key={category} value={category}>
+                            {localizeCategory(category, language)}
+                          </option>
+                        ))}
+                        <option value={NEW_CATEGORY_VALUE}>{tt("addNewCategory", "Add New Category")}</option>
+                      </select>
+                    </label>
+                    {categoryMode === NEW_CATEGORY_VALUE && (
+                      <label>
+                        <FieldLabel label={tt("newCategoryName", "New Category Name")} required />
+                        <input disabled={busy} required value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} />
+                      </label>
+                    )}
+                  </>
+                ) : (
+                  <label>
+                    <FieldLabel label={tt("category", "Category")} required />
+                    <input disabled={busy} required value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} />
+                  </label>
+                )}
+              </div>
               <label>
                 <FieldLabel label={tt("location", "Location")} required />
                 <input disabled={busy} required value={itemForm.location} onChange={(event) => setItemForm({ ...itemForm, location: event.target.value })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
