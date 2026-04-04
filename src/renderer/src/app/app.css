@@ -121,6 +121,7 @@ body {
 :lang(zh) .metric-card__label,
 :lang(zh) .status-pill,
 :lang(zh) .form-grid span,
+:lang(zh) .backup-config span,
 :lang(zh) .personnel-add-bar__label,
 :lang(zh) .backup-grid dt,
 :lang(zh) .backup-status-strip__cell dt,
@@ -1057,12 +1058,14 @@ button.button-icon-only svg {
   gap: 12px;
 }
 
-.form-grid label {
+.form-grid label,
+.backup-config label {
   display: grid;
   gap: 5px;
 }
 
-.form-grid span {
+.form-grid span,
+.backup-config span {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -1071,7 +1074,9 @@ button.button-icon-only svg {
 }
 
 .form-grid input,
-.form-grid select {
+.form-grid select,
+.backup-config input,
+.backup-config select {
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1083,11 +1088,14 @@ button.button-icon-only svg {
 }
 
 .form-grid input:focus,
-.form-grid select:focus {
+.form-grid select:focus,
+.backup-config input:focus,
+.backup-config select:focus {
   border-color: var(--accent);
 }
 
-.form-grid input::placeholder {
+.form-grid input::placeholder,
+.backup-config input::placeholder {
   color: var(--text-dim);
 }
 
@@ -1396,12 +1404,30 @@ button.button-icon-only svg {
   font-size: 13px;
 }
 
-.backup-startup-check {
+.backup-startup-check,
+.backup-config .backup-startup-check {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
   color: var(--text-muted);
+}
+
+/* Backup config: single-column layout (replaces form-grid for backup panel) */
+.backup-config {
+  display: grid;
+  gap: 16px;
+}
+
+.backup-config input[type="checkbox"] {
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  padding: 0;
+}
+
+.backup-schedule-group {
+  display: grid;
+  gap: 8px;
 }
 
 /* Status pills for backup */
