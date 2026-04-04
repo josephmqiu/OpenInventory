@@ -39,7 +39,9 @@ npm install
 npm run dev
 ```
 
-The app opens an Electron window. Data is stored in `~/Library/Application Support/inventory-monitor/data/` (macOS).
+The app opens an Electron window. The first `npm run dev` rebuilds native modules
+for Electron (cached on subsequent runs). Data is stored in
+`~/Library/Application Support/inventory-monitor/data/` (macOS).
 
 ## Scripts
 
@@ -52,8 +54,11 @@ The app opens an Electron window. Data is stored in `~/Library/Application Suppo
 | `npm run test:coverage` | Full Vitest coverage report (frontend + backend) |
 | `npm run test:e2e` | Electron E2E workflow (builds app, runs Playwright) |
 | `npm run lint` | ESLint |
-| `npm run pack` | Package app (unpacked) |
-| `npm run dist` | Package app for distribution |
+| `npm run pack` | Package app (unpacked, cleans dist/ first) |
+| `npm run dist` | Package app for distribution (cleans dist/ first) |
+
+Native module rebuilds are cached — repeated `dev`/`dist` runs skip the rebuild
+if nothing changed (Electron version, platform, or lockfile).
 
 ## Project Structure
 

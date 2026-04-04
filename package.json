@@ -12,7 +12,7 @@
     "dev:api": "npx tsx scripts/run-with-node-native-restore.ts \"npx tsx scripts/dev-api-server.ts\"",
     "dev:preview": "npx tsx scripts/run-with-node-native-restore.ts \"npx tsx scripts/dev-api-server.ts & npx vite --config vite.preview.config.ts\"",
     "build": "electron-vite build",
-    "rebuild:native:node": "npm rebuild better-sqlite3",
+    "rebuild:native:node": "rm -f node_modules/.electron-rebuild-hash && npm rebuild better-sqlite3",
     "rebuild:native:electron": "npx tsx scripts/rebuild-electron-native-deps.ts",
     "lint": "eslint src/",
     "preview": "vite preview",

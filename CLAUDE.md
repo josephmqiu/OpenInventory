@@ -24,9 +24,10 @@ the Node.js ABI; Electron (dev, E2E, packaged app) needs the Electron ABI. The p
 handles this with wrapper scripts — use them, never bypass them.
 
 **Wrapper scripts:**
-- `scripts/run-with-node-native-restore.ts` — rebuilds better-sqlite3 for Node, runs
-  command, restores Electron ABI in a `finally` block. Used by `test:backend`,
-  `test:coverage`, `test:e2e`, `dev:api`, `dev:preview`.
+- `scripts/run-with-node-native-restore.ts` — rebuilds better-sqlite3 for Node (and
+  invalidates the Electron rebuild cache), runs command, restores Electron ABI in a
+  `finally` block. Used by `test:backend`, `test:coverage`, `test:e2e`, `dev:api`,
+  `dev:preview`.
 - `scripts/rebuild-electron-native-deps.ts` — rebuilds ALL native modules for Electron
   ABI + codesigns better-sqlite3 on macOS. Caches the result based on Electron version,
   platform, and lockfile hash — skips rebuild when nothing changed. Used by `dev`,
@@ -49,8 +50,12 @@ pipeline has a strict order: rebuild Node → build Vite → generate seed DBs �
 Electron → run Playwright. Do not reorder these steps.
 
 Config files: `vitest.config.ts` (frontend), `vitest.config.node.ts` (backend),
-`playwright.config.ts` (E2E), `electron.vite.config.ts` (externalizes better-sqlite3),
-`electron-builder.yml` (unpacks `.node` files from ASAR).
+`playwright.config.ts` (E2E), `electron.vite.config.ts` (externalizes all deps for
+main process), `electron-builder.yml` (unpacks `.node` files and renderer assets from
+ASAR — renderer must stay unpacked for LAN server static file serving).
+
+**Build targets:** Mac arm64 only (no x64). Windows x64 only. CI release workflow
+builds → smoke tests → publishes (artifacts are validated before upload).
 
 ## Testing
 
