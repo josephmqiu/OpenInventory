@@ -105,8 +105,9 @@ test.describe.serial("LAN access and QR codes", () => {
     const lanPanel = page.locator(".panel:has-text('LAN Access')");
     await expect(lanPanel).toBeVisible({ timeout: 10_000 });
 
-    // Click regenerate key button
+    // Click regenerate key button and confirm
     await page.getByTestId("lan-regen-key").click();
+    await page.getByTestId("regen-dialog-confirm").click();
     await expectSuccess(page);
 
     // Get the new key from the input
@@ -138,6 +139,7 @@ test.describe.serial("LAN access and QR codes", () => {
 
       const oldKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
       await page.getByTestId("lan-regen-key").click();
+      await page.getByTestId("regen-dialog-confirm").click();
       await expectSuccess(page);
 
       const newKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
@@ -249,9 +251,8 @@ test.describe.serial("LAN access and QR codes", () => {
     const lanPanel = page.locator(".panel:has-text('LAN Access')");
     await expect(lanPanel).toBeVisible({ timeout: 10_000 });
 
-    await lanPanel.locator("input[type='number']").fill(String(LAN_PORT));
-    await lanPanel.locator("select").first().selectOption("disabled");
-    await page.getByTestId("lan-save").click();
+    // Toggle switch OFF to disable LAN
+    await lanPanel.locator("input[role='switch']").click();
     await expectSuccess(page);
 
     await expect(page.getByTestId("lan-status")).toContainText("Stopped", { timeout: 10_000 });

@@ -14,9 +14,9 @@ test.describe.serial("inventory CRUD (empty seed)", () => {
 
     const form = page.locator(".action-panel");
     await form.locator("label:has-text('Item Name') input").fill("E2E Widget");
-    await form.locator("label:has-text('Category') select").selectOption("Raw Material");
+    await form.locator("label:has-text('Category') input").fill("Raw Material");
     await form.locator("label:has-text('Location') input").fill("Rack A");
-    await form.locator("label:has-text('Unit') select").selectOption("pcs");
+    await form.locator("label:has-text('Unit') input").fill("pcs");
     await form.locator("label:has-text('Reorder Level') input").fill("10");
     await form.locator("label:has-text('Initial Quantity') input").fill("50");
 

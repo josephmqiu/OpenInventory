@@ -27,7 +27,7 @@ test.describe.serial("LAN resilience", () => {
       await page.getByTestId("lan-save").click();
 
       await expect(page.getByTestId("lan-status")).toContainText("Error", { timeout: 20_000 });
-      await expect(lanPanel.locator(".backup-grid")).toContainText(/LAN server error/i);
+      await expect(lanPanel.locator(".lan-status-section")).toContainText(/LAN server error/i);
     } finally {
       await new Promise<void>((resolve, reject) => {
         blocker.close((error) => {
