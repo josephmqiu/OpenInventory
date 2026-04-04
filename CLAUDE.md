@@ -62,6 +62,20 @@ npm run test:e2e       # Electron E2E workflow (Playwright, builds app first)
 
 - E2E tests launch a real Electron instance with an isolated temp database.
 
+**Shell environment caveat (Claude Code desktop app):** Node.js and npm are installed
+via Homebrew (`/opt/homebrew/bin/`). The Claude Code desktop app may not source
+`~/.zshrc`, so `npm` can be missing from PATH. If you see `command not found: npm`,
+do NOT work around it by prepending `export PATH=...` to each command — this causes
+subtle failures because the wrapper scripts spawn child processes that may not inherit
+the patched PATH. The native module rebuild silently fails, producing a bad binary
+that makes backend tests fail with misleading errors (e.g., 404s from the LAN router).
+
+Instead, run this once at the start of the session:
+```bash
+eval "$(/opt/homebrew/bin/brew shellenv)"
+```
+Then run all commands normally without PATH prefixes.
+
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill
