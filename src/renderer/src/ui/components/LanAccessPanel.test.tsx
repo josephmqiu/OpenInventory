@@ -13,6 +13,14 @@ const lanAccess: LanAccessState = {
   statusMessage: "LAN server is running.",
 };
 
+const disabledLanAccess: LanAccessState = {
+  ...lanAccess,
+  enabled: false,
+  status: "stopped",
+  statusMessage: "",
+  urls: [],
+};
+
 beforeEach(() => {
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
@@ -27,7 +35,7 @@ afterEach(() => {
 });
 
 describe("LanAccessPanel", () => {
-  it("keeps save disabled until the form changes to a valid port", () => {
+  it("keeps save disabled until the port changes to a valid value", () => {
     renderWithI18n(
       <LanAccessPanel
         busy={false}
@@ -39,7 +47,7 @@ describe("LanAccessPanel", () => {
     );
 
     const saveButton = screen.getByRole("button", { name: "Save LAN Settings" }) as HTMLButtonElement;
-    const portInput = screen.getByRole("spinbutton", { name: "Port" }) as HTMLInputElement;
+    const portInput = screen.getByRole("spinbutton") as HTMLInputElement;
 
     expect(saveButton.disabled).toBe(true);
 
@@ -107,5 +115,161 @@ describe("LanAccessPanel", () => {
     expect(
       screen.getByText("Your network address has changed. Printed QR codes may point to the old address."),
     ).toBeTruthy();
+  });
+
+  // Toggle switch tests
+  it("calls onSave with enabled:false when toggling OFF", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    renderWithI18n(
+      <LanAccessPanel
+        busy={false}
+        lanAccess={lanAccess}
+        onRegenerateKey={vi.fn().mockResolvedValue(undefined)}
+        onSave={onSave}
+      />,
+      "en",
+    );
+
+    const toggle = screen.getByRole("switch") as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    fireEvent.click(toggle);
+    expect(onSave).toHaveBeenCalledWith({ enabled: false, port: 4123 });
+  });
+
+  it("calls onSave with enabled:true when toggling ON", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    renderWithI18n(
+      <LanAccessPanel
+        busy={false}
+        lanAccess={disabledLanAccess}
+        onRegenerateKey={vi.fn().mockResolvedValue(undefined)}
+        onSave={onSave}
+      />,
+      "en",
+    );
+
+    const toggle = screen.getByRole("switch") as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(onSave).toHaveBeenCalledWith({ enabled: true, port: 4123 });
+  });
+
+  it("disables the toggle when busy", () => {
+    renderWithI18n(
+      <LanAccessPanel
+        busy={true}
+        lanAccess={lanAccess}
+        onRegenerateKey={vi.fn().mockResolvedValue(undefined)}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+      />,
+      "en",
+    );
+
+    const toggle = screen.getByRole("switch") as HTMLInputElement;
+    expect(toggle.disabled).toBe(true);
+  });
+
+  it("sends current form port with toggle (not server port)", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    renderWithI18n(
+      <LanAccessPanel
+        busy={false}
+        lanAccess={lanAccess}
+        onRegenerateKey={vi.fn().mockResolvedValue(undefined)}
+        onSave={onSave}
+      />,
+      "en",
+    );
+
+    const portInput = screen.getByRole("spinbutton") as HTMLInputElement;
+    fireEvent.change(portInput, { target: { value: "5000" } });
+
+    const toggle = screen.getByRole("switch");
+    fireEvent.click(toggle);
+    expect(onSave).toHaveBeenCalledWith({ enabled: false, port: 5000 });
+  });
+
+  // Regen confirm dialog tests
+  it("opens confirm dialog when clicking Regenerate Access Key", () => {
+    renderWithI18n(
+      <LanAccessPanel
+        busy={false}
+        lanAccess={lanAccess}
+        onRegenerateKey={vi.fn().mockResolvedValue(undefined)}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+      />,
+      "en",
+    );
+
+    fireEvent.click(screen.getByTestId("lan-regen-key"));
+    expect(screen.getByTestId("regen-key-dialog")).toBeTruthy();
+    expect(screen.getByText(/invalidate all printed QR codes/)).toBeTruthy();
+  });
+
+  it("dismisses dialog on Cancel without calling onRegenerateKey", () => {
+    const onRegen = vi.fn().mockResolvedValue(undefined);
+    renderWithI18n(
+      <LanAccessPanel
+        busy={false}
+        lanAccess={lanAccess}
+        onRegenerateKey={onRegen}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+      />,
+      "en",
+    );
+
+    fireEvent.click(screen.getByTestId("lan-regen-key"));
+    fireEvent.click(screen.getByTestId("regen-dialog-cancel"));
+    expect(screen.queryByTestId("regen-key-dialog")).toBeNull();
+    expect(onRegen).not.toHaveBeenCalled();
+  });
+
+  it("calls onRegenerateKey on Confirm and closes dialog", () => {
+    const onRegen = vi.fn().mockResolvedValue(undefined);
+    renderWithI18n(
+      <LanAccessPanel
+        busy={false}
+        lanAccess={lanAccess}
+        onRegenerateKey={onRegen}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+      />,
+      "en",
+    );
+
+    fireEvent.click(screen.getByTestId("lan-regen-key"));
+    fireEvent.click(screen.getByTestId("regen-dialog-confirm"));
+    expect(onRegen).toHaveBeenCalled();
+    expect(screen.queryByTestId("regen-key-dialog")).toBeNull();
+  });
+
+  // Disabled overlay test
+  it("dims config section when LAN is disabled", () => {
+    const { container } = renderWithI18n(
+      <LanAccessPanel
+        busy={false}
+        lanAccess={disabledLanAccess}
+        onRegenerateKey={vi.fn().mockResolvedValue(undefined)}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+      />,
+      "en",
+    );
+
+    const overlay = container.querySelector(".lan-disabled-overlay");
+    expect(overlay).toBeTruthy();
+  });
+
+  it("does not dim config section when LAN is enabled", () => {
+    const { container } = renderWithI18n(
+      <LanAccessPanel
+        busy={false}
+        lanAccess={lanAccess}
+        onRegenerateKey={vi.fn().mockResolvedValue(undefined)}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+      />,
+      "en",
+    );
+
+    const overlay = container.querySelector(".lan-disabled-overlay");
+    expect(overlay).toBeNull();
   });
 });

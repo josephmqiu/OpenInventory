@@ -157,7 +157,7 @@ export function BackupPanel({
       </div>
 
       {/* Config section */}
-      <div className="form-grid">
+      <div className="backup-config">
         {/* Destination: read-only input + Browse button */}
         <label>
           <span>{t("targetPath", { ns: "backup" })}</span>
@@ -187,44 +187,46 @@ export function BackupPanel({
           </p>
         )}
 
-        {/* Schedule: number + unit + startup checkbox */}
-        <label>
-          <span>{t("schedule", { ns: "backup" })}</span>
-          <div className="backup-schedule-row">
-            <span className="backup-schedule-label">{t("every", { ns: "backup" })}</span>
+        {/* Schedule group: interval + startup checkbox */}
+        <div className="backup-schedule-group">
+          <label>
+            <span>{t("schedule", { ns: "backup" })}</span>
+            <div className="backup-schedule-row">
+              <span className="backup-schedule-label">{t("every", { ns: "backup" })}</span>
+              <input
+                type="number"
+                min={0}
+                className="backup-schedule-number"
+                value={form.intervalValue}
+                onChange={(e) =>
+                  setForm({ ...form, intervalValue: parseInt(e.target.value, 10) || 0 })
+                }
+                onKeyDown={(e) => { if (e.key === "Enter" && !busy && hasChanges) { e.preventDefault(); void onSave(form); } }}
+              />
+              <select
+                className="backup-schedule-unit"
+                value={form.intervalUnit}
+                onChange={(e) =>
+                  setForm({ ...form, intervalUnit: e.target.value as BackupIntervalUnit })
+                }
+              >
+                {intervalUnits.map((u) => (
+                  <option key={u.value} value={u.value}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </label>
+          <label className="backup-startup-check">
             <input
-              type="number"
-              min={0}
-              className="backup-schedule-number"
-              value={form.intervalValue}
-              onChange={(e) =>
-                setForm({ ...form, intervalValue: parseInt(e.target.value, 10) || 0 })
-              }
-              onKeyDown={(e) => { if (e.key === "Enter" && !busy && hasChanges) { e.preventDefault(); void onSave(form); } }}
+              type="checkbox"
+              checked={form.onStartup}
+              onChange={(e) => setForm({ ...form, onStartup: e.target.checked })}
             />
-            <select
-              className="backup-schedule-unit"
-              value={form.intervalUnit}
-              onChange={(e) =>
-                setForm({ ...form, intervalUnit: e.target.value as BackupIntervalUnit })
-              }
-            >
-              {intervalUnits.map((u) => (
-                <option key={u.value} value={u.value}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </label>
-        <label className="backup-startup-check">
-          <input
-            type="checkbox"
-            checked={form.onStartup}
-            onChange={(e) => setForm({ ...form, onStartup: e.target.checked })}
-          />
-          <span>{t("alsoBackupOnStartup", { ns: "backup" })}</span>
-        </label>
+            <span>{t("alsoBackupOnStartup", { ns: "backup" })}</span>
+          </label>
+        </div>
       </div>
 
       {/* Save */}

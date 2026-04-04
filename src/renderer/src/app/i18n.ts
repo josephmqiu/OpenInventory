@@ -4,16 +4,6 @@ import { initReactI18next } from "react-i18next";
 import type { AlertStatus, Language, StockStatus } from "../domain/models";
 import { i18nResources, localeByLanguage } from "./i18nResources";
 
-export const DEFAULT_CATEGORIES = [
-  "Raw Material",
-  "Parts",
-  "Chemical",
-  "Packaging",
-  "Consumable",
-  "Finished Goods",
-] as const;
-
-export const UNIT_OPTIONS = ["pcs", "kg", "g", "liters", "meters", "boxes", "packs", "rolls", "sheets"] as const;
 
 if (!i18n.isInitialized) {
   void i18n

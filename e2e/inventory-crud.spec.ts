@@ -14,9 +14,9 @@ test.describe.serial("inventory CRUD (empty seed)", () => {
 
     const form = page.locator(".action-panel");
     await form.locator("label:has-text('Item Name') input").fill("E2E Widget");
-    await form.locator("label:has-text('Category') select").selectOption("Raw Material");
+    await form.locator("label:has-text('Category') input").fill("Raw Material");
     await form.locator("label:has-text('Location') input").fill("Rack A");
-    await form.locator("label:has-text('Unit') select").selectOption("pcs");
+    await form.locator("label:has-text('Unit') input").fill("pcs");
     await form.locator("label:has-text('Reorder Level') input").fill("10");
     await form.locator("label:has-text('Initial Quantity') input").fill("50");
 
@@ -93,13 +93,14 @@ test.describe.serial("inventory CRUD (empty seed)", () => {
     await navigateTo(page, "inventory");
 
     // Create first item with explicit SKU
+    // On empty DB, category and unit show plain text inputs (no dropdown yet)
     await page.click("button:has-text('Create Item')");
     const form = page.locator(".action-panel");
     await form.locator("label:has-text('SKU') input").fill("DUP-SKU-001");
     await form.locator("label:has-text('Item Name') input").fill("First Item");
-    await form.locator("label:has-text('Category') select").selectOption("Raw Material");
+    await form.locator("label:has-text('Category') input").fill("Raw Material");
     await form.locator("label:has-text('Location') input").fill("Rack A");
-    await form.locator("label:has-text('Unit') select").selectOption("pcs");
+    await form.locator("label:has-text('Unit') input").fill("pcs");
     await form.locator("label:has-text('Reorder Level') input").fill("5");
     await form.locator("label:has-text('Initial Quantity') input").fill("20");
     await page.getByTestId("action-submit").click();

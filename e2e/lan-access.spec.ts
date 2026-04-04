@@ -105,8 +105,9 @@ test.describe.serial("LAN access and QR codes", () => {
     const lanPanel = page.locator(".panel:has-text('LAN Access')");
     await expect(lanPanel).toBeVisible({ timeout: 10_000 });
 
-    // Click regenerate key button
+    // Click regenerate key button and confirm
     await page.getByTestId("lan-regen-key").click();
+    await page.getByTestId("regen-dialog-confirm").click();
     await expectSuccess(page);
 
     // Get the new key from the input
@@ -138,6 +139,7 @@ test.describe.serial("LAN access and QR codes", () => {
 
       const oldKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
       await page.getByTestId("lan-regen-key").click();
+      await page.getByTestId("regen-dialog-confirm").click();
       await expectSuccess(page);
 
       const newKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
@@ -246,13 +248,11 @@ test.describe.serial("LAN access and QR codes", () => {
 
   test("disable LAN and verify stopped status", async ({ page }) => {
     await navigateTo(page, "settings");
-    const lanPanel = page.locator(".panel:has-text('LAN Access')");
-    await expect(lanPanel).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("tab", { name: "LAN Access" }).click();
 
-    await lanPanel.locator("input[type='number']").fill(String(LAN_PORT));
-    await lanPanel.locator("select").first().selectOption("disabled");
-    await page.getByTestId("lan-save").click();
-    await expectSuccess(page);
+    // Toggle switch OFF — input is visually hidden, dispatch click via JS to trigger React onChange
+    // LAN panel uses inline feedback, not the top-level banner
+    await page.locator("input[role='switch']").dispatchEvent("click");
 
     await expect(page.getByTestId("lan-status")).toContainText("Stopped", { timeout: 10_000 });
   });
