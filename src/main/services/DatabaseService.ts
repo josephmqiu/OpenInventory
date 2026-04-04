@@ -8,12 +8,17 @@ import {
   DuplicateSkuError,
   InsufficientStockError,
   ValidationError,
+  IoError,
   DatabaseError,
   backendMessages,
+  duplicateSkuError,
   normalizeBackendLanguage,
+  notFoundError,
   type AppError,
+  validationError,
 } from "../domain/errors";
 import { configureSqlitePragmas } from "../infrastructure/sqlite-pragmas";
+import { BackupService } from "./BackupService";
 
 // ─── Shared Types (imported from single source of truth) ────────────────────
 
@@ -108,14 +113,25 @@ function stockStatusKey(currentQuantity: number, reorderQuantity: number): impor
   return "in_stock";
 }
 
+// Language is read from DB once and cached per-service-instance.
+// Invalidated by setLanguage mutation. See cachedLang in makeDatabaseService.
+let _langCache: { db: Database.Database; value: "en" | "zh-CN" } | null = null;
+
 function currentLanguage(db: Database.Database): "en" | "zh-CN" {
-  return normalizeBackendLanguage(readSetting(db, "app.language"));
+  if (_langCache && _langCache.db === db) return _langCache.value;
+  const value = normalizeBackendLanguage(readSetting(db, "app.language"));
+  _langCache = { db, value };
+  return value;
 }
 
-function requireText(value: string, errorMessage: string): string {
+function invalidateLanguageCache(): void {
+  _langCache = null;
+}
+
+function requireText(value: string, messageId: string): string {
   const trimmed = value.trim();
   if (trimmed === "") {
-    throw new ValidationError({ message: errorMessage });
+    throw validationError(messageId);
   }
   return trimmed;
 }
@@ -131,7 +147,7 @@ function backupStatusKey(targetPath: string): string {
 
 /**
  * Validate a backup target path: must be absolute and writable.
- * Throws ValidationError with a localized message on failure.
+ * Throws ValidationError with a semantic message ID on failure.
  */
 function validateBackupPath(
   targetPath: string,
@@ -139,7 +155,7 @@ function validateBackupPath(
 ): void {
   if (targetPath === "") return; // empty is allowed (clears the path)
   if (!path.isAbsolute(targetPath)) {
-    throw new ValidationError({ message: messages.backupTargetPathNotAbsolute });
+    throw validationError(messages.backupTargetPathNotAbsolute);
   }
   const resolved = path.resolve(path.normalize(targetPath));
   // Probe write access: create a temp file, then delete it.
@@ -149,7 +165,7 @@ function validateBackupPath(
     fs.writeFileSync(probe, "");
     fs.unlinkSync(probe);
   } catch {
-    throw new ValidationError({ message: messages.backupTargetPathNotWritable });
+    throw validationError(messages.backupTargetPathNotWritable);
   }
 }
 
@@ -177,7 +193,9 @@ function detectCloudProvider(targetPath: string): string {
 }
 
 function localizedDatabaseError(db: Database.Database): DatabaseError {
-  return new DatabaseError({ message: backendMessages(currentLanguage(db)).databaseError });
+  return new DatabaseError({
+    messageId: backendMessages(currentLanguage(db)).databaseError,
+  });
 }
 
 // ─── Service Interface ───────────────────────────────────────────────────────
@@ -205,7 +223,8 @@ export interface DatabaseServiceApi {
   readonly updateBackupPlan: (
     input: UpdateBackupPlanInput,
   ) => Effect.Effect<AppSnapshot, AppError>;
-  readonly backupNow: () => Effect.Effect<AppSnapshot, AppError>;
+  readonly backupNow: () => Effect.Effect<AppSnapshot, AppError, BackupService>;
+  readonly countMovements: () => Effect.Effect<number, AppError>;
   readonly updateLanguage: (
     language: string,
   ) => Effect.Effect<void, AppError>;
@@ -291,7 +310,7 @@ function getItemRecord(
     | undefined;
 
   if (!row) {
-    throw new NotFoundError({ message: messages.itemNotFound });
+    throw notFoundError(messages.itemNotFound);
   }
 
   return {
@@ -355,7 +374,7 @@ function resolveSku(
       )
       .get(requestedSku) as { id: string } | undefined;
     if (existing) {
-      throw new DuplicateSkuError({ message: messages.skuAlreadyExists });
+      throw duplicateSkuError(messages.skuAlreadyExists);
     }
     return requestedSku;
   }
@@ -386,7 +405,7 @@ function resolveUpdatedSku(
     .get(candidate, itemId) as { id: string } | undefined;
 
   if (existing) {
-    throw new DuplicateSkuError({ message: messages.skuAlreadyExists });
+    throw duplicateSkuError(messages.skuAlreadyExists);
   }
 
   return candidate;
@@ -436,8 +455,8 @@ function syncLowStockAlert(
       db.prepare(
         `INSERT INTO low_stock_alerts
          (id, item_id, threshold_quantity, quantity_at_trigger,
-          status, triggered_at, channel_summary)
-         VALUES (?, ?, ?, ?, 'open', datetime('now','localtime'), 'desktop,in_app')`,
+          status, triggered_at)
+         VALUES (?, ?, ?, ?, 'open', datetime('now','localtime'))`,
       ).run(generateId("alert"), itemId, reorderQuantity, currentQuantity);
       return true;
     }
@@ -514,7 +533,20 @@ export function makeDatabaseService(
                 a.threshold_quantity, a.status, a.triggered_at
          FROM low_stock_alerts a
          INNER JOIN inventory_items i ON i.id = a.item_id
-         ORDER BY a.triggered_at DESC`,
+         WHERE a.status = 'open'
+         UNION ALL
+         SELECT r.id, r.name, r.sku, r.current_quantity,
+                r.threshold_quantity, r.status, r.triggered_at
+         FROM (
+           SELECT a.id, i.name, i.sku, i.current_quantity,
+                  a.threshold_quantity, a.status, a.triggered_at
+           FROM low_stock_alerts a
+           INNER JOIN inventory_items i ON i.id = a.item_id
+           WHERE a.status != 'open'
+           ORDER BY a.triggered_at DESC
+           LIMIT 200
+         ) r
+         ORDER BY triggered_at DESC`,
       )
       .all() as Array<{
       id: string;
@@ -588,16 +620,14 @@ export function makeDatabaseService(
         try: () => {
           const messages = backendMessages(currentLanguage(db));
           const requestedSku = input.sku.trim();
-          const name = requireText(input.name, messages.requiredField(messages.itemName));
-          const category = requireText(input.category, messages.requiredField(messages.category));
-          const unit = requireText(input.unit, messages.requiredField(messages.unit));
-          const location = requireText(input.location, messages.requiredField(messages.location));
+          const name = requireText(input.name, "required.itemName");
+          const category = requireText(input.category, "required.category");
+          const unit = requireText(input.unit, "required.unit");
+          const location = requireText(input.location, "required.location");
           const supplier = input.supplier.trim();
 
           if (input.reorderQuantity < 0 || input.initialQuantity < 0) {
-            throw new ValidationError({
-              message: messages.quantityValuesMustBeZeroOrGreater,
-            });
+            throw validationError(messages.quantityValuesMustBeZeroOrGreater);
           }
 
           const createFn = db.transaction(() => {
@@ -669,16 +699,14 @@ export function makeDatabaseService(
       Effect.try({
         try: () => {
           const messages = backendMessages(currentLanguage(db));
-          const name = requireText(input.name, messages.requiredField(messages.itemName));
-          const category = requireText(input.category, messages.requiredField(messages.category));
-          const unit = requireText(input.unit, messages.requiredField(messages.unit));
-          const location = requireText(input.location, messages.requiredField(messages.location));
+          const name = requireText(input.name, "required.itemName");
+          const category = requireText(input.category, "required.category");
+          const unit = requireText(input.unit, "required.unit");
+          const location = requireText(input.location, "required.location");
           const supplier = input.supplier.trim();
 
           if (input.reorderQuantity < 0) {
-            throw new ValidationError({
-              message: messages.reorderLevelMustBeZeroOrGreater,
-            });
+            throw validationError(messages.reorderLevelMustBeZeroOrGreater);
           }
 
           const updateFn = db.transaction(() => {
@@ -744,11 +772,9 @@ export function makeDatabaseService(
         try: () => {
           const messages = backendMessages(currentLanguage(db));
           if (input.quantity <= 0) {
-            throw new ValidationError({
-              message: messages.receiveQuantityMustBeGreaterThanZero,
-            });
+            throw validationError(messages.receiveQuantityMustBeGreaterThanZero);
           }
-          const performedBy = requireText(input.performedBy, messages.requiredField(messages.performedBy));
+          const performedBy = requireText(input.performedBy, "required.performedBy");
 
           const receiveFn = db.transaction(() => {
             const item = getItemRecord(db, input.itemId, messages);
@@ -804,20 +830,47 @@ export function makeDatabaseService(
         try: () => {
           const messages = backendMessages(currentLanguage(db));
           if (input.quantity <= 0) {
-            throw new ValidationError({
-              message: messages.issueQuantityMustBeGreaterThanZero,
-            });
+            throw validationError(messages.issueQuantityMustBeGreaterThanZero);
           }
-          const performedBy = requireText(input.performedBy, messages.requiredField(messages.performedBy));
+          const performedBy = requireText(input.performedBy, "required.performedBy");
+          const normalizedReason = optionalText(input.reason);
 
           const issueFn = db.transaction(() => {
             const item = getItemRecord(db, input.itemId, messages);
+            const recentDuplicate = db.prepare(
+              `SELECT performed_at
+               FROM inventory_movements
+               WHERE item_id = ?
+                 AND movement_type = 'issue'
+                 AND quantity = ?
+                 AND COALESCE(performed_by, '') = ?
+                 AND COALESCE(reason, '') = ?
+               ORDER BY performed_at DESC
+               LIMIT 1`,
+            ).get(
+              item.id,
+              input.quantity,
+              performedBy,
+              normalizedReason ?? "",
+            ) as { performed_at?: string } | undefined;
+
+            if (
+              recentDuplicate?.performed_at &&
+              Date.now() - new Date(recentDuplicate.performed_at).getTime() <= 3000
+            ) {
+              return {
+                alertCreated: false,
+                itemName: item.name,
+                sku: item.sku,
+                currentQuantity: item.currentQuantity,
+                reorderQuantity: item.reorderQuantity,
+              };
+            }
 
             if (input.quantity > item.currentQuantity) {
               throw new InsufficientStockError({
                 available: item.currentQuantity,
                 requested: input.quantity,
-                language: currentLanguage(db),
               });
             }
 
@@ -831,7 +884,7 @@ export function makeDatabaseService(
             insertMovement(
               db, item.id, "issue", input.quantity,
               item.currentQuantity, newQuantity,
-              optionalText(input.reason), performedBy,
+              normalizedReason, performedBy,
             );
 
             const alertCreated = syncLowStockAlert(
@@ -878,19 +931,17 @@ export function makeDatabaseService(
         try: () => {
           const messages = backendMessages(currentLanguage(db));
           if (input.items.length === 0) {
-            throw new ValidationError({
-              message: messages.batchIssueMustIncludeAtLeastOneItem,
-            });
+            throw validationError(messages.batchIssueMustIncludeAtLeastOneItem);
           }
-          const performedBy = requireText(input.performedBy, messages.requiredField(messages.performedBy));
+          const performedBy = requireText(input.performedBy, "required.performedBy");
 
           const batchFn = db.transaction(() => {
             let lowStockNotification: LowStockNotification | null = null;
 
             for (const batchItem of input.items) {
               if (batchItem.quantity <= 0) {
-                throw new ValidationError({
-                  message: messages.batchIssueQuantityMustBeGreaterThanZero(batchItem.itemId),
+                throw validationError("batchIssueQuantityMustBeGreaterThanZero", {
+                  itemId: batchItem.itemId,
                 });
               }
 
@@ -899,21 +950,19 @@ export function makeDatabaseService(
                 item = getItemRecord(db, batchItem.itemId, messages);
               } catch (e) {
                 if (e instanceof NotFoundError) {
-                  throw new ValidationError({
-                    message: messages.batchIssueItemNotFound(batchItem.itemId),
+                  throw validationError("batchIssueItemNotFound", {
+                    itemId: batchItem.itemId,
                   });
                 }
                 throw e;
               }
 
               if (batchItem.quantity > item.currentQuantity) {
-                throw new ValidationError({
-                  message: messages.batchIssueInsufficientStock(
-                    item.name,
-                    item.sku,
-                    batchItem.quantity,
-                    item.currentQuantity,
-                  ),
+                throw validationError("batchIssueInsufficientStock", {
+                  itemName: item.name,
+                  sku: item.sku,
+                  requested: batchItem.quantity,
+                  available: item.currentQuantity,
                 });
               }
 
@@ -934,7 +983,7 @@ export function makeDatabaseService(
                 db, item.id, item.reorderQuantity, newQuantity,
               );
 
-              if (alertCreated) {
+              if (alertCreated && !lowStockNotification) {
                 lowStockNotification = {
                   itemName: item.name,
                   sku: item.sku,
@@ -966,7 +1015,7 @@ export function makeDatabaseService(
             .prepare("SELECT id FROM inventory_items WHERE id = ?")
             .get(itemId);
           if (!exists) {
-            throw new NotFoundError({ message: messages.itemNotFound });
+            throw notFoundError(messages.itemNotFound);
           }
 
           const rows = db
@@ -1033,80 +1082,52 @@ export function makeDatabaseService(
       }),
 
     backupNow: () =>
-      Effect.tryPromise({
-        try: async () => {
-          const messages = backendMessages(currentLanguage(db));
-          const targetPath = (readSetting(db, "backup.target_path") ?? "").trim();
-          if (targetPath === "") {
-            throw new ValidationError({
-              message: messages.backupTargetPathRequired,
-            });
-          }
-          validateBackupPath(targetPath, messages);
+      Effect.gen(function* () {
+        const messages = backendMessages(currentLanguage(db));
+        const targetPath = (readSetting(db, "backup.target_path") ?? "").trim();
+        if (targetPath === "") {
+          return yield* Effect.fail(validationError(messages.backupTargetPathRequired));
+        }
+        validateBackupPath(targetPath, messages);
 
-          // Directory backup: write to {targetPath}/OpenInventory-Backup/
-          const backupDir = path.join(targetPath, "OpenInventory-Backup");
-          const tempFile = path.join(backupDir, "database.tmp.db");
-          const finalFile = path.join(backupDir, "database.db");
-          fs.mkdirSync(backupDir, { recursive: true });
+        const backup = yield* BackupService;
+        const result = yield* backup.backupToDirectory(dbPath, targetPath);
 
-          // Step 1: Backup to temp file
-          const source = new Database(dbPath, { readonly: true });
-          try {
-            await source.backup(tempFile);
-          } finally {
-            source.close();
-          }
+        // Update app_settings with result
+        const updateFn = db.transaction(() => {
+          writeSetting(db, "backup.last_successful", new Date().toISOString());
+          writeSetting(db, "backup.last_file_size", String(result.fileSize));
+          writeSetting(db, "backup.last_verified", "true");
+          writeSetting(db, "backup.last_error", "");
+          writeSetting(db, "backup.status", backupStatusKey(targetPath));
+        });
+        updateFn();
 
-          // Step 2: Atomic rename (temp → final)
-          fs.renameSync(tempFile, finalFile);
-
-          const fileSize = fs.statSync(finalFile).size;
-
-          // Step 3: Write manifest
-          const manifestPath = path.join(backupDir, "manifest.json");
-          const manifest = {
-            formatVersion: 1,
-            appVersion: process.env.npm_package_version || "unknown",
-            schemaVersion: 0,
-            createdAt: new Date().toISOString(),
-            platform: process.platform,
-            stats: { items: 0, movements: 0, personnel: 0 },
-            checksums: { database: "" },
-          };
-          let verified = false;
-          try {
-            // Read stats + verify the backup
-            const verifyDb = new Database(finalFile, { readonly: true });
+        return loadSnapshotSync();
+      }).pipe(
+        Effect.tapError((e) =>
+          Effect.sync(() => {
             try {
-              verifyDb.pragma("trusted_schema = OFF");
-              const integrity = verifyDb.prepare("PRAGMA integrity_check(1)").get() as { integrity_check: string };
-              verified = integrity.integrity_check === "ok";
-              manifest.schemaVersion = (verifyDb.prepare("SELECT COALESCE(MAX(version), 0) as v FROM schema_migrations").get() as { v: number }).v;
-              manifest.stats.items = (verifyDb.prepare("SELECT COUNT(*) as c FROM inventory_items").get() as { c: number }).c;
-              manifest.stats.movements = (verifyDb.prepare("SELECT COUNT(*) as c FROM inventory_movements").get() as { c: number }).c;
-              manifest.stats.personnel = (verifyDb.prepare("SELECT COUNT(*) as c FROM personnel").get() as { c: number }).c;
-            } finally {
-              verifyDb.close();
-            }
-          } catch { /* manifest stats are best-effort, verification status already false */ }
-          fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+              const msg = e instanceof Error ? e.message : String(e);
+              writeSetting(db, "backup.last_error", msg);
+              writeSetting(db, "backup.status", "error");
+            } catch { /* best-effort error recording */ }
+          }),
+        ),
+        Effect.catchAll((e) => {
+          if (e instanceof ValidationError) return Effect.fail(e);
+          if (e instanceof IoError) return Effect.fail(e);
+          return Effect.fail(localizedDatabaseError(db));
+        }),
+      ),
 
-          const updateFn = db.transaction(() => {
-            writeSetting(db, "backup.last_successful", new Date().toISOString());
-            writeSetting(db, "backup.last_file_size", String(fileSize));
-            writeSetting(db, "backup.last_verified", verified ? "true" : "false");
-            writeSetting(db, "backup.last_error", "");
-            writeSetting(db, "backup.status", backupStatusKey(targetPath));
-          });
-          updateFn();
-
-          return loadSnapshotSync();
+    countMovements: () =>
+      Effect.try({
+        try: () => {
+          const row = db.prepare("SELECT COUNT(*) as count FROM inventory_movements").get() as { count: number };
+          return row.count;
         },
-        catch: (e) => {
-          if (e instanceof ValidationError) return e;
-          return localizedDatabaseError(db);
-        },
+        catch: () => localizedDatabaseError(db),
       }),
 
     updateLanguage: (language) =>
@@ -1117,6 +1138,7 @@ export function makeDatabaseService(
             writeSetting(db, "app.language", key);
           });
           updateFn();
+          invalidateLanguageCache();
         },
         catch: () => localizedDatabaseError(db),
       }),
@@ -1144,16 +1166,14 @@ export function makeDatabaseService(
       Effect.try({
         try: () => {
           const messages = backendMessages(currentLanguage(db));
-          const name = requireText(input.name, messages.requiredField(messages.personnelName));
+          const name = requireText(input.name, "required.personnelName");
 
           const addFn = db.transaction(() => {
             const existing = db
               .prepare("SELECT id FROM personnel WHERE lower(name) = lower(?)")
               .get(name) as { id: string } | undefined;
             if (existing) {
-              throw new ValidationError({
-                message: messages.personnelNameAlreadyExists,
-              });
+              throw validationError(messages.personnelNameAlreadyExists);
             }
 
             const personnelId = generateId("person");
@@ -1178,9 +1198,7 @@ export function makeDatabaseService(
             .prepare("DELETE FROM personnel WHERE id = ?")
             .run(personnelId);
           if (result.changes === 0) {
-            throw new NotFoundError({
-              message: backendMessages(currentLanguage(db)).personnelNotFound,
-            });
+            throw notFoundError(backendMessages(currentLanguage(db)).personnelNotFound);
           }
           return loadSnapshotSync();
         },
@@ -1202,8 +1220,8 @@ export function makeDatabaseService(
             enabled: enabled === "true",
             port:
               port !== undefined
-                ? (parseInt(port, 10) || 4123)
-                : 4123,
+                ? (parseInt(port, 10) || 47123)
+                : 47123,
             accessKey: accessKey ?? "",
             primaryUrl: primaryUrl ?? "",
           };
@@ -1265,6 +1283,25 @@ export function makeDatabaseService(
 
           const whereClause = conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "";
 
+          // Sort clause with whitelist to prevent SQL injection
+          const sortColumnMap: Record<string, string> = {
+            date: "m.performed_at",
+            itemName: "i.name",
+            type: "m.movement_type",
+            quantity: "m.quantity",
+            performedBy: "m.performed_by",
+            previousQuantity: "m.previous_quantity",
+            newQuantity: "m.new_quantity",
+            reason: "m.reason",
+            referenceNo: "m.reference_no",
+            notes: "m.notes",
+          };
+          const sortCol = filters.sortBy ? sortColumnMap[filters.sortBy] : undefined;
+          const sortDir = filters.sortDir === "asc" ? "ASC" : "DESC";
+          const orderClause = sortCol
+            ? `ORDER BY ${sortCol} ${sortDir}, m.id DESC`
+            : "ORDER BY m.performed_at DESC, m.id DESC";
+
           // Data query with anomaly detection via CTE
           const page = Math.max(1, filters.page);
           const pageSize = Math.min(Math.max(1, filters.pageSize), 10000);
@@ -1284,7 +1321,7 @@ export function makeDatabaseService(
               JOIN inventory_items i ON i.id = m.item_id
               LEFT JOIN item_avgs a ON m.item_id = a.item_id
               ${whereClause}
-              ORDER BY m.performed_at DESC
+              ${orderClause}
               LIMIT ? OFFSET ?`,
             )
             .all(...params, pageSize, offset) as Array<{

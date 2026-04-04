@@ -16,6 +16,8 @@ const ALLOWED_CHANNELS = new Set([
   "get-item-movements",
   "update-backup-plan",
   "backup-now",
+  "export-qr-label",
+  "export-qr-labels",
   "select-backup-directory",
   "select-restore-source",
   "validate-backup",

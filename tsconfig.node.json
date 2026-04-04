@@ -14,6 +14,11 @@
     "electron.vite.config.ts",
     "src/shared/**/*.ts",
     "src/main/**/*.ts",
-    "src/preload/**/*.ts"
+    "src/preload/**/*.ts",
+    "scripts/**/*.ts",
+    "e2e/**/*.ts",
+    "vitest.config.node.ts",
+    "vitest.coverage.config.ts",
+    "playwright.config.ts"
   ]
 }

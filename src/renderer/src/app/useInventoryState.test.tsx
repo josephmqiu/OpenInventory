@@ -55,11 +55,13 @@ vi.mock("../services/inventoryGateway", async () => {
   };
 });
 
-import { dictionaries } from "./i18n";
+import { i18n } from "./i18n";
 import { useInventoryState } from "./useInventoryState";
 import { GatewayError } from "../services/inventoryGateway";
 
-const dictionary = dictionaries.en;
+const tCommon = i18n.getFixedT("en", "common");
+const tInventory = i18n.getFixedT("en", "inventory");
+const tBackup = i18n.getFixedT("en", "backup");
 const baseItem: InventoryItem = {
   id: "item-1",
   sku: "SKU-001",
@@ -277,7 +279,7 @@ describe("useInventoryState", () => {
     expect(success).toBe(true);
     expect(result.current.snapshot).toEqual(nextSnapshot);
     expect(result.current.notice).toMatchObject({ tone: "warning" });
-    expect(result.current.notice?.message).toContain(dictionary.successIssueMaterial);
+    expect(result.current.notice?.message).toContain(tInventory("successIssueMaterial"));
     expect(result.current.notice?.message).toContain(baseItem.name);
   });
 
@@ -308,7 +310,7 @@ describe("useInventoryState", () => {
     expect(success).toBe(true);
     expect(result.current.snapshot).toEqual(nextSnapshot);
     expect(result.current.notice).toEqual({
-      message: dictionary.backupCompleted,
+      message: tBackup("backupCompleted"),
       tone: "success",
     });
   });
@@ -331,7 +333,7 @@ describe("useInventoryState", () => {
 
     expect(success).toBe(false);
     expect(result.current.notice).toBeNull();
-    expect(result.current.actionError).toBe(dictionary.backupTargetPathRequired);
+    expect(result.current.actionError).toBe(tBackup("backupTargetPathRequired"));
   });
 
   it("stores comparison data after restore validation without restoring immediately", async () => {
@@ -416,7 +418,7 @@ describe("useInventoryState", () => {
     expect(success).toBe(false);
     expect(gatewayMocks.updateLanAccess).not.toHaveBeenCalled();
     expect(result.current.notice).toEqual({
-      message: dictionary.lanDesktopOnly,
+      message: tCommon("lanDesktopOnly"),
       tone: "warning",
     });
   });
@@ -456,7 +458,7 @@ describe("useInventoryState", () => {
     });
     expect(result.current.snapshot).toEqual(refreshedSnapshot);
     expect(result.current.notice).toEqual({
-      message: dictionary.lanAccessUpdated,
+      message: tCommon("lanAccessUpdated"),
       tone: "success",
     });
   });
@@ -486,7 +488,7 @@ describe("useInventoryState", () => {
     expect(gatewayMocks.regenerateLanAccessKey).toHaveBeenCalledOnce();
     expect(result.current.lanAccess?.accessKey).toBe("regenerated-key");
     expect(result.current.notice).toEqual({
-      message: dictionary.lanAccessKeyRegenerated,
+      message: tCommon("lanAccessKeyRegenerated"),
       tone: "success",
     });
   });

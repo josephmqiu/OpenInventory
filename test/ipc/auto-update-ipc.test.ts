@@ -19,6 +19,8 @@ const ALLOWED_CHANNELS = new Set([
   "get-item-movements",
   "update-backup-plan",
   "backup-now",
+  "export-qr-label",
+  "export-qr-labels",
   "update-app-language",
   "remove-inventory-item",
   "add-personnel",
@@ -56,8 +58,8 @@ describe("auto-update IPC channels", () => {
     expect(ALLOWED_EVENT_CHANNELS.has("auto-update-status")).toBe(true);
   });
 
-  it("preload allowlist has exactly 20 invoke channels (17 original + 3 auto-update)", () => {
-    expect(ALLOWED_CHANNELS.size).toBe(20);
+  it("preload allowlist has exactly 22 invoke channels", () => {
+    expect(ALLOWED_CHANNELS.size).toBe(22);
   });
 
   it("preload event allowlist has exactly 1 event channel", () => {

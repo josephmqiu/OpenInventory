@@ -1,11 +1,20 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "./i18n";
 
 const useInventoryStateMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./useInventoryState", () => ({
   useInventoryState: useInventoryStateMock,
 }));
+
+vi.mock("../services/inventoryGateway", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/inventoryGateway")>();
+  return {
+    ...actual,
+    getAuditAnalytics: vi.fn().mockResolvedValue({ summary: { totalMovements: 0, totalReceived: 0, totalIssued: 0, uniqueItems: 0, uniquePersonnel: 0 }, byPersonnel: [], byItem: [], alertFrequency: [] }),
+  };
+});
 
 vi.mock("./useAutoUpdate", () => ({
   useAutoUpdate: () => ({
@@ -99,6 +108,7 @@ function makeState(overrides: Partial<ReturnType<typeof useInventoryStateMock>> 
     disconnectBrowser: vi.fn(),
     clearFeedback: vi.fn(),
     reportActionError: vi.fn(),
+    reportNotice: vi.fn(),
     handleCreateItem: vi.fn(),
     handleUpdateItem: vi.fn(),
     handleReceiveStock: vi.fn(),
@@ -136,6 +146,8 @@ describe("App restore flow", () => {
 
     render(<App />);
     fireEvent.click(screen.getByTestId("nav-settings"));
+    // Settings defaults to Personnel sub-tab; switch to Backup
+    fireEvent.click(screen.getByRole("tab", { name: /backup/i }));
     fireEvent.click(screen.getByTestId("backup-restore"));
 
     expect(startRestoreFromBackup).toHaveBeenCalledOnce();

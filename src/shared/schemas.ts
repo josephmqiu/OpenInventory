@@ -97,6 +97,19 @@ export const UpdateLanAccessArgs = Schema.Struct({
   }),
 });
 
+const QrLabelExportPayloadSchema = Schema.Struct({
+  suggestedFileName: Schema.String,
+  pngDataUrl: Schema.String,
+});
+
+export const ExportQrLabelArgs = Schema.Struct({
+  label: QrLabelExportPayloadSchema,
+});
+
+export const ExportQrLabelsArgs = Schema.Struct({
+  labels: Schema.Array(QrLabelExportPayloadSchema),
+});
+
 export const ItemIdArgs = Schema.Struct({
   itemId: Schema.String,
 });
@@ -109,6 +122,8 @@ export const LanguageArgs = Schema.Struct({
   language: LanguageSchema,
 });
 
+const SortDirSchema = Schema.Literal("asc", "desc");
+
 export const AuditMovementFilterArgs = Schema.Struct({
   filters: Schema.Struct({
     dateFrom: Schema.optional(Schema.String),
@@ -118,6 +133,8 @@ export const AuditMovementFilterArgs = Schema.Struct({
     itemSearch: Schema.optional(Schema.String),
     performedBy: Schema.optional(Schema.String),
     textSearch: Schema.optional(Schema.String),
+    sortBy: Schema.optional(Schema.String),
+    sortDir: Schema.optional(SortDirSchema),
     page: PageNumber,
     pageSize: PageSize,
   }),
@@ -133,6 +150,10 @@ export const AuditAnalyticsFilterArgs = Schema.Struct({
     performedBy: Schema.optional(Schema.String),
     textSearch: Schema.optional(Schema.String),
   }),
+});
+
+export const DirPathArgs = Schema.Struct({
+  dirPath: Schema.String,
 });
 
 // ─── HTTP Body Schemas (LAN router + dev API server) ─────────────────────────
@@ -170,7 +191,7 @@ export const BatchIssueMaterialBody = Schema.Struct({
   items: Schema.Array(
     Schema.Struct({
       itemId: Schema.String,
-      quantity: Schema.Number,
+      quantity: PositiveInt,
     }),
   ),
   performedBy: Schema.String,
@@ -203,10 +224,9 @@ export const PublicIssueBody = Schema.Struct({
 /** Serialized error sent across IPC or HTTP. */
 export interface TransportError {
   readonly _tag: string;
-  readonly message: string;
-  readonly available?: number;
-  readonly requested?: number;
-  readonly language?: string;
+  readonly messageId: string;
+  readonly messageValues?: Record<string, string | number>;
+  readonly debugMessage?: string;
 }
 
 /** IPC result envelope — never throw across Electron IPC. */

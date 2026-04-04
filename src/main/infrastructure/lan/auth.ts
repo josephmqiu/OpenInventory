@@ -15,24 +15,36 @@ export type AuthorizationFailure = "invalid_access_key" | "too_many_failed_attem
 export class RateLimiter {
   private attempts = new Map<string, FailedAttempt>();
 
+  /** Evict stale entries older than the lockout duration. */
+  private evictStale(): void {
+    const now = Date.now();
+    for (const [ip, entry] of this.attempts) {
+      if (now - entry.recordedAt >= LOCKOUT_DURATION_MS) {
+        this.attempts.delete(ip);
+      }
+    }
+  }
+
   /**
    * Check auth and record attempt.
    * Returns null on success, or a stable failure code on failure.
    */
   authorize(ip: string, providedKey: string, validKey: string): AuthorizationFailure | null {
+    // Evict stale entries on every call so lockouts expire correctly
+    this.evictStale();
     const now = Date.now();
     const entry = this.attempts.get(ip);
 
-    // Check lockout
     if (entry) {
-      if (
+      const isLockedOut =
         entry.count >= MAX_FAILED_ATTEMPTS &&
-        now - entry.recordedAt < LOCKOUT_DURATION_MS
-      ) {
+        now - entry.recordedAt < LOCKOUT_DURATION_MS;
+
+      if (isLockedOut) {
         return "too_many_failed_attempts";
       }
 
-      // Reset if window expired
+      // Only reset window if not locked out
       if (now - entry.recordedAt >= FAILED_WINDOW_MS) {
         this.attempts.delete(ip);
       }

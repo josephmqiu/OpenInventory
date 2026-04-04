@@ -201,7 +201,10 @@ export const BackupServiceLive: Layer.Layer<BackupService> = Layer.succeed(
           return { filePath: finalPath, fileSize, manifest };
         },
         catch: (e) =>
-          new IoError({ message: `Backup failed: ${e instanceof Error ? e.message : e}` }),
+          new IoError({
+            messageId: "backupOperationFailed",
+            debugMessage: `Backup failed: ${e instanceof Error ? e.message : e}`,
+          }),
       }),
 
     validateBackupDirectory: (dirPath: string) =>
@@ -238,7 +241,10 @@ export const BackupServiceLive: Layer.Layer<BackupService> = Layer.succeed(
           } as BackupValidationResult;
         },
         catch: (e) =>
-          new IoError({ message: `Validation failed: ${e instanceof Error ? e.message : e}` }),
+          new IoError({
+            messageId: "backupValidationFailed",
+            debugMessage: `Validation failed: ${e instanceof Error ? e.message : e}`,
+          }),
       }),
 
     restoreFromDirectory: (backupDir: string, appDbPath: string) =>
@@ -280,7 +286,10 @@ export const BackupServiceLive: Layer.Layer<BackupService> = Layer.succeed(
           fs.copyFileSync(sourceDb, appDbPath);
         },
         catch: (e) =>
-          new IoError({ message: `Restore failed: ${e instanceof Error ? e.message : e}` }),
+          new IoError({
+            messageId: "backupRestoreFailed",
+            debugMessage: `Restore failed: ${e instanceof Error ? e.message : e}`,
+          }),
       }),
   },
 );

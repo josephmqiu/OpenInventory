@@ -9,7 +9,7 @@ files:
   - "!electron.vite.config.*"
   - "!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
   - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
-  - "!{vitest.config.ts,vitest.config.node.ts}"
+  - "!{vitest.config.ts,vitest.config.node.ts,vitest.coverage.config.ts}"
   - "!{test,e2e,scripts}"
 asarUnpack:
   - "**/*.node"
@@ -21,7 +21,7 @@ publish:
 mac:
   category: public.app-category.business
   artifactName: "${productName}-${version}-${arch}.${ext}"
-  identity: null
+  identity: null # REMOVEME: re-enable codesigning once CSC secrets are configured in CI
   target:
     - target: dmg
       arch:

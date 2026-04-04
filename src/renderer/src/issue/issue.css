@@ -17,7 +17,7 @@ body {
   display: flex;
   flex-direction: column;
   padding: env(safe-area-inset-top) 0 0 0;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: auto;
 }
 
 :lang(zh), :lang(ja), :lang(ko) {
@@ -176,7 +176,7 @@ body {
 }
 
 .qi-data-row__label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -240,7 +240,7 @@ body {
 }
 
 .qi-field__label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -416,7 +416,7 @@ body {
 }
 
 .qi-submit-btn:active:not(:disabled) {
-  transform: scale(0.99);
+  opacity: 0.9;
 }
 
 .qi-submit-btn:disabled {

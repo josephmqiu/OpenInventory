@@ -1,5 +1,6 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import i18n from "i18next";
 
 const gatewayMocks = vi.hoisted(() => ({
   loadPublicIssueContext: vi.fn(),
@@ -54,6 +55,10 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
+});
+
 describe("useQuickIssueState", () => {
   it("loads context on mount and sets language from response", async () => {
     gatewayMocks.loadPublicIssueContext.mockResolvedValue(mockContext);
@@ -80,6 +85,9 @@ describe("useQuickIssueState", () => {
     await waitFor(() => expect(result.current.loadError).not.toBeNull());
 
     expect(result.current.issueContext).toBeNull();
+    expect(result.current.loadError).toBe(
+      "This QR code points to an item that is not available in the current inventory database.",
+    );
   });
 
   it("sets loadError on network failure", async () => {

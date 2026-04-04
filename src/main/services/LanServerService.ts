@@ -45,6 +45,25 @@ function buildUrls(port: number): string[] {
   return getLocalIps().map((ip) => `http://${ip}:${port}`);
 }
 
+/** Return the first non-internal IPv4 address, or "" if none. */
+function getPrimaryIp(): string {
+  const ips = getLocalIps();
+  return ips.length > 0 ? ips[0] : "";
+}
+
+// ─── Retry helpers ──────────────────────────────────────────────────────────
+
+const LISTEN_RETRY_DELAYS = [2000, 5000, 8000];
+const LISTEN_MAX_RETRIES = 3;
+
+function isAddrInUse(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    "code" in err &&
+    (err as NodeJS.ErrnoException).code === "EADDRINUSE"
+  );
+}
+
 // ─── Scoped Layer (production) ───────────────────────────────────────────────
 
 export function makeLanServerLayer(
@@ -63,17 +82,19 @@ export function makeLanServerLayer(
         let server: http.Server | null = null;
         let currentSettings: LanAccessSettings = {
           enabled: false,
-          port: 4123,
+          port: 47123,
           accessKey: "",
           primaryUrl: "",
         };
         let actualPort = 0;
+        let startupIp = "";
 
         function buildState(
           status: "running" | "stopped" | "error",
           statusMessage = "",
         ): LanAccessState {
           const port = actualPort || currentSettings.port;
+          const currentIp = getPrimaryIp();
           return {
             enabled: currentSettings.enabled,
             port,
@@ -81,12 +102,13 @@ export function makeLanServerLayer(
             urls: status === "running" ? buildUrls(port) : [],
             status,
             statusMessage,
+            ipChanged: status === "running" && startupIp !== "" && currentIp !== startupIp,
           };
         }
 
-        // Wrap Node callback APIs as Effects
-        const startServerEffect: Effect.Effect<void, Error> = Effect.async<void, Error>(
-          (resume) => {
+        // Wrap Node callback APIs as Effects — single listen attempt
+        function listenOnce(): Effect.Effect<void, Error> {
+          return Effect.async<void, Error>((resume) => {
             const doStart = (): void => {
               const router = createLanRouter({
                 dbService: db,
@@ -115,8 +137,32 @@ export function makeLanServerLayer(
             } else {
               doStart();
             }
-          },
-        );
+          });
+        }
+
+        // startServerEffect with EADDRINUSE retry
+        const startServerEffect: Effect.Effect<void, Error> = Effect.gen(function* () {
+          for (let attempt = 0; attempt <= LISTEN_MAX_RETRIES; attempt++) {
+            const result = yield* listenOnce().pipe(
+              Effect.map(() => "ok" as const),
+              Effect.catchAll((err) => Effect.succeed(err)),
+            );
+            if (result === "ok") {
+              startupIp = getPrimaryIp();
+              return;
+            }
+            if (!isAddrInUse(result) || attempt >= LISTEN_MAX_RETRIES) {
+              return yield* Effect.fail(result);
+            }
+            // Close the server before retrying (it may be in a half-open state)
+            if (server) {
+              yield* Effect.async<void>((resume) => {
+                server!.close(() => { server = null; resume(Effect.void); });
+              });
+            }
+            yield* Effect.sleep(LISTEN_RETRY_DELAYS[attempt]);
+          }
+        });
 
         const stopServerEffect: Effect.Effect<void> = Effect.async<void>(
           (resume) => {
@@ -182,7 +228,7 @@ export function makeLanServerLayer(
                 Effect.catchAll(() =>
                   Effect.fail(
                     new ServerError({
-                      message: backendMessages("en").serverError,
+                      messageId: backendMessages("en").serverError,
                     }),
                   ),
                 ),
@@ -221,7 +267,7 @@ export function makeLanServerLayer(
                 Effect.catchAll(() =>
                   Effect.fail(
                     new ServerError({
-                      message: backendMessages("en").serverError,
+                      messageId: backendMessages("en").serverError,
                     }),
                   ),
                 ),
@@ -252,7 +298,7 @@ export function makeLanServerLayer(
                 Effect.catchAll(() =>
                   Effect.fail(
                     new ServerError({
-                      message: backendMessages("en").serverError,
+                      messageId: backendMessages("en").serverError,
                     }),
                   ),
                 ),
@@ -282,18 +328,20 @@ export function makeLanServerService(
   let server: http.Server | null = null;
   let currentSettings: LanAccessSettings = {
     enabled: false,
-    port: 4123,
+    port: 47123,
     accessKey: "",
     primaryUrl: "",
   };
 
   let actualPort = 0;
+  let startupIp = "";
 
   function buildState(
     status: "running" | "stopped" | "error",
     statusMessage = "",
   ): LanAccessState {
     const port = actualPort || currentSettings.port;
+    const currentIp = getPrimaryIp();
     return {
       enabled: currentSettings.enabled,
       port,
@@ -301,10 +349,11 @@ export function makeLanServerService(
       urls: status === "running" ? buildUrls(port) : [],
       status,
       statusMessage,
+      ipChanged: status === "running" && startupIp !== "" && currentIp !== startupIp,
     };
   }
 
-  async function startServer(): Promise<void> {
+  async function listenOnce(): Promise<void> {
     if (server) {
       await stopServer();
     }
@@ -331,6 +380,25 @@ export function makeLanServerService(
         reject(err);
       });
     });
+  }
+
+  async function startServer(): Promise<void> {
+    for (let attempt = 0; attempt <= LISTEN_MAX_RETRIES; attempt++) {
+      try {
+        await listenOnce();
+      startupIp = getPrimaryIp();
+        return;
+      } catch (err) {
+        if (!isAddrInUse(err) || attempt >= LISTEN_MAX_RETRIES) throw err;
+        // Close the server before retrying (it may be in a half-open state)
+        if (server) {
+          await new Promise<void>((resolve) => {
+            server!.close(() => { server = null; resolve(); });
+          });
+        }
+        await new Promise((r) => setTimeout(r, LISTEN_RETRY_DELAYS[attempt]));
+      }
+    }
   }
 
   async function stopServer(): Promise<void> {
@@ -392,7 +460,7 @@ export function makeLanServerService(
             server ? messages.lanServerRunning : messages.lanServerStopped,
           );
         },
-        catch: () => new ServerError({ message: messages.serverError }),
+        catch: () => new ServerError({ messageId: messages.serverError }),
       });
     },
 
@@ -428,7 +496,7 @@ export function makeLanServerService(
           );
           return buildState("stopped", messages.lanServerStopped);
         },
-        catch: () => new ServerError({ message: messages.serverError }),
+        catch: () => new ServerError({ messageId: messages.serverError }),
       });
     },
 
@@ -453,7 +521,7 @@ export function makeLanServerService(
             server ? messages.lanServerRunning : messages.lanServerStopped,
           );
         },
-        catch: () => new ServerError({ message: messages.serverError }),
+        catch: () => new ServerError({ messageId: messages.serverError }),
       });
     },
 
@@ -463,7 +531,7 @@ export function makeLanServerService(
         try: async () => {
           await stopServer();
         },
-        catch: () => new ServerError({ message: messages.serverError }),
+        catch: () => new ServerError({ messageId: messages.serverError }),
       });
     },
   };

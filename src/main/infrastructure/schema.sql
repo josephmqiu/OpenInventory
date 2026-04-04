@@ -56,7 +56,6 @@ CREATE TABLE IF NOT EXISTS low_stock_alerts (
     status TEXT NOT NULL,
     triggered_at TEXT NOT NULL,
     resolved_at TEXT,
-    channel_summary TEXT,
     FOREIGN KEY(item_id) REFERENCES inventory_items(id)
 );
 

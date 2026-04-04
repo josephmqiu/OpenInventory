@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type {
   AppSnapshot,
   BatchIssueMaterialInput,
@@ -12,7 +12,7 @@ import type {
   UpdateInventoryItemInput,
   UpdateLanAccessInput,
 } from "../domain/models";
-import { dictionaries, localizeBackendMessage, type Dictionary } from "./i18n";
+import { i18n, localizeBackendMessage, setAppLanguage } from "./i18n";
 import { detectRuntime, isDevPreviewRuntime, type Runtime } from "./runtime";
 import {
   addPersonnel,
@@ -65,6 +65,7 @@ export interface InventoryState {
   disconnectBrowser: () => void;
   clearFeedback: () => void;
   reportActionError: (message: string) => void;
+  reportNotice: (message: string, tone?: NoticeTone) => void;
   handleCreateItem: (input: CreateInventoryItemInput) => Promise<boolean>;
   handleUpdateItem: (input: UpdateInventoryItemInput) => Promise<boolean>;
   handleReceiveStock: (input: StockMutationInput) => Promise<boolean>;
@@ -82,10 +83,58 @@ export interface InventoryState {
   handleLanguageChange: (nextLanguage: Language) => void;
   handleLanAccessSave: (input: UpdateLanAccessInput) => Promise<boolean>;
   handleLanAccessKeyRegenerate: () => Promise<void>;
+  pollError: boolean;
 }
 
-function toErrorMessage(error: unknown, dictionary: Dictionary): string {
-  return error instanceof Error ? localizeBackendMessage(error.message, dictionary) : dictionary.genericActionError;
+function toErrorMessage(error: unknown, language: Language, fallback: string): string {
+  return error instanceof Error
+    ? localizeBackendMessage(
+        error as Error & { messageId?: string; messageValues?: Record<string, string | number> },
+        language,
+        fallback,
+      )
+    : fallback;
+}
+
+/**
+ * Field-level comparison of two snapshots. Returns true if they represent the
+ * same data, allowing the polling loop to skip setState and avoid unnecessary
+ * re-renders across the entire component tree.
+ */
+function snapshotEquals(a: AppSnapshot, b: AppSnapshot): boolean {
+  if (a.language !== b.language) return false;
+  if (a.items.length !== b.items.length) return false;
+  if (a.personnel.length !== b.personnel.length) return false;
+  if (a.alerts.length !== b.alerts.length) return false;
+
+  for (let i = 0; i < a.items.length; i++) {
+    const ai = a.items[i], bi = b.items[i];
+    if (ai.id !== bi.id || ai.currentQuantity !== bi.currentQuantity ||
+        ai.status !== bi.status || ai.name !== bi.name || ai.sku !== bi.sku ||
+        ai.lastUpdated !== bi.lastUpdated || ai.reorderQuantity !== bi.reorderQuantity ||
+        ai.location !== bi.location || ai.category !== bi.category ||
+        ai.unit !== bi.unit || ai.supplier !== bi.supplier) return false;
+  }
+
+  for (let i = 0; i < a.personnel.length; i++) {
+    if (a.personnel[i].id !== b.personnel[i].id ||
+        a.personnel[i].name !== b.personnel[i].name) return false;
+  }
+
+  for (let i = 0; i < a.alerts.length; i++) {
+    const aa = a.alerts[i], ba = b.alerts[i];
+    if (aa.id !== ba.id || aa.status !== ba.status ||
+        aa.currentQuantity !== ba.currentQuantity) return false;
+  }
+
+  if (a.backupPlan.targetPath !== b.backupPlan.targetPath ||
+      a.backupPlan.lastSuccessfulBackup !== b.backupPlan.lastSuccessfulBackup ||
+      a.backupPlan.status !== b.backupPlan.status ||
+      a.backupPlan.schedule.intervalValue !== b.backupPlan.schedule.intervalValue ||
+      a.backupPlan.schedule.intervalUnit !== b.backupPlan.schedule.intervalUnit ||
+      a.backupPlan.schedule.onStartup !== b.backupPlan.schedule.onStartup) return false;
+
+  return true;
 }
 
 function findNewOpenAlert(previous: AppSnapshot, next: AppSnapshot): InventoryAlert | null {
@@ -99,7 +148,7 @@ function findNewOpenAlert(previous: AppSnapshot, next: AppSnapshot): InventoryAl
 function buildMutationNotice(
   previous: AppSnapshot,
   next: AppSnapshot,
-  dictionary: Dictionary,
+  language: Language,
   successMessage: string,
 ): InventoryNotice {
   const newAlert = findNewOpenAlert(previous, next);
@@ -107,19 +156,20 @@ function buildMutationNotice(
     return { message: successMessage, tone: "success" };
   }
 
+  const tInventory = i18n.getFixedT(language, "inventory");
   return {
-    message: `${successMessage} ${dictionary.lowStockAlertIssued(
-      newAlert.itemName,
-      newAlert.sku,
-      newAlert.currentQuantity,
-      newAlert.thresholdQuantity,
-    )}`,
+    message: `${successMessage} ${tInventory("lowStockAlertIssued", {
+      itemName: newAlert.itemName,
+      sku: newAlert.sku,
+      currentQuantity: newAlert.currentQuantity,
+      thresholdQuantity: newAlert.thresholdQuantity,
+    })}`,
     tone: "warning",
   };
 }
 
 export function useInventoryState(): InventoryState {
-  const runtime = detectRuntime();
+  const [runtime] = useState(detectRuntime);
   const desktopRuntime = runtime === "desktop";
   const [language, setLanguage] = useState<Language>(() => readPersistedLanguage());
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
@@ -134,14 +184,19 @@ export function useInventoryState(): InventoryState {
   } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [accessKeyInput, setAccessKeyInput] = useState(() => readPersistedLanAccessKey());
-  const dictionary = dictionaries[language];
-  const isDev = isDevPreviewRuntime();
+  const [isDev] = useState(isDevPreviewRuntime);
+  const [pollError, setPollError] = useState(false);
+  const consecutiveFailuresRef = useRef(0);
   const requiresBrowserAuth = runtime !== "desktop" && !isDev && !readPersistedLanAccessKey().trim();
+  const tCommon = i18n.getFixedT(language, "common");
+  const tInventory = i18n.getFixedT(language, "inventory");
+  const tBackup = i18n.getFixedT(language, "backup");
 
   useEffect(() => {
     if (typeof document !== "undefined") {
       document.documentElement.lang = language;
     }
+    setAppLanguage(language);
   }, [language]);
 
   useEffect(() => {
@@ -176,7 +231,7 @@ export function useInventoryState(): InventoryState {
           return;
         }
 
-        setLoadError(toErrorMessage(loadErrorValue, dictionary));
+        setLoadError(toErrorMessage(loadErrorValue, language, tCommon("genericActionError")));
       });
 
     if (desktopRuntime) {
@@ -188,18 +243,18 @@ export function useInventoryState(): InventoryState {
         })
         .catch((error: unknown) => {
           if (!cancelled) {
-            setActionError(toErrorMessage(error, dictionary));
+            setActionError(toErrorMessage(error, language, tCommon("genericActionError")));
           }
         });
     } else if (isDev) {
       // Dev preview: show the LAN panel with stub data so it's visible in the browser.
       setLanAccess({
         enabled: false,
-        port: 4123,
+        port: 47123,
         accessKey: "dev-preview-stub-key-0000",
         urls: [],
         status: "stopped",
-        statusMessage: "Dev preview - LAN server runs only in Electron.",
+        statusMessage: tCommon("devPreviewLanStatus"),
       });
     } else {
       setLanAccess(null);
@@ -208,7 +263,7 @@ export function useInventoryState(): InventoryState {
     return () => {
       cancelled = true;
     };
-  }, [desktopRuntime, dictionary, isDev, reloadKey, runtime]);
+  }, [desktopRuntime, isDev, reloadKey, runtime]);
 
   useEffect(() => {
     if (!desktopRuntime || busy || typeof window === "undefined" || typeof document === "undefined") {
@@ -253,9 +308,17 @@ export function useInventoryState(): InventoryState {
         }
 
         setLanguage(result.language);
-        setSnapshot(result);
+        setSnapshot(prev => {
+          if (prev && snapshotEquals(prev, result)) return prev;
+          return result;
+        });
+        consecutiveFailuresRef.current = 0;
+        setPollError(false);
       } catch {
-        // Keep the last successful desktop snapshot if a background refresh fails.
+        consecutiveFailuresRef.current += 1;
+        if (consecutiveFailuresRef.current >= 3) {
+          setPollError(true);
+        }
       } finally {
         refreshInFlight = false;
         if (!cancelled) {
@@ -298,7 +361,7 @@ export function useInventoryState(): InventoryState {
       return;
     }
 
-    setActionError(toErrorMessage(error, dictionary));
+    setActionError(toErrorMessage(error, language, tCommon("genericActionError")));
   };
 
   const executeMutation = async (work: () => Promise<AppSnapshot>, successMessage: string): Promise<boolean> => {
@@ -312,7 +375,7 @@ export function useInventoryState(): InventoryState {
       const previousSnapshot = snapshot;
       const nextSnapshot = await work();
       setSnapshot(nextSnapshot);
-      setNotice(buildMutationNotice(previousSnapshot, nextSnapshot, dictionary, successMessage));
+      setNotice(buildMutationNotice(previousSnapshot, nextSnapshot, language, successMessage));
       return true;
     } catch (error) {
       handleGatewayError(error);
@@ -323,25 +386,25 @@ export function useInventoryState(): InventoryState {
   };
 
   const handleCreateItem = async (input: CreateInventoryItemInput) =>
-    executeMutation(() => createInventoryItem(input), dictionary.successCreateItem);
+    executeMutation(() => createInventoryItem(input), tInventory("successCreateItem"));
 
   const handleUpdateItem = async (input: UpdateInventoryItemInput) =>
-    executeMutation(() => updateInventoryItem(input), dictionary.successUpdateItem);
+    executeMutation(() => updateInventoryItem(input), tInventory("successUpdateItem"));
 
   const handleReceiveStock = async (input: StockMutationInput) =>
-    executeMutation(() => receiveStock(input), dictionary.successReceiveStock);
+    executeMutation(() => receiveStock(input), tInventory("successReceiveStock"));
 
   const handleIssueMaterial = async (input: StockMutationInput) =>
-    executeMutation(() => issueMaterial(input), dictionary.successIssueMaterial);
+    executeMutation(() => issueMaterial(input), tInventory("successIssueMaterial"));
 
   const handleBatchIssueMaterial = async (input: BatchIssueMaterialInput) =>
-    executeMutation(() => batchIssueMaterial(input), dictionary.successBatchIssueMaterial);
+    executeMutation(() => batchIssueMaterial(input), tInventory("successBatchIssueMaterial"));
 
   const handleRemoveItem = async (itemId: string) =>
-    executeMutation(() => removeInventoryItem(itemId), dictionary.successRemoveItem);
+    executeMutation(() => removeInventoryItem(itemId), tInventory("successRemoveItem"));
 
   const handleBackupPlanSave = async (input: UpdateBackupPlanInput) =>
-    executeMutation(() => updateBackupPlan(input), dictionary.successUpdateBackupPlan);
+    executeMutation(() => updateBackupPlan(input), tBackup("successUpdateBackupPlan"));
 
   const handleBackupNow = async (): Promise<boolean> => {
     try {
@@ -351,7 +414,7 @@ export function useInventoryState(): InventoryState {
       setLanguage(nextSnapshot.language);
       setSnapshot(nextSnapshot);
       setNotice({
-        message: dictionary.backupCompleted,
+        message: tBackup("backupCompleted"),
         tone: "success",
       });
       return true;
@@ -381,12 +444,12 @@ export function useInventoryState(): InventoryState {
       const { validation, comparison } = await validateBackup(dirPath);
       if (!validation.valid) {
         setPendingRestore(null);
-        setActionError(validation.error ?? "Invalid backup");
+        setActionError(validation.error ?? tBackup("invalidBackupSelection"));
         return;
       }
       if (!comparison) {
         setPendingRestore(null);
-        setActionError("Unable to compare the selected backup.");
+        setActionError(tBackup("backupComparisonFailed"));
         return;
       }
       setPendingRestore({ dirPath, comparison });
@@ -419,10 +482,10 @@ export function useInventoryState(): InventoryState {
   };
 
   const handleAddPersonnel = async (name: string) =>
-    executeMutation(() => addPersonnel({ name }), dictionary.successAddPersonnel);
+    executeMutation(() => addPersonnel({ name }), tInventory("successAddPersonnel"));
 
   const handleRemovePersonnel = async (personnelId: string) =>
-    executeMutation(() => removePersonnel(personnelId), dictionary.successRemovePersonnel);
+    executeMutation(() => removePersonnel(personnelId), tInventory("successRemovePersonnel"));
 
   const handleLanguageChange = (nextLanguage: Language) => {
     setLanguage(nextLanguage);
@@ -433,7 +496,7 @@ export function useInventoryState(): InventoryState {
 
   const handleLanAccessSave = async (input: UpdateLanAccessInput): Promise<boolean> => {
     if (!desktopRuntime) {
-      setNotice({ message: dictionary.lanDesktopOnly, tone: "warning" });
+      setNotice({ message: tCommon("lanDesktopOnly"), tone: "warning" });
       return false;
     }
     try {
@@ -444,7 +507,7 @@ export function useInventoryState(): InventoryState {
       setLanAccess(nextState);
       setSnapshot(nextSnapshot);
       setNotice({
-        message: nextState.enabled ? dictionary.lanAccessUpdated : dictionary.lanAccessDisabled,
+        message: nextState.enabled ? tCommon("lanAccessUpdated") : tCommon("lanAccessDisabled"),
         tone: nextState.status === "error" ? "warning" : "success",
       });
       return true;
@@ -458,7 +521,7 @@ export function useInventoryState(): InventoryState {
 
   const handleLanAccessKeyRegenerate = async () => {
     if (!desktopRuntime) {
-      setNotice({ message: dictionary.lanDesktopOnly, tone: "warning" });
+      setNotice({ message: tCommon("lanDesktopOnly"), tone: "warning" });
       return;
     }
     try {
@@ -467,7 +530,7 @@ export function useInventoryState(): InventoryState {
       const nextState = await regenerateLanAccessKey();
       setLanAccess(nextState);
       setNotice({
-        message: dictionary.lanAccessKeyRegenerated,
+        message: tCommon("lanAccessKeyRegenerated"),
         tone: "success",
       });
     } catch (error) {
@@ -480,7 +543,7 @@ export function useInventoryState(): InventoryState {
   const connectBrowser = () => {
     const trimmedKey = accessKeyInput.trim();
     if (!trimmedKey) {
-      setLoadError(dictionary.enterLanAccessKey);
+      setLoadError(tCommon("enterLanAccessKey"));
       return;
     }
 
@@ -508,6 +571,11 @@ export function useInventoryState(): InventoryState {
     setActionError(message);
   };
 
+  const reportNotice = (message: string, tone: NoticeTone = "success") => {
+    setActionError(null);
+    setNotice({ message, tone });
+  };
+
   return {
     runtime,
     language,
@@ -525,6 +593,7 @@ export function useInventoryState(): InventoryState {
     disconnectBrowser,
     clearFeedback,
     reportActionError,
+    reportNotice,
     handleCreateItem,
     handleUpdateItem,
     handleReceiveStock,
@@ -542,5 +611,6 @@ export function useInventoryState(): InventoryState {
     handleLanguageChange,
     handleLanAccessSave,
     handleLanAccessKeyRegenerate,
+    pollError,
   };
 }

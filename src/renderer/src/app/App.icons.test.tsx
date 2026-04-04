@@ -1,5 +1,6 @@
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "./i18n";
 
 // Mock runtime to return "http" so the disconnect button shows
 const runtimeMocks = vi.hoisted(() => ({
@@ -34,6 +35,8 @@ const gatewayMocks = vi.hoisted(() => ({
   backupNow: vi.fn(),
   batchIssueMaterial: vi.fn(),
   createInventoryItem: vi.fn(),
+  exportQrLabel: vi.fn(),
+  exportSelectedQrLabels: vi.fn(),
   issueMaterial: vi.fn(),
   issueMaterialPublic: vi.fn(),
   loadLanAccessState: vi.fn(),
@@ -52,7 +55,7 @@ const gatewayMocks = vi.hoisted(() => ({
   updateLanAccess: vi.fn(),
   getItemMovements: vi.fn(),
   getAuditMovements: vi.fn(),
-  getAuditAnalytics: vi.fn(),
+  getAuditAnalytics: vi.fn().mockResolvedValue({ summary: { totalMovements: 0, totalReceived: 0, totalIssued: 0, uniqueItems: 0, uniquePersonnel: 0 }, byPersonnel: [], byItem: [], alertFrequency: [] }),
   checkForUpdates: vi.fn(),
   downloadUpdate: vi.fn(),
   installUpdate: vi.fn(),

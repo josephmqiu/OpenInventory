@@ -1,36 +1,53 @@
 import { formatDate } from "../../app/formatDate";
-import type { Dictionary } from "../../app/i18n";
 import type { AuditMovementRow, AuditPageResult, AuditMovementFilters, Language } from "../../domain/models";
+import { useTranslation } from "react-i18next";
+import { DataTable, type ColumnDef, type SortState } from "./DataTable";
 
 interface AuditLogTableProps {
-  dictionary: Dictionary;
   language: Language;
   data: AuditPageResult;
   filters: AuditMovementFilters;
   onPageChange: (page: number) => void;
   onItemClick: (itemId: string, itemName: string) => void;
   onQuickFilter: (update: Partial<AuditMovementFilters>) => void;
+  onError?: (msg: string) => void;
 }
 
-function exportAuditCsv(rows: AuditMovementRow[], dictionary: Dictionary, total: number): void {
+export type AuditCsvLabels = {
+  date: string;
+  itemName: string;
+  sku: string;
+  type: string;
+  quantity: string;
+  previousQuantity: string;
+  newQuantity: string;
+  performedBy: string;
+  reason: string;
+  referenceNo: string;
+  notes: string;
+  receiveStock: string;
+  issueMaterial: string;
+};
+
+export function buildAuditCsvContent(rows: AuditMovementRow[], labels: AuditCsvLabels): string {
   const headers = [
-    dictionary.date,
-    dictionary.itemName,
-    dictionary.sku,
-    dictionary.type,
-    dictionary.quantity,
-    dictionary.previousQuantity,
-    dictionary.newQuantity,
-    dictionary.performedBy,
-    dictionary.reason,
-    dictionary.referenceNo,
-    dictionary.notes,
+    labels.date,
+    labels.itemName,
+    labels.sku,
+    labels.type,
+    labels.quantity,
+    labels.previousQuantity,
+    labels.newQuantity,
+    labels.performedBy,
+    labels.reason,
+    labels.referenceNo,
+    labels.notes,
   ];
   const csvRows = rows.map((row) => [
     row.performedAt,
     row.itemName,
     row.itemSku,
-    row.movementType === "receive" ? dictionary.receiveStock : dictionary.issueMaterial,
+    row.movementType === "receive" ? labels.receiveStock : labels.issueMaterial,
     String(row.quantity),
     String(row.previousQuantity),
     String(row.newQuantity),
@@ -39,9 +56,13 @@ function exportAuditCsv(rows: AuditMovementRow[], dictionary: Dictionary, total:
     row.referenceNo ?? "",
     row.notes ?? "",
   ]);
-  const csvContent = [headers, ...csvRows]
+  return [headers, ...csvRows]
     .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
     .join("\n");
+}
+
+function exportAuditCsv(rows: AuditMovementRow[], labels: AuditCsvLabels, total: number): void {
+  const csvContent = buildAuditCsvContent(rows, labels);
   const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -49,36 +70,59 @@ function exportAuditCsv(rows: AuditMovementRow[], dictionary: Dictionary, total:
   a.download = `audit-export-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-
-  if (total > rows.length) {
-    // The caller should show a truncation warning via state
-  }
 }
 
 export function AuditLogTable({
-  dictionary,
   language,
   data,
   filters,
   onPageChange,
   onItemClick,
   onQuickFilter,
+  onError,
 }: AuditLogTableProps) {
+  const { i18n } = useTranslation(["common", "audit"]);
+  const t = i18n.getFixedT(language, ["common", "audit"]);
   const totalPages = Math.max(1, Math.ceil(data.total / filters.pageSize));
   const currentPage = filters.page;
+  const labels: AuditCsvLabels = {
+    date: t("date", { ns: "audit" }),
+    itemName: t("itemName", { ns: "audit" }),
+    sku: t("sku", { ns: "audit" }),
+    type: t("type", { ns: "audit" }),
+    quantity: t("quantity", { ns: "audit" }),
+    previousQuantity: t("previousQuantity", { ns: "audit" }),
+    newQuantity: t("newQuantity", { ns: "audit" }),
+    performedBy: t("performedBy", { ns: "audit" }),
+    reason: t("reason", { ns: "audit" }),
+    referenceNo: t("referenceNo", { ns: "audit" }),
+    notes: t("notes", { ns: "audit" }),
+    receiveStock: t("receiveStock", { ns: "audit" }),
+    issueMaterial: t("issueMaterial", { ns: "audit" }),
+  };
+
+  const sortState: SortState | null = filters.sortBy && filters.sortDir
+    ? { key: filters.sortBy, dir: filters.sortDir }
+    : null;
+
+  const handleSortChange = (newState: SortState | null) => {
+    onQuickFilter({
+      sortBy: newState?.key,
+      sortDir: newState?.dir,
+    });
+  };
 
   const handleExport = async () => {
     if (data.total <= data.rows.length) {
-      exportAuditCsv(data.rows, dictionary, data.total);
+      exportAuditCsv(data.rows, labels, data.total);
       return;
     }
-    // Fetch all results (up to 10K) for export
     const { getAuditMovements } = await import("../../services/inventoryGateway");
     try {
       const allData = await getAuditMovements({ ...filters, page: 1, pageSize: 10000 });
-      exportAuditCsv(allData.rows, dictionary, allData.total);
-    } catch {
-      // Export failed silently handled
+      exportAuditCsv(allData.rows, labels, allData.total);
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -88,88 +132,80 @@ export function AuditLogTable({
     onQuickFilter({ dateFrom: dayStart, dateTo: dayEnd });
   };
 
+  const columns: ColumnDef<AuditMovementRow>[] = [
+    {
+      key: "date",
+      header: labels.date,
+      sortable: true,
+      sortKey: "date",
+      render: (row) => (
+        <button type="button" className="cell-filterable" onClick={() => clickDate(row.performedAt)} title={t("clickToFilter", { ns: "audit" })}>
+          {formatDate(row.performedAt, language)}
+        </button>
+      ),
+    },
+    {
+      key: "itemName",
+      header: labels.itemName,
+      sortable: true,
+      sortKey: "itemName",
+      render: (row) => (
+        <>
+          <button type="button" className="cell-link" onClick={() => onItemClick(row.itemId, row.itemName)}>
+            {row.itemName}
+          </button>
+          <span className="cell-subtitle">{row.itemSku}</span>
+        </>
+      ),
+    },
+    {
+      key: "type",
+      header: labels.type,
+      sortable: true,
+      sortKey: "type",
+      render: (row) => (
+        <button type="button" className="cell-filterable" onClick={() => onQuickFilter({ movementType: row.movementType as "receive" | "issue" })} title={t("clickToFilter", { ns: "audit" })}>
+          {row.movementType === "receive" ? labels.receiveStock : labels.issueMaterial}
+        </button>
+      ),
+    },
+    { key: "quantity", header: labels.quantity, className: "cell-mono", sortable: true, sortKey: "quantity", render: (row) => row.quantity },
+    {
+      key: "performedBy",
+      header: labels.performedBy,
+      sortable: true,
+      sortKey: "performedBy",
+      render: (row) =>
+        row.performedBy ? (
+          <button type="button" className="cell-filterable" onClick={() => onQuickFilter({ performedBy: row.performedBy! })} title={t("clickToFilter", { ns: "audit" })}>
+            {row.performedBy}
+          </button>
+        ) : (
+          <span className="cell-muted">{t("notProvided", { ns: "common" })}</span>
+        ),
+    },
+    { key: "previousQuantity", header: labels.previousQuantity, className: "cell-mono", sortable: true, sortKey: "previousQuantity", render: (row) => row.previousQuantity },
+    { key: "newQuantity", header: labels.newQuantity, className: "cell-mono", sortable: true, sortKey: "newQuantity", render: (row) => row.newQuantity },
+    { key: "reason", header: labels.reason, sortable: true, sortKey: "reason", render: (row) => row.reason || "" },
+    { key: "referenceNo", header: labels.referenceNo, sortable: true, sortKey: "referenceNo", render: (row) => row.referenceNo || "" },
+    { key: "notes", header: labels.notes, sortable: true, sortKey: "notes", render: (row) => row.notes || "" },
+  ];
+
   return (
     <>
-      <div className="table-wrap audit-table">
-        <table>
-          <thead>
-            <tr>
-              <th>{dictionary.date}</th>
-              <th>{dictionary.itemName}</th>
-              <th>{dictionary.type}</th>
-              <th>{dictionary.quantity}</th>
-              <th>{dictionary.performedBy}</th>
-              <th>{dictionary.previousQuantity}</th>
-              <th>{dictionary.newQuantity}</th>
-              <th>{dictionary.reason}</th>
-              <th>{dictionary.referenceNo}</th>
-              <th>{dictionary.notes}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map((row) => (
-              <tr
-                key={row.id}
-                className={row.isAnomaly ? "audit-row--anomaly" : ""}
-                aria-label={row.isAnomaly ? dictionary.anomalyTooltip(row.quantity / (row.quantity / 5)) : undefined}
-              >
-                <td>
-                  <button
-                    type="button"
-                    className="cell-filterable"
-                    onClick={() => clickDate(row.performedAt)}
-                    title={dictionary.clickToFilter}
-                  >
-                    {formatDate(row.performedAt, language)}
-                  </button>
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="cell-link"
-                    onClick={() => onItemClick(row.itemId, row.itemName)}
-                  >
-                    {row.itemName}
-                  </button>
-                  <span className="cell-subtitle">{row.itemSku}</span>
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="cell-filterable"
-                    onClick={() => onQuickFilter({ movementType: row.movementType as "receive" | "issue" })}
-                    title={dictionary.clickToFilter}
-                  >
-                    {row.movementType === "receive" ? dictionary.receiveStock : dictionary.issueMaterial}
-                  </button>
-                </td>
-                <td className="cell-mono">{row.quantity}</td>
-                <td>
-                  {row.performedBy ? (
-                    <button
-                      type="button"
-                      className="cell-filterable"
-                      onClick={() => onQuickFilter({ performedBy: row.performedBy! })}
-                      title={dictionary.clickToFilter}
-                    >
-                      {row.performedBy}
-                    </button>
-                  ) : (
-                    <span className="cell-muted">{dictionary.notProvided}</span>
-                  )}
-                </td>
-                <td className="cell-mono">{row.previousQuantity}</td>
-                <td className="cell-mono">{row.newQuantity}</td>
-                <td>{row.reason || ""}</td>
-                <td>{row.referenceNo || ""}</td>
-                <td>{row.notes || ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        data={data.rows}
+        rowKey={(row) => row.id}
+        rowClassName={(row) => (row.isAnomaly ? "audit-row--anomaly" : "")}
+        className="audit-table"
+        sortState={sortState}
+        onSortChange={handleSortChange}
+      />
       <div className="audit-pagination">
-        <span>{dictionary.pageOf(currentPage, totalPages)}</span>
+        <span>
+          {t("pageOf", { ns: "audit", current: currentPage, total: totalPages })}
+        </span>
         <div className="audit-pagination__controls">
           <button
             type="button"
@@ -177,7 +213,7 @@ export function AuditLogTable({
             disabled={currentPage <= 1}
             onClick={() => onPageChange(currentPage - 1)}
           >
-            {dictionary.previousPage}
+            {t("previousPage", { ns: "audit" })}
           </button>
           <button
             type="button"
@@ -185,10 +221,10 @@ export function AuditLogTable({
             disabled={currentPage >= totalPages}
             onClick={() => onPageChange(currentPage + 1)}
           >
-            {dictionary.nextPage}
+            {t("nextPage", { ns: "audit" })}
           </button>
           <button type="button" className="button-secondary button-inline" onClick={handleExport} disabled={data.total === 0}>
-            {dictionary.exportCsv}
+            {t("exportCsv", { ns: "audit" })}
           </button>
         </div>
       </div>

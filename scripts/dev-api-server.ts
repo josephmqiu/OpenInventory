@@ -43,11 +43,12 @@ const dbService = makeDatabaseService(DB_PATH);
 // Import helpers inline to avoid circular dependency with the router
 import { Effect } from "effect";
 import { errorToHttpStatus, type AppError } from "../src/main/domain/errors";
+import { BackupService, BackupServiceLive } from "../src/main/services/BackupService";
 
 type Json = Record<string, unknown>;
 
-async function runEffect<A>(effect: Effect.Effect<A, AppError>): Promise<A> {
-  return Effect.runPromise(effect);
+async function runEffect<A>(effect: Effect.Effect<A, AppError, BackupService>): Promise<A> {
+  return Effect.runPromise(Effect.provide(effect, BackupServiceLive));
 }
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {

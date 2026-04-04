@@ -2,7 +2,7 @@
  * Category C: IPC contract tests
  *
  * These tests define the channel map, argument shapes, and return types
- * for the 17 IPC handlers that will be registered in Electron's main process.
+ * for the IPC handlers that will be registered in Electron's main process.
  * They validate the contract between frontend gateway and backend services.
  */
 import { describe, it, expect } from "vitest";
@@ -26,6 +26,8 @@ const IPC_CHANNELS = [
   "batch-issue-material",
   "update-backup-plan",
   "backup-now",
+  "export-qr-label",
+  "export-qr-labels",
   "get-item-movements",
   "update-app-language",
   "remove-inventory-item",
@@ -94,6 +96,16 @@ const CHANNEL_CONTRACTS: Record<
     mutates: true,
   },
   "backup-now": { args: "none", returns: "AppSnapshot", mutates: true },
+  "export-qr-label": {
+    args: "QrLabelExportPayload",
+    returns: "string | null",
+    mutates: false,
+  },
+  "export-qr-labels": {
+    args: "QrLabelExportPayload[]",
+    returns: "string[] | null",
+    mutates: false,
+  },
   "get-item-movements": {
     args: "itemId: string",
     returns: "InventoryMovement[]",
@@ -139,8 +151,8 @@ const CHANNEL_CONTRACTS: Record<
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("IPC channel registration", () => {
-  it("defines exactly 20 channels", () => {
-    expect(IPC_CHANNELS).toHaveLength(20);
+  it("defines exactly 22 channels", () => {
+    expect(IPC_CHANNELS).toHaveLength(22);
   });
 
   it("all channels have unique names", () => {
@@ -206,6 +218,19 @@ describe("IPC channel contracts", () => {
     const c = CHANNEL_CONTRACTS["update-app-language"];
     expect(c.returns).toBe("void");
     expect(c.mutates).toBe(true);
+  });
+
+  it("QR export commands return file paths and do not mutate app state", () => {
+    expect(CHANNEL_CONTRACTS["export-qr-label"]).toEqual({
+      args: "QrLabelExportPayload",
+      returns: "string | null",
+      mutates: false,
+    });
+    expect(CHANNEL_CONTRACTS["export-qr-labels"]).toEqual({
+      args: "QrLabelExportPayload[]",
+      returns: "string[] | null",
+      mutates: false,
+    });
   });
 });
 
@@ -288,6 +313,8 @@ describe("channel name mapping from Tauri to Electron", () => {
     batch_issue_material: "batch-issue-material",
     update_backup_plan: "update-backup-plan",
     backup_now: "backup-now",
+    export_qr_label: "export-qr-label",
+    export_qr_labels: "export-qr-labels",
     get_item_movements: "get-item-movements",
     update_app_language: "update-app-language",
     remove_inventory_item: "remove-inventory-item",
@@ -298,8 +325,8 @@ describe("channel name mapping from Tauri to Electron", () => {
     install_update: "install-update",
   };
 
-  it("maps all 20 commands to Electron channels", () => {
-    expect(Object.keys(TAURI_TO_ELECTRON)).toHaveLength(20);
+  it("maps all 22 commands to Electron channels", () => {
+    expect(Object.keys(TAURI_TO_ELECTRON)).toHaveLength(22);
   });
 
   it("converts snake_case to kebab-case correctly", () => {

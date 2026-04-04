@@ -1,9 +1,8 @@
-import { useState } from "react";
-import type { Dictionary } from "../../app/i18n";
+import { useEffect, useRef, useState } from "react";
 import type { AuditMovementFilters, Language, PersonnelMember } from "../../domain/models";
+import { useTranslation } from "react-i18next";
 
 interface AuditFilterBarProps {
-  dictionary: Dictionary;
   language: Language;
   personnel: PersonnelMember[];
   filters: AuditMovementFilters;
@@ -53,13 +52,14 @@ function presetRange(key: PresetKey): { dateFrom: string; dateTo: string } {
 }
 
 export function AuditFilterBar({
-  dictionary,
   language,
   personnel,
   filters,
   onFiltersChange,
   disabled,
 }: AuditFilterBarProps) {
+  const { i18n } = useTranslation(["common", "audit"]);
+  const t = i18n.getFixedT(language, ["common", "audit"]);
   const [dateFrom, setDateFrom] = useState(toDateInput(filters.dateFrom));
   const [dateTo, setDateTo] = useState(toDateInput(filters.dateTo));
   const [movementType, setMovementType] = useState(filters.movementType ?? "");
@@ -68,14 +68,53 @@ export function AuditFilterBar({
   const [textSearch, setTextSearch] = useState(filters.textSearch ?? "");
   const [activePreset, setActivePreset] = useState<PresetKey | null>(null);
 
+  // Sync local state when parent filters change (e.g. preset applied, quick-filter from table)
+  const prevFiltersRef = useRef(
+    JSON.stringify([
+      filters.dateFrom,
+      filters.dateTo,
+      filters.movementType,
+      filters.itemSearch,
+      filters.performedBy,
+      filters.textSearch,
+    ]),
+  );
+  useEffect(() => {
+    const key = JSON.stringify([
+      filters.dateFrom,
+      filters.dateTo,
+      filters.movementType,
+      filters.itemSearch,
+      filters.performedBy,
+      filters.textSearch,
+    ]);
+    if (key === prevFiltersRef.current) return;
+    prevFiltersRef.current = key;
+    setDateFrom(toDateInput(filters.dateFrom));
+    setDateTo(toDateInput(filters.dateTo));
+    setMovementType(filters.movementType ?? "");
+    setItemSearch(filters.itemSearch ?? "");
+    setPerformedBy(filters.performedBy ?? "");
+    setTextSearch(filters.textSearch ?? "");
+  }, [filters]);
+
   const applyFilters = () => {
+    let from = dateFrom;
+    let to = dateTo;
+    if (from && to && from > to) {
+      [from, to] = [to, from];
+      setDateFrom(from);
+      setDateTo(to);
+    }
     onFiltersChange({
-      dateFrom: dateFrom ? dateFrom + " 00:00:00" : undefined,
-      dateTo: dateTo ? dateTo + " 23:59:59" : undefined,
+      dateFrom: from ? from + " 00:00:00" : undefined,
+      dateTo: to ? to + " 23:59:59" : undefined,
       movementType: (movementType as "receive" | "issue") || undefined,
       itemSearch: itemSearch || undefined,
       performedBy: performedBy || undefined,
       textSearch: textSearch || undefined,
+      sortBy: filters.sortBy,
+      sortDir: filters.sortDir,
       page: 1,
       pageSize: filters.pageSize,
     });
@@ -94,6 +133,8 @@ export function AuditFilterBar({
     onFiltersChange({
       dateFrom: from,
       dateTo: to,
+      sortBy: filters.sortBy,
+      sortDir: filters.sortDir,
       page: 1,
       pageSize: filters.pageSize,
     });
@@ -119,13 +160,25 @@ export function AuditFilterBar({
   };
 
   const presets: { key: PresetKey; label: string }[] = [
-    { key: "today", label: dictionary.today },
-    { key: "thisWeek", label: dictionary.thisWeek },
-    { key: "thisMonth", label: dictionary.thisMonth },
-    { key: "last30Days", label: dictionary.last30Days },
+    {
+      key: "today",
+      label: t("today", { ns: "audit" }),
+    },
+    {
+      key: "thisWeek",
+      label: t("thisWeek", { ns: "audit" }),
+    },
+    {
+      key: "thisMonth",
+      label: t("thisMonth", { ns: "audit" }),
+    },
+    {
+      key: "last30Days",
+      label: t("last30Days", { ns: "audit" }),
+    },
   ];
 
-  const allPersonnel = language === "en" ? "All" : "全部";
+  const allPersonnel = t("allPersonnel", { ns: "audit" });
 
   return (
     <div className="audit-filter-bar" role="search">
@@ -150,7 +203,7 @@ export function AuditFilterBar({
             value={dateFrom}
             onChange={(e) => handleDateChange("from", e.target.value)}
             disabled={disabled}
-            aria-label={dictionary.dateFrom}
+            aria-label={t("dateFrom", { ns: "audit" })}
           />
           <span className="audit-date-range__sep">&ndash;</span>
           <input
@@ -158,27 +211,39 @@ export function AuditFilterBar({
             value={dateTo}
             onChange={(e) => handleDateChange("to", e.target.value)}
             disabled={disabled}
-            aria-label={dictionary.dateTo}
+            aria-label={t("dateTo", { ns: "audit" })}
           />
         </div>
       </div>
 
       {/* Row 2: Data filters — compact inline fields with integrated actions */}
       <div className="audit-filter-bar__filter-row">
-        <select value={movementType} onChange={(e) => setMovementType(e.target.value)} disabled={disabled} aria-label={dictionary.movementType}>
-          <option value="">{dictionary.allTypes}</option>
-          <option value="receive">{dictionary.receiveStock}</option>
-          <option value="issue">{dictionary.issueMaterial}</option>
+        <select
+          value={movementType}
+          onChange={(e) => setMovementType(e.target.value)}
+          disabled={disabled}
+          aria-label={t("movementType", { ns: "audit" })}
+        >
+          <option value="">
+            {t("allTypes", { ns: "audit" })}
+          </option>
+          <option value="receive">{t("receiveStock", { ns: "audit" })}</option>
+          <option value="issue">{t("issueMaterial", { ns: "audit" })}</option>
         </select>
         <input
           type="text"
           value={itemSearch}
           onChange={(e) => setItemSearch(e.target.value)}
-          placeholder={dictionary.itemSearch}
+          placeholder={t("itemSearch", { ns: "audit" })}
           disabled={disabled}
-          aria-label={dictionary.itemSearch}
+          aria-label={t("itemSearch", { ns: "audit" })}
         />
-        <select value={performedBy} onChange={(e) => setPerformedBy(e.target.value)} disabled={disabled} aria-label={dictionary.performedBy}>
+        <select
+          value={performedBy}
+          onChange={(e) => setPerformedBy(e.target.value)}
+          disabled={disabled}
+          aria-label={t("performedBy", { ns: "audit" })}
+        >
           <option value="">{allPersonnel}</option>
           {personnel.map((p) => (
             <option key={p.id} value={p.name}>
@@ -190,16 +255,16 @@ export function AuditFilterBar({
           type="text"
           value={textSearch}
           onChange={(e) => setTextSearch(e.target.value)}
-          placeholder={dictionary.textSearchHint}
+          placeholder={t("textSearchHint", { ns: "audit" })}
           disabled={disabled}
-          aria-label={dictionary.textSearch}
+          aria-label={t("textSearch", { ns: "audit" })}
         />
         <div className="audit-filter-bar__actions">
           <button type="button" data-testid="audit-filter-apply" onClick={applyFilters} disabled={disabled}>
-            {dictionary.applyFilters}
+            {t("applyFilters", { ns: "audit" })}
           </button>
           <button type="button" className="button-secondary" data-testid="audit-filter-clear" onClick={clearFilters} disabled={disabled}>
-            {dictionary.clearFilters}
+            {t("clearFilters", { ns: "audit" })}
           </button>
         </div>
       </div>

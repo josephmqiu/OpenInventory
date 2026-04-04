@@ -33,26 +33,24 @@ export function createTestDb(): TestDb {
     db,
     dir,
     dbPath,
-    cleanup: () => {
-      db.close();
-      tryRemoveDir(dir);
+    cleanup: async () => {
+      if (db.open) db.close();
+      await tryRemoveDir(dir);
     },
   };
 }
 
 /** On Windows, SQLite file handles may not release immediately after db.close().
  *  Retry rmSync with exponential back-off to avoid EBUSY failures in CI. */
-function tryRemoveDir(dir: string, retries = 5): void {
+async function tryRemoveDir(dir: string, retries = 5): Promise<void> {
   for (let i = 0; i < retries; i++) {
     try {
       fs.rmSync(dir, { recursive: true, force: true });
       return;
     } catch (err: unknown) {
       if (i === retries - 1) throw err;
-      // Exponential back-off: 100, 200, 400, 800ms
       const delay = 100 * Math.pow(2, i);
-      const start = Date.now();
-      while (Date.now() - start < delay) { /* spin */ }
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
 }
@@ -161,9 +159,9 @@ export function createLegacyTestDb(): TestDb {
     db,
     dir,
     dbPath,
-    cleanup: () => {
-      db.close();
-      tryRemoveDir(dir);
+    cleanup: async () => {
+      if (db.open) db.close();
+      await tryRemoveDir(dir);
     },
   };
 }
@@ -299,20 +297,22 @@ export function seedAlert(
     threshold: number;
     quantityAtTrigger: number;
     status: string;
+    triggeredAt: string;
   }> = {},
 ): string {
   const id = genId("alert");
   db.prepare(
     `INSERT INTO low_stock_alerts
      (id, item_id, threshold_quantity, quantity_at_trigger, status,
-      triggered_at, channel_summary)
-     VALUES (?, ?, ?, ?, ?, datetime('now','localtime'), 'desktop,in_app')`,
+      triggered_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     itemId,
     opts.threshold ?? 10,
     opts.quantityAtTrigger ?? 5,
     opts.status ?? "open",
+    opts.triggeredAt ?? new Date().toISOString().replace("T", " ").slice(0, 19),
   );
   return id;
 }

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { localizeBackendMessage, type Dictionary } from "../../app/i18n";
+import i18n from "i18next";
+import { translateErrorMessage } from "../../app/i18n";
 import type { LanAccessState, UpdateLanAccessInput } from "../../domain/models";
+import { useTT } from "../hooks/useTT";
 
 interface LanAccessPanelProps {
   busy: boolean;
-  dictionary: Dictionary;
   lanAccess: LanAccessState;
   onSave: (input: UpdateLanAccessInput) => Promise<void>;
   onRegenerateKey: () => Promise<void>;
@@ -17,18 +18,8 @@ function createFormState(lanAccess: LanAccessState): UpdateLanAccessInput {
   };
 }
 
-function statusLabel(status: LanAccessState["status"], dictionary: Dictionary): string {
-  switch (status) {
-    case "running":
-      return dictionary.lanStatusRunning;
-    case "error":
-      return dictionary.lanStatusError;
-    default:
-      return dictionary.lanStatusStopped;
-  }
-}
-
-export function LanAccessPanel({ busy, dictionary, lanAccess, onSave, onRegenerateKey }: LanAccessPanelProps) {
+export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: LanAccessPanelProps) {
+  const tt = useTT();
   const [form, setForm] = useState<UpdateLanAccessInput>(() => createFormState(lanAccess));
   const [copyFeedback, setCopyFeedback] = useState<{ message: string; tone: "success" | "error" } | null>(null);
 
@@ -36,17 +27,27 @@ export function LanAccessPanel({ busy, dictionary, lanAccess, onSave, onRegenera
     setForm(createFormState(lanAccess));
   }, [lanAccess]);
 
-  const hasChanges = useMemo(
-    () => JSON.stringify(form) !== JSON.stringify(createFormState(lanAccess)),
-    [form, lanAccess],
-  );
+  const hasChanges = useMemo(() => JSON.stringify(form) !== JSON.stringify(createFormState(lanAccess)), [form, lanAccess]);
 
   const handleCopyAccessKey = async () => {
     try {
       await navigator.clipboard.writeText(lanAccess.accessKey);
-      setCopyFeedback({ message: dictionary.lanCopySuccess, tone: "success" });
+      setCopyFeedback({ message: tt("lanCopySuccess", "Access key copied to clipboard."), tone: "success" });
+      setTimeout(() => setCopyFeedback(null), 3000);
     } catch {
-      setCopyFeedback({ message: dictionary.lanCopyError, tone: "error" });
+      setCopyFeedback({ message: tt("lanCopyError", "Unable to copy the access key on this device."), tone: "error" });
+      setTimeout(() => setCopyFeedback(null), 3000);
+    }
+  };
+
+  const statusLabel = (status: LanAccessState["status"]): string => {
+    switch (status) {
+      case "running":
+        return tt("lanStatusRunning", "Running");
+      case "error":
+        return tt("lanStatusError", "Error");
+      default:
+        return tt("lanStatusStopped", "Stopped");
     }
   };
 
@@ -54,44 +55,45 @@ export function LanAccessPanel({ busy, dictionary, lanAccess, onSave, onRegenera
     <section className="panel">
       <div className="panel__header">
         <div>
-          <h2>{dictionary.lanAccess}</h2>
-          <p>{dictionary.lanEnableHint}</p>
+          <h2>{tt("lanAccess", "LAN Access")} <span className={`status-pill status-pill--lan-${lanAccess.status}`} data-testid="lan-status">{statusLabel(lanAccess.status)}</span></h2>
+          <p>{tt("lanEnableHint", "Serve the inventory app on your local network so phones and tablets can look up and manage items.")}</p>
         </div>
-        <span className={`status-pill status-pill--lan-${lanAccess.status}`} data-testid="lan-status">
-          {statusLabel(lanAccess.status, dictionary)}
-        </span>
       </div>
 
-      <div className="panel-banner panel-banner--info">{dictionary.lanNetworkHint}</div>
+      {lanAccess.ipChanged && (
+        <div className="panel-banner panel-banner--warning">{tt("lanIpChanged", "Your network address has changed. Printed QR codes may point to the old address.")}</div>
+      )}
+      <div className="panel-banner panel-banner--info">{tt("lanNetworkHint", "Devices must be on the same local network and use the access key shown below.")}</div>
       {copyFeedback && <div className={`feedback-banner feedback-banner--${copyFeedback.tone}`}>{copyFeedback.message}</div>}
 
       <div className="form-grid">
         <label>
-          <span>{dictionary.lanEnabled}</span>
+          <span>{tt("lanEnabled", "Enabled")}</span>
           <select
             value={form.enabled ? "enabled" : "disabled"}
             onChange={(event) => setForm({ ...form, enabled: event.target.value === "enabled" })}
           >
-            <option value="enabled">{dictionary.lanEnabled}</option>
-            <option value="disabled">{dictionary.lanDisabled}</option>
+            <option value="enabled">{tt("lanEnabled", "Enabled")}</option>
+            <option value="disabled">{tt("lanDisabled", "Disabled")}</option>
           </select>
         </label>
         <label>
-          <span>{dictionary.lanPort}</span>
+          <span>{tt("lanPort", "Port")}</span>
           <input
             min="1"
             max="65535"
             type="number"
             value={form.port}
             onChange={(event) => setForm({ ...form, port: Number(event.target.value) })}
+            onKeyDown={(e) => { if (e.key === "Enter" && !busy && hasChanges && form.port > 0 && form.port <= 65535) { e.preventDefault(); void onSave(form); } }}
           />
         </label>
         <label>
-          <span>{dictionary.lanAccessKey}</span>
+          <span>{tt("lanAccessKey", "Access Key")}</span>
           <div className="row-actions row-actions--spread">
             <input readOnly value={lanAccess.accessKey} />
             <button className="button-secondary button-inline" disabled={busy} onClick={() => void handleCopyAccessKey()} type="button">
-              {dictionary.lanCopy}
+              {tt("lanCopy", "Copy")}
             </button>
           </div>
         </label>
@@ -99,11 +101,19 @@ export function LanAccessPanel({ busy, dictionary, lanAccess, onSave, onRegenera
 
       <div className="backup-grid lan-access-grid">
         <div>
-          <dt>{dictionary.lanStatus}</dt>
-          <dd>{lanAccess.statusMessage ? localizeBackendMessage(lanAccess.statusMessage, dictionary) : dictionary.notProvided}</dd>
+          <dt>{tt("lanStatus", "Status")}</dt>
+          <dd>
+            {lanAccess.statusMessage
+              ? translateErrorMessage(
+                  { messageId: lanAccess.statusMessage, debugMessage: lanAccess.statusMessage },
+                  i18n.language === "zh-CN" ? "zh-CN" : "en",
+                  tt("lanDesktopOnly", "LAN server management is only available in the desktop app."),
+                )
+              : tt("notProvided", "Not provided")}
+          </dd>
         </div>
         <div>
-          <dt>{dictionary.lanOpenOnDevice}</dt>
+          <dt>{tt("lanOpenOnDevice", "Open On Another Device")}</dt>
           <dd className="lan-url-list">
             {lanAccess.urls.length > 0 ? (
               lanAccess.urls.map((url) => (
@@ -112,29 +122,20 @@ export function LanAccessPanel({ busy, dictionary, lanAccess, onSave, onRegenera
                 </a>
               ))
             ) : (
-              <span>{dictionary.lanUrlsUnavailable}</span>
+              <span>{tt("lanUrlsUnavailable", "Enable LAN access to see device URLs.")}</span>
             )}
           </dd>
         </div>
       </div>
 
+      <p className="panel-hint">{tt("lanStaticIpHint", "For reliable QR codes, use a static IP address on this machine.")}</p>
+
       <div className="action-panel__footer action-panel__footer--spread">
-        <button
-          className="button-secondary"
-          data-testid="lan-regen-key"
-          disabled={busy}
-          onClick={() => void onRegenerateKey()}
-          type="button"
-        >
-          {dictionary.lanRegenerateKey}
+        <button className="button-secondary" data-testid="lan-regen-key" disabled={busy} onClick={() => void onRegenerateKey()} type="button">
+          {tt("lanRegenerateKey", "Regenerate Access Key")}
         </button>
-        <button
-          data-testid="lan-save"
-          disabled={busy || !hasChanges || form.port <= 0 || form.port > 65535}
-          onClick={() => void onSave(form)}
-          type="button"
-        >
-          {busy ? `${dictionary.save}...` : dictionary.lanSaveSettings}
+        <button data-testid="lan-save" disabled={busy || !hasChanges || form.port <= 0 || form.port > 65535} onClick={() => void onSave(form)} type="button">
+          {busy ? `${tt("save", "Save")}...` : tt("lanSaveSettings", "Save LAN Settings")}
         </button>
       </div>
     </section>

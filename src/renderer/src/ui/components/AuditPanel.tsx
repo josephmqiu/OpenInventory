@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from "react";
-import type { Dictionary } from "../../app/i18n";
 import type { AuditMovementFilters, AuditPageResult, Language, PersonnelMember } from "../../domain/models";
 import { getAuditMovements } from "../../services/inventoryGateway";
 import { MetricCard } from "./MetricCard";
@@ -7,14 +6,14 @@ import { AuditFilterBar, defaultDateFrom, defaultDateTo } from "./AuditFilterBar
 import { AuditLogTable } from "./AuditLogTable";
 import { AuditSummaryView } from "./AuditSummaryView";
 import { AuditDrillDown } from "./AuditDrillDown";
+import { useTranslation } from "react-i18next";
 
 interface AuditPanelProps {
-  dictionary: Dictionary;
   language: Language;
   personnel: PersonnelMember[];
 }
 
-type AuditTab = "log" | "summary";
+export type AuditTab = "log" | "personnel" | "items" | "alerts";
 
 interface DrillDownState {
   itemId: string;
@@ -31,13 +30,16 @@ function initialFilters(): AuditMovementFilters {
   };
 }
 
-export function AuditPanel({ dictionary, language, personnel }: AuditPanelProps) {
+export function AuditPanel({ language, personnel }: AuditPanelProps) {
+  const { i18n } = useTranslation(["common", "audit"]);
+  const t = i18n.getFixedT(language, ["common", "audit"]);
   const [tab, setTab] = useState<AuditTab>("log");
   const [filters, setFilters] = useState<AuditMovementFilters>(initialFilters);
   const [data, setData] = useState<AuditPageResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drillDown, setDrillDown] = useState<DrillDownState | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   // Fetch data when filters change (Activity Log)
   useEffect(() => {
@@ -61,7 +63,7 @@ export function AuditPanel({ dictionary, language, personnel }: AuditPanelProps)
     return () => {
       cancelled = true;
     };
-  }, [filters, drillDown]);
+  }, [filters, drillDown, retryKey]);
 
   const handleFiltersChange = useCallback((newFilters: AuditMovementFilters) => {
     setFilters(newFilters);
@@ -101,14 +103,13 @@ export function AuditPanel({ dictionary, language, personnel }: AuditPanelProps)
 
   const handleRetry = useCallback(() => {
     setError(null);
-    setFilters((prev) => ({ ...prev })); // Trigger re-fetch
+    setRetryKey((k) => k + 1);
   }, []);
 
   // Drill-down replaces content
   if (drillDown) {
     return (
       <AuditDrillDown
-        dictionary={dictionary}
         language={language}
         itemId={drillDown.itemId}
         itemName={drillDown.itemName}
@@ -124,32 +125,29 @@ export function AuditPanel({ dictionary, language, personnel }: AuditPanelProps)
   return (
     <section className="panel">
       {/* Tab navigation */}
-      <div className="audit-tabs" role="tablist">
-        <button
-          type="button"
-          className={`audit-tab${tab === "log" ? " audit-tab--active" : ""}`}
-          data-testid="audit-tab-log"
-          role="tab"
-          aria-selected={tab === "log"}
-          onClick={() => handleTabChange("log")}
-        >
-          {dictionary.activityLog}
-        </button>
-        <button
-          type="button"
-          className={`audit-tab${tab === "summary" ? " audit-tab--active" : ""}`}
-          data-testid="audit-tab-summary"
-          role="tab"
-          aria-selected={tab === "summary"}
-          onClick={() => handleTabChange("summary")}
-        >
-          {dictionary.activitySummary}
-        </button>
+      <div className="filter-tabs" style={{ marginBottom: 12 }} role="tablist">
+        {([
+          { id: "log", label: t("activityLog", { ns: "audit" }) },
+          { id: "personnel", label: t("byPersonnel", { ns: "audit" }) },
+          { id: "items", label: t("byItem", { ns: "audit" }) },
+          { id: "alerts", label: t("alertFrequency", { ns: "audit" }) },
+        ] as const).map((tabDef) => (
+          <button
+            key={tabDef.id}
+            type="button"
+            className={`filter-tab${tab === tabDef.id ? " filter-tab--active" : ""}`}
+            data-testid={`audit-tab-${tabDef.id}`}
+            role="tab"
+            aria-selected={tab === tabDef.id}
+            onClick={() => handleTabChange(tabDef.id)}
+          >
+            {tabDef.label}
+          </button>
+        ))}
       </div>
 
       {/* Filter bar */}
       <AuditFilterBar
-        dictionary={dictionary}
         language={language}
         personnel={personnel}
         filters={filters}
@@ -160,23 +158,23 @@ export function AuditPanel({ dictionary, language, personnel }: AuditPanelProps)
       {/* Metrics strip */}
       <div className="metrics-grid" style={{ marginBottom: 12 }}>
         <MetricCard
-          label={dictionary.totalMovements}
+          label={t("totalMovements", { ns: "audit" })}
           value={loading ? "---" : String(summary?.totalMovements ?? 0)}
         />
         <MetricCard
-          label={dictionary.totalReceived}
+          label={t("totalReceived", { ns: "audit" })}
           value={loading ? "---" : String(summary?.totalReceived ?? 0)}
         />
         <MetricCard
-          label={dictionary.totalIssued}
+          label={t("totalIssued", { ns: "audit" })}
           value={loading ? "---" : String(summary?.totalIssued ?? 0)}
         />
         <MetricCard
-          label={dictionary.uniqueItemsMoved}
+          label={t("uniqueItemsMoved", { ns: "audit" })}
           value={loading ? "---" : String(summary?.uniqueItems ?? 0)}
         />
         <MetricCard
-          label={dictionary.uniquePersonnelActive}
+          label={t("uniquePersonnelActive", { ns: "audit" })}
           value={loading ? "---" : String(summary?.uniquePersonnel ?? 0)}
         />
       </div>
@@ -186,42 +184,41 @@ export function AuditPanel({ dictionary, language, personnel }: AuditPanelProps)
         <div className="feedback-banner feedback-banner--error">
           {error}
           <button type="button" className="button-secondary button-inline" onClick={handleRetry} style={{ marginLeft: 8 }}>
-            {dictionary.retryLoad}
+            {t("retryLoad", { ns: "audit" })}
           </button>
         </div>
       ) : tab === "log" ? (
         loading ? (
           <div className="empty-state">
-            <h3>{dictionary.loadingAuditData}</h3>
+            <h3>{t("loadingAuditData", { ns: "audit" })}</h3>
           </div>
         ) : data && data.rows.length > 0 ? (
           <AuditLogTable
-            dictionary={dictionary}
             language={language}
             data={data}
             filters={filters}
             onPageChange={handlePageChange}
             onItemClick={handleItemClick}
             onQuickFilter={handleQuickFilter}
+            onError={setError}
           />
         ) : data && data.total === 0 && !filters.movementType && !filters.itemSearch && !filters.performedBy && !filters.textSearch ? (
           <div className="empty-state">
-            <h3>{dictionary.noAuditDataEver}</h3>
-            <p>{dictionary.noAuditDataEverHint}</p>
+            <h3>{t("noAuditDataEver", { ns: "audit" })}</h3>
+            <p>{t("noAuditDataEverHint", { ns: "audit" })}</p>
           </div>
         ) : (
           <div className="empty-state">
-            <h3>{dictionary.noAuditData}</h3>
-            <p>{dictionary.noAuditDataHint}</p>
+            <h3>{t("noAuditData", { ns: "audit" })}</h3>
+            <p>{t("noAuditDataHint", { ns: "audit" })}</p>
           </div>
         )
       ) : (
-        /* Activity Summary tab */
         <div role="tabpanel">
           <AuditSummaryView
-            dictionary={dictionary}
             language={language}
             filters={filters}
+            view={tab}
             onItemClick={handleItemClick}
           />
         </div>

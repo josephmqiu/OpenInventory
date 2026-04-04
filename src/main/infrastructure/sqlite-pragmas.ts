@@ -17,7 +17,7 @@ export function configureSqlitePragmas(db: Database.Database): void {
       "Database may be on an unsupported filesystem. Falling back to default journal mode.",
     );
   }
-  db.pragma("busy_timeout = 5000");
+  db.pragma("busy_timeout = 15000");
   db.pragma("synchronous = FULL");
   db.pragma("foreign_keys = ON");
 }

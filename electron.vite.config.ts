@@ -71,8 +71,8 @@ export default defineConfig({
     plugins: [react(), issueRouteRewritePlugin()],
     server: {
       proxy: {
-        "/api": "http://localhost:4123",
-        "/public": "http://localhost:4123",
+        "/api": "http://localhost:47123",
+        "/public": "http://localhost:47123",
       },
     },
   },

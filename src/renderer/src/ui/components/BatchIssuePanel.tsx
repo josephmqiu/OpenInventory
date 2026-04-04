@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { localizeUnit, type Dictionary } from "../../app/i18n";
+import { formatNumber } from "../../app/formatters";
+import { localizeUnit } from "../../app/i18n";
 import type { BatchIssueMaterialInput, InventoryItem, Language, PersonnelMember } from "../../domain/models";
+import { useTT } from "../hooks/useTT";
+import { sortData } from "../utils/sortData";
+import { DataTable, type ColumnDef, type SortState } from "./DataTable";
 
 interface BatchIssuePanelProps {
   busy: boolean;
-  dictionary: Dictionary;
   errorMessage: string | null;
   items: InventoryItem[];
   language: Language;
@@ -13,7 +16,7 @@ interface BatchIssuePanelProps {
   onSubmit: (input: BatchIssueMaterialInput) => Promise<boolean>;
 }
 
-function toPositiveQuantity(value: string): number {
+export function toPositiveQuantity(value: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return 0;
@@ -22,9 +25,20 @@ function toPositiveQuantity(value: string): number {
   return Math.floor(parsed);
 }
 
+export function buildIssueItems(
+  items: readonly { id: string }[],
+  quantities: Record<string, string>,
+): { itemId: string; quantity: number }[] {
+  return items
+    .map((item) => ({
+      itemId: item.id,
+      quantity: toPositiveQuantity(quantities[item.id] ?? ""),
+    }))
+    .filter((item) => item.quantity > 0);
+}
+
 export function BatchIssuePanel({
   busy,
-  dictionary,
   errorMessage,
   items,
   language,
@@ -32,16 +46,15 @@ export function BatchIssuePanel({
   onClose,
   onSubmit,
 }: BatchIssuePanelProps) {
+  const tt = useTT();
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [performedBy, setPerformedBy] = useState("");
   const [reason, setReason] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [localSuccess, setLocalSuccess] = useState<string | null>(null);
+  const [sortState, setSortState] = useState<SortState | null>(null);
   const previousItemIdsKeyRef = useRef<string | null>(null);
-  const itemIdsKey = useMemo(
-    () => JSON.stringify(items.map((item) => item.id).sort()),
-    [items],
-  );
+  const itemIdsKey = useMemo(() => JSON.stringify(items.map((item) => item.id).sort()), [items]);
 
   useEffect(() => {
     const itemIdsChanged = previousItemIdsKeyRef.current !== itemIdsKey;
@@ -57,16 +70,10 @@ export function BatchIssuePanel({
     setReason("");
     setLocalError(null);
     setLocalSuccess(null);
-  }, [itemIdsKey, items, personnel]);
+  }, [itemIdsKey]);
 
   const issueItems = useMemo(
-    () =>
-      items
-        .map((item) => ({
-          itemId: item.id,
-          quantity: toPositiveQuantity(quantities[item.id] ?? ""),
-        }))
-        .filter((item) => item.quantity > 0),
+    () => buildIssueItems(items, quantities),
     [items, quantities],
   );
 
@@ -77,17 +84,17 @@ export function BatchIssuePanel({
     setLocalSuccess(null);
 
     if (items.length === 0) {
-      setLocalError(dictionary.issueCartNoSelection);
+      setLocalError(tt("issueCartNoSelection", "Select at least one item to open the Issue Cart."));
       return;
     }
 
     if (!performedBy.trim()) {
-      setLocalError(dictionary.formValidationError);
+      setLocalError(tt("formValidationError", "Check the required fields and quantity values."));
       return;
     }
 
     if (issueItems.length === 0) {
-      setLocalError(dictionary.formValidationError);
+      setLocalError(tt("formValidationError", "Check the required fields and quantity values."));
       return;
     }
 
@@ -102,18 +109,73 @@ export function BatchIssuePanel({
     }
 
     setQuantities(Object.fromEntries(items.map((item) => [item.id, ""])));
-    setLocalSuccess(dictionary.successBatchIssueMaterial);
+    setLocalSuccess(tt("successBatchIssueMaterial", "Batch material issue recorded."));
   };
+
+  const sortedItems = useMemo(
+    () => sortData(items, sortState, (row, key) => {
+      switch (key) {
+        case "name": return row.name;
+        case "sku": return row.sku;
+        case "currentQuantity": return row.currentQuantity;
+        default: return undefined;
+      }
+    }),
+    [items, sortState],
+  );
+
+  const columns: ColumnDef<InventoryItem>[] = [
+    {
+      key: "name",
+      header: tt("itemName", "Item Name"),
+      sortable: true,
+      sortKey: "name",
+      render: (item) => (
+        <>
+          <div className="cell-title">{item.name}</div>
+          <div className="cell-subtitle">{item.location}</div>
+        </>
+      ),
+    },
+    { key: "sku", header: tt("sku", "SKU"), sortable: true, sortKey: "sku", render: (item) => item.sku },
+    {
+      key: "currentQty",
+      header: tt("currentQuantity", "Current Quantity"),
+      className: "cell-strong",
+      sortable: true,
+      sortKey: "currentQuantity",
+      render: (item) => `${formatNumber(item.currentQuantity, language)} ${localizeUnit(item.unit, language)}`,
+    },
+    {
+      key: "quantity",
+      header: tt("quantity", "Quantity"),
+      render: (item) => (
+        <input
+          className="batch-issue-input"
+          min="0"
+          step="1"
+          type="number"
+          value={quantities[item.id] ?? ""}
+          onChange={(event) =>
+            setQuantities((current) => ({
+              ...current,
+              [item.id]: event.target.value,
+            }))
+          }
+        />
+      ),
+    },
+  ];
 
   return (
     <section className="panel batch-issue-panel">
       <div className="panel__header">
         <div>
-          <h2>{dictionary.issueCartTitle}</h2>
-          <p>{dictionary.issueCartHint}</p>
+          <h2>{tt("issueCartTitle", "Issue Cart")}</h2>
+          <p>{tt("issueCartHint", "Issue multiple selected items in one transaction. Rows with zero quantity are skipped.")}</p>
         </div>
         <button className="button-secondary" onClick={onClose} type="button">
-          {dictionary.cancel}
+          {tt("cancel", "Cancel")}
         </button>
       </div>
 
@@ -122,64 +184,30 @@ export function BatchIssuePanel({
 
       {items.length === 0 ? (
         <div className="empty-state">
-          <h3>{dictionary.issueCartNoSelection}</h3>
-          <p>{dictionary.manageItemsHint}</p>
+          <h3>{tt("issueCartNoSelection", "Select at least one item to open the Issue Cart.")}</h3>
+          <p>{tt("manageItemsHint", "Create, modify, delete, and export item QR labels from this page.")}</p>
         </div>
       ) : (
         <>
-          <div className="panel-banner panel-banner--info">{dictionary.issueCartInlineHint}</div>
+          <div className="panel-banner panel-banner--info">{tt("issueCartInlineHint", "Enter issue quantities for the items you want to issue. Blank or zero quantities will be ignored.")}</div>
           <div className="batch-issue-layout">
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{dictionary.itemName}</th>
-                    <th>{dictionary.sku}</th>
-                    <th>{dictionary.currentQuantity}</th>
-                    <th>{dictionary.quantity}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <div className="cell-title">{item.name}</div>
-                        <div className="cell-subtitle">{item.location}</div>
-                      </td>
-                      <td>{item.sku}</td>
-                      <td className="cell-strong">
-                        {item.currentQuantity} {localizeUnit(item.unit, language)}
-                      </td>
-                      <td>
-                        <input
-                          className="batch-issue-input"
-                          min="0"
-                          step="1"
-                          type="number"
-                          value={quantities[item.id] ?? ""}
-                          onChange={(event) =>
-                            setQuantities((current) => ({
-                              ...current,
-                              [item.id]: event.target.value,
-                            }))
-                          }
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={columns}
+              data={sortedItems}
+              rowKey={(item) => item.id}
+              sortState={sortState}
+              onSortChange={setSortState}
+            />
 
             <div className="batch-issue-sidebar">
               <div className="form-summary">
-                <strong>{dictionary.issueCartSelectedItems}</strong>
-                <span>{dictionary.selectedItemsCount(items.length)}</span>
+                <strong>{tt("issueCartSelectedItems", "Selected Items")}</strong>
+                <span>{tt("selectedItemsCount", "{count} selected", { count: items.length })}</span>
               </div>
               <label className="batch-issue-field">
-                <span>{dictionary.performedBy}</span>
+                <span>{tt("performedBy", "Performed By")}</span>
                 <select value={performedBy} onChange={(event) => setPerformedBy(event.target.value)}>
-                  <option value="">{dictionary.selectPersonnel}</option>
+                  <option value="">{tt("selectPersonnel", "Select Personnel")}</option>
                   {personnel.map((member) => (
                     <option key={member.id} value={member.name}>
                       {member.name}
@@ -188,21 +216,21 @@ export function BatchIssuePanel({
                 </select>
               </label>
               <label className="batch-issue-field">
-                <span>{dictionary.reason}</span>
+                <span>{tt("reason", "Reason")}</span>
                 <input value={reason} onChange={(event) => setReason(event.target.value)} />
               </label>
               {personnel.length === 0 && (
                 <div className="empty-state">
-                  <h3>{dictionary.performedBy}</h3>
-                  <p>{dictionary.personnelRequiredForIssue}</p>
+                  <h3>{tt("performedBy", "Performed By")}</h3>
+                  <p>{tt("personnelRequiredForIssue", "No personnel configured. Add personnel in the desktop app before issuing material.")}</p>
                 </div>
               )}
               <div className="action-panel__footer action-panel__footer--spread">
                 <button className="button-secondary" onClick={onClose} type="button">
-                  {dictionary.cancel}
+                  {tt("cancel", "Cancel")}
                 </button>
                 <button data-testid="batch-submit" disabled={busy || personnel.length === 0} onClick={() => void handleSubmit()} type="button">
-                  {busy ? `${dictionary.save}...` : dictionary.batchIssue}
+                  {busy ? `${tt("save", "Save")}...` : tt("batchIssue", "Batch Issue")}
                 </button>
               </div>
             </div>

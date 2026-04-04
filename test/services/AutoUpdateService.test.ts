@@ -1,309 +1,189 @@
-/**
- * AutoUpdateService tests.
- *
- * Since the real autoUpdater is an Electron singleton that requires a running
- * Electron app, these tests replicate the event-to-status mapping logic from
- * makeAutoUpdateService using a mock EventEmitter that mirrors the autoUpdater API.
- */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { EventEmitter } from "events";
-import type { UpdateStatus } from "../../src/main/services/AutoUpdateService";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// ─── Mock autoUpdater as an EventEmitter with the methods we call ────────────
+const toolkitMocks = vi.hoisted(() => ({
+  is: {
+    dev: false,
+  },
+}));
 
-interface MockAutoUpdater extends EventEmitter {
-  autoDownload: boolean;
-  autoInstallOnAppQuit: boolean;
-  checkForUpdates: ReturnType<typeof vi.fn>;
-  downloadUpdate: ReturnType<typeof vi.fn>;
-  quitAndInstall: ReturnType<typeof vi.fn>;
-}
+const updaterMocks = vi.hoisted(() => ({
+  autoUpdater: (() => {
+    const listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+    return {
+      autoDownload: true,
+      autoInstallOnAppQuit: false,
+      checkForUpdates: vi.fn().mockResolvedValue(undefined),
+      downloadUpdate: vi.fn().mockResolvedValue(undefined),
+      quitAndInstall: vi.fn(),
+      on(event: string, listener: (...args: unknown[]) => void) {
+        const current = listeners.get(event) ?? [];
+        current.push(listener);
+        listeners.set(event, current);
+        return this;
+      },
+      emit(event: string, ...args: unknown[]) {
+        for (const listener of listeners.get(event) ?? []) {
+          listener(...args);
+        }
+      },
+      removeAllListeners() {
+        listeners.clear();
+        return this;
+      },
+    };
+  })(),
+}));
 
-function createMockAutoUpdater(): MockAutoUpdater {
-  const emitter = new EventEmitter() as MockAutoUpdater;
-  emitter.autoDownload = true;
-  emitter.autoInstallOnAppQuit = false;
-  emitter.checkForUpdates = vi.fn().mockResolvedValue(undefined);
-  emitter.downloadUpdate = vi.fn().mockResolvedValue(undefined);
-  emitter.quitAndInstall = vi.fn();
-  return emitter;
-}
+vi.mock("@electron-toolkit/utils", () => toolkitMocks);
+vi.mock("electron-updater", () => ({
+  default: {
+    autoUpdater: updaterMocks.autoUpdater,
+  },
+}));
 
-/**
- * Mirrors the service factory but uses our mock instead of the real autoUpdater.
- * This tests the exact same event wiring and status mapping logic.
- */
-function makeTestService(
-  mockUpdater: MockAutoUpdater,
-  onStatusChange: (status: UpdateStatus) => void,
-  isDev = false,
-) {
-  let currentStatus: UpdateStatus = { stage: "idle" };
-
-  function setStatus(status: UpdateStatus): void {
-    currentStatus = status;
-    onStatusChange(status);
-  }
-
-  mockUpdater.autoDownload = false;
-  mockUpdater.autoInstallOnAppQuit = true;
-
-  mockUpdater.on("checking-for-update", () => {
-    setStatus({ stage: "checking" });
-  });
-
-  mockUpdater.on("update-available", (info: { version: string; releaseNotes?: unknown }) => {
-    setStatus({
-      stage: "available",
-      version: info.version,
-      releaseNotes: typeof info.releaseNotes === "string" ? info.releaseNotes : "",
-    });
-  });
-
-  mockUpdater.on("update-not-available", (info: { version: string }) => {
-    setStatus({ stage: "not-available", version: info.version });
-  });
-
-  mockUpdater.on("download-progress", (progress: { percent: number; transferred: number; total: number }) => {
-    setStatus({
-      stage: "downloading",
-      percent: progress.percent,
-      transferred: progress.transferred,
-      total: progress.total,
-    });
-  });
-
-  mockUpdater.on("update-downloaded", (info: { version: string }) => {
-    setStatus({ stage: "downloaded", version: info.version });
-  });
-
-  mockUpdater.on("error", (err: Error) => {
-    setStatus({ stage: "error", message: err.message });
-  });
-
-  return {
-    checkForUpdates: () => {
-      if (isDev) {
-        setStatus({ stage: "not-available", version: "dev" });
-        return;
-      }
-      mockUpdater.checkForUpdates().catch((err: Error) => {
-        setStatus({ stage: "error", message: err.message });
-      });
-    },
-    downloadUpdate: () => {
-      if (isDev) return;
-      mockUpdater.downloadUpdate().catch((err: Error) => {
-        setStatus({ stage: "error", message: err.message });
-      });
-    },
-    installUpdate: () => {
-      mockUpdater.quitAndInstall(false, true);
-    },
-    getStatus: () => currentStatus,
-  };
-}
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
+import {
+  makeAutoUpdateService,
+  type UpdateStatus,
+} from "../../src/main/services/AutoUpdateService";
 
 describe("AutoUpdateService", () => {
-  let mockUpdater: MockAutoUpdater;
   let statuses: UpdateStatus[];
-  let onStatusChange: (status: UpdateStatus) => void;
 
   beforeEach(() => {
-    mockUpdater = createMockAutoUpdater();
     statuses = [];
-    onStatusChange = (s) => statuses.push(s);
+    toolkitMocks.is.dev = false;
+    updaterMocks.autoUpdater.removeAllListeners();
+    updaterMocks.autoUpdater.autoDownload = true;
+    updaterMocks.autoUpdater.autoInstallOnAppQuit = false;
+    updaterMocks.autoUpdater.checkForUpdates.mockReset();
+    updaterMocks.autoUpdater.checkForUpdates.mockResolvedValue(undefined);
+    updaterMocks.autoUpdater.downloadUpdate.mockReset();
+    updaterMocks.autoUpdater.downloadUpdate.mockResolvedValue(undefined);
+    updaterMocks.autoUpdater.quitAndInstall.mockReset();
   });
 
-  describe("configuration", () => {
-    it("disables autoDownload so user must choose", () => {
-      makeTestService(mockUpdater, onStatusChange);
-      expect(mockUpdater.autoDownload).toBe(false);
-    });
+  function createService() {
+    return makeAutoUpdateService((status) => statuses.push(status));
+  }
 
-    it("enables autoInstallOnAppQuit", () => {
-      makeTestService(mockUpdater, onStatusChange);
-      expect(mockUpdater.autoInstallOnAppQuit).toBe(true);
-    });
+  it("configures the updater to require explicit downloads and install on quit", () => {
+    createService();
+
+    expect(updaterMocks.autoUpdater.autoDownload).toBe(false);
+    expect(updaterMocks.autoUpdater.autoInstallOnAppQuit).toBe(true);
   });
 
-  describe("initial state", () => {
-    it("starts with idle status", () => {
-      const service = makeTestService(mockUpdater, onStatusChange);
-      expect(service.getStatus()).toEqual({ stage: "idle" });
+  it("maps updater lifecycle events onto UpdateStatus values", () => {
+    const service = createService();
+
+    updaterMocks.autoUpdater.emit("checking-for-update");
+    expect(service.getStatus()).toEqual({ stage: "checking" });
+
+    updaterMocks.autoUpdater.emit("update-available", {
+      version: "1.2.3",
+      releaseNotes: "Bug fixes",
     });
+    expect(service.getStatus()).toEqual({
+      stage: "available",
+      version: "1.2.3",
+      releaseNotes: "Bug fixes",
+    });
+
+    updaterMocks.autoUpdater.emit("download-progress", {
+      percent: 42,
+      transferred: 4200,
+      total: 10000,
+    });
+    expect(service.getStatus()).toEqual({
+      stage: "downloading",
+      percent: 42,
+      transferred: 4200,
+      total: 10000,
+    });
+
+    updaterMocks.autoUpdater.emit("update-downloaded", { version: "1.2.3" });
+    expect(service.getStatus()).toEqual({ stage: "downloaded", version: "1.2.3" });
+
+    updaterMocks.autoUpdater.emit("error", new Error("Network timeout"));
+    expect(service.getStatus()).toEqual({ stage: "error", message: "Network timeout" });
+
+    expect(statuses).toEqual([
+      { stage: "checking" },
+      { stage: "available", version: "1.2.3", releaseNotes: "Bug fixes" },
+      { stage: "downloading", percent: 42, transferred: 4200, total: 10000 },
+      { stage: "downloaded", version: "1.2.3" },
+      { stage: "error", message: "Network timeout" },
+    ]);
   });
 
-  describe("event-to-status mapping", () => {
-    it("maps checking-for-update event to checking status", () => {
-      makeTestService(mockUpdater, onStatusChange);
-      mockUpdater.emit("checking-for-update");
-      expect(statuses).toEqual([{ stage: "checking" }]);
+  it("coerces non-string release notes to an empty string", () => {
+    const service = createService();
+
+    updaterMocks.autoUpdater.emit("update-available", {
+      version: "2.0.0",
+      releaseNotes: [{ note: "array payload" }],
     });
 
-    it("maps update-available event to available status with version and releaseNotes", () => {
-      makeTestService(mockUpdater, onStatusChange);
-      mockUpdater.emit("update-available", {
-        version: "1.2.3",
-        releaseNotes: "Bug fixes and improvements",
-      });
-      expect(statuses).toEqual([
-        {
-          stage: "available",
-          version: "1.2.3",
-          releaseNotes: "Bug fixes and improvements",
-        },
-      ]);
-    });
-
-    it("handles non-string releaseNotes gracefully", () => {
-      makeTestService(mockUpdater, onStatusChange);
-      mockUpdater.emit("update-available", {
-        version: "2.0.0",
-        releaseNotes: [{ version: "2.0.0", note: "Major release" }],
-      });
-      expect(statuses[0]).toEqual({
-        stage: "available",
-        version: "2.0.0",
-        releaseNotes: "",
-      });
-    });
-
-    it("maps update-not-available event to not-available status", () => {
-      makeTestService(mockUpdater, onStatusChange);
-      mockUpdater.emit("update-not-available", { version: "0.0.1" });
-      expect(statuses).toEqual([{ stage: "not-available", version: "0.0.1" }]);
-    });
-
-    it("maps download-progress event to downloading status", () => {
-      makeTestService(mockUpdater, onStatusChange);
-      mockUpdater.emit("download-progress", {
-        percent: 45.5,
-        transferred: 4550000,
-        total: 10000000,
-      });
-      expect(statuses).toEqual([
-        {
-          stage: "downloading",
-          percent: 45.5,
-          transferred: 4550000,
-          total: 10000000,
-        },
-      ]);
-    });
-
-    it("maps update-downloaded event to downloaded status", () => {
-      makeTestService(mockUpdater, onStatusChange);
-      mockUpdater.emit("update-downloaded", { version: "1.0.0" });
-      expect(statuses).toEqual([{ stage: "downloaded", version: "1.0.0" }]);
-    });
-
-    it("maps error event to error status with message", () => {
-      makeTestService(mockUpdater, onStatusChange);
-      mockUpdater.emit("error", new Error("Network timeout"));
-      expect(statuses).toEqual([{ stage: "error", message: "Network timeout" }]);
+    expect(service.getStatus()).toEqual({
+      stage: "available",
+      version: "2.0.0",
+      releaseNotes: "",
     });
   });
 
-  describe("status tracking", () => {
-    it("getStatus returns the latest status after multiple events", () => {
-      const service = makeTestService(mockUpdater, onStatusChange);
+  it("returns dev not-available status instead of calling checkForUpdates in dev mode", () => {
+    toolkitMocks.is.dev = true;
+    const service = createService();
 
-      mockUpdater.emit("checking-for-update");
-      expect(service.getStatus()).toEqual({ stage: "checking" });
+    service.checkForUpdates();
 
-      mockUpdater.emit("update-available", { version: "2.0.0", releaseNotes: "" });
-      expect(service.getStatus()).toEqual({
-        stage: "available",
-        version: "2.0.0",
-        releaseNotes: "",
-      });
-    });
+    expect(updaterMocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+    expect(service.getStatus()).toEqual({ stage: "not-available", version: "dev" });
+  });
 
-    it("records a full update lifecycle in order", () => {
-      makeTestService(mockUpdater, onStatusChange);
+  it("calls checkForUpdates in production and reports rejections as errors", async () => {
+    updaterMocks.autoUpdater.checkForUpdates.mockRejectedValueOnce(new Error("DNS failed"));
+    const service = createService();
 
-      mockUpdater.emit("checking-for-update");
-      mockUpdater.emit("update-available", { version: "1.1.0", releaseNotes: "Patch" });
-      mockUpdater.emit("download-progress", { percent: 50, transferred: 5000, total: 10000 });
-      mockUpdater.emit("download-progress", { percent: 100, transferred: 10000, total: 10000 });
-      mockUpdater.emit("update-downloaded", { version: "1.1.0" });
+    service.checkForUpdates();
 
-      const stages = statuses.map((s) => s.stage);
-      expect(stages).toEqual(["checking", "available", "downloading", "downloading", "downloaded"]);
+    expect(updaterMocks.autoUpdater.checkForUpdates).toHaveBeenCalledOnce();
+    await vi.waitFor(() => {
+      expect(service.getStatus()).toEqual({ stage: "error", message: "DNS failed" });
     });
   });
 
-  describe("checkForUpdates", () => {
-    it("calls autoUpdater.checkForUpdates in production mode", () => {
-      const service = makeTestService(mockUpdater, onStatusChange, false);
-      service.checkForUpdates();
-      expect(mockUpdater.checkForUpdates).toHaveBeenCalledOnce();
-    });
+  it("does not download unless an update is available", () => {
+    createService().downloadUpdate();
 
-    it("returns not-available with version dev in dev mode", () => {
-      const service = makeTestService(mockUpdater, onStatusChange, true);
-      service.checkForUpdates();
-      expect(mockUpdater.checkForUpdates).not.toHaveBeenCalled();
-      expect(statuses).toEqual([{ stage: "not-available", version: "dev" }]);
-    });
+    expect(updaterMocks.autoUpdater.downloadUpdate).not.toHaveBeenCalled();
+  });
 
-    it("sets error status when checkForUpdates promise rejects", async () => {
-      mockUpdater.checkForUpdates.mockRejectedValueOnce(new Error("DNS failed"));
-      const service = makeTestService(mockUpdater, onStatusChange, false);
-      service.checkForUpdates();
+  it("downloads when the current stage is available and reports rejections as errors", async () => {
+    updaterMocks.autoUpdater.downloadUpdate.mockRejectedValueOnce(new Error("Disk full"));
+    const service = createService();
+    updaterMocks.autoUpdater.emit("update-available", { version: "3.0.0", releaseNotes: "" });
 
-      // Wait for the rejection handler
-      await vi.waitFor(() => {
-        expect(statuses).toContainEqual({ stage: "error", message: "DNS failed" });
-      });
+    service.downloadUpdate();
+
+    expect(updaterMocks.autoUpdater.downloadUpdate).toHaveBeenCalledOnce();
+    await vi.waitFor(() => {
+      expect(service.getStatus()).toEqual({ stage: "error", message: "Disk full" });
     });
   });
 
-  describe("downloadUpdate", () => {
-    it("calls autoUpdater.downloadUpdate in production mode", () => {
-      const service = makeTestService(mockUpdater, onStatusChange, false);
-      service.downloadUpdate();
-      expect(mockUpdater.downloadUpdate).toHaveBeenCalledOnce();
-    });
+  it("does not install unless the update has finished downloading", () => {
+    createService().installUpdate();
 
-    it("does nothing in dev mode", () => {
-      const service = makeTestService(mockUpdater, onStatusChange, true);
-      service.downloadUpdate();
-      expect(mockUpdater.downloadUpdate).not.toHaveBeenCalled();
-      expect(statuses).toHaveLength(0);
-    });
-
-    it("sets error status when downloadUpdate promise rejects", async () => {
-      mockUpdater.downloadUpdate.mockRejectedValueOnce(new Error("Disk full"));
-      const service = makeTestService(mockUpdater, onStatusChange, false);
-      service.downloadUpdate();
-
-      await vi.waitFor(() => {
-        expect(statuses).toContainEqual({ stage: "error", message: "Disk full" });
-      });
-    });
+    expect(updaterMocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
   });
 
-  describe("installUpdate", () => {
-    it("calls quitAndInstall with correct arguments", () => {
-      const service = makeTestService(mockUpdater, onStatusChange);
-      service.installUpdate();
-      expect(mockUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
-    });
-  });
+  it("installs only from the downloaded state", () => {
+    const service = createService();
+    updaterMocks.autoUpdater.emit("update-downloaded", { version: "1.0.0" });
 
-  describe("callback invocation", () => {
-    it("calls onStatusChange for every status transition", () => {
-      makeTestService(mockUpdater, onStatusChange);
+    service.installUpdate();
 
-      mockUpdater.emit("checking-for-update");
-      mockUpdater.emit("update-not-available", { version: "0.0.1" });
-
-      expect(statuses).toHaveLength(2);
-      expect(onStatusChange).toBeDefined();
-    });
+    expect(updaterMocks.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
   });
 });

@@ -4,19 +4,17 @@ import path from "path";
 import { Schema } from "@effect/schema";
 import { RateLimiter, getClientIp } from "./auth";
 import type { DatabaseServiceApi } from "../../services/DatabaseService";
-import type { AuditMovementFilters } from "../../../shared/types";
+import type { AuditMovementFilters, PublicIssueContext } from "../../../shared/types";
 import {
   backendMessages,
   normalizeBackendLanguage,
-  ValidationError,
+  notFoundError,
+  serializeAppError,
+  validationError,
 } from "../../domain/errors";
 import {
-  CreateInventoryItemBody,
-  UpdateInventoryItemBody,
   StockMutationBody,
   BatchIssueMaterialBody,
-  AddPersonnelBody,
-  UpdateLanguageBody,
   PublicIssueBody,
 } from "../../../shared/schemas";
 
@@ -29,22 +27,27 @@ interface LanRouterDeps {
 export function createLanRouter(deps: LanRouterDeps): http.RequestListener {
   const { dbService, getAccessKey, rendererDir } = deps;
   const rateLimiter = new RateLimiter();
+  const pendingPublicIssues = new Map<string, Promise<PublicIssueContext>>();
+  const recentPublicIssues = new Map<string, { response: PublicIssueContext; completedAt: number }>();
+  const PUBLIC_ISSUE_REPLAY_WINDOW_MS = 1500;
 
   return async (req, res) => {
-    const messages = await resolveMessages(dbService);
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
     const pathname = url.pathname;
     const method = req.method ?? "GET";
 
-    // ─── Public routes (no auth) ─────────────────────────────────────
-    if (pathname.startsWith("/public/")) {
-      await handlePublicRoute(pathname, method, req, res, dbService, messages);
+    // ─── Static files (no auth, no DB read needed) ───────────────────
+    if (!pathname.startsWith("/api/") && !pathname.startsWith("/public/")) {
+      serveStaticFile(pathname, res, rendererDir, backendMessages());
       return;
     }
 
-    // ─── Static files (no auth for frontend assets) ──────────────────
-    if (!pathname.startsWith("/api/")) {
-      serveStaticFile(pathname, res, rendererDir, messages);
+    // ─── Resolve DB messages for API/public routes ───────────────────
+    const messages = await resolveMessages(dbService);
+
+    // ─── Public routes (no auth) ─────────────────────────────────────
+    if (pathname.startsWith("/public/")) {
+      await handlePublicRoute(pathname, method, req, res, dbService, messages, pendingPublicIssues, recentPublicIssues, PUBLIC_ISSUE_REPLAY_WINDOW_MS);
       return;
     }
 
@@ -57,7 +60,8 @@ export function createLanRouter(deps: LanRouterDeps): http.RequestListener {
     if (authError) {
       const status = authError === "too_many_failed_attempts" ? 429 : 401;
       sendJson(res, status, {
-        message:
+        _tag: "ValidationError",
+        messageId:
           status === 429 ? messages.tooManyFailedAccessKeyAttempts : messages.invalidAccessKey,
       });
       return;
@@ -82,44 +86,6 @@ async function handleApiRoute(
     if (pathname === "/api/snapshot" && method === "GET") {
       const result = await runEffect(db.loadSnapshot());
       sendJson(res, 200, result);
-      return;
-    }
-
-    // POST /api/items
-    if (pathname === "/api/items" && method === "POST") {
-      const raw = await readBody(req, messages);
-      const body = decodeBody(CreateInventoryItemBody, raw);
-      const result = await runEffect(db.createInventoryItem(body));
-      sendJson(res, 201, result.snapshot);
-      return;
-    }
-
-    // PUT /api/items/:id
-    const itemPutMatch = pathname.match(/^\/api\/items\/([^/]+)$/);
-    if (itemPutMatch && method === "PUT") {
-      const raw = await readBody(req, messages);
-      const decoded = decodeBody(UpdateInventoryItemBody, raw);
-      const body = { ...decoded, itemId: itemPutMatch[1] };
-      const result = await runEffect(db.updateInventoryItem(body));
-      sendJson(res, 200, result.snapshot);
-      return;
-    }
-
-    // DELETE /api/items/:id
-    if (itemPutMatch && method === "DELETE") {
-      const result = await runEffect(db.removeInventoryItem(itemPutMatch[1]));
-      sendJson(res, 200, result);
-      return;
-    }
-
-    // POST /api/items/:id/receive
-    const receiveMatch = pathname.match(/^\/api\/items\/([^/]+)\/receive$/);
-    if (receiveMatch && method === "POST") {
-      const raw = await readBody(req, messages);
-      const decoded = decodeBody(StockMutationBody, raw);
-      const body = { ...decoded, itemId: receiveMatch[1] };
-      const result = await runEffect(db.receiveStock(body));
-      sendJson(res, 200, result.snapshot);
       return;
     }
 
@@ -151,38 +117,12 @@ async function handleApiRoute(
       return;
     }
 
-    // POST /api/personnel
-    if (pathname === "/api/personnel" && method === "POST") {
-      const raw = await readBody(req, messages);
-      const body = decodeBody(AddPersonnelBody, raw);
-      const result = await runEffect(db.addPersonnel(body));
-      sendJson(res, 201, result);
-      return;
-    }
-
-    // DELETE /api/personnel/:id
-    const personnelMatch = pathname.match(/^\/api\/personnel\/([^/]+)$/);
-    if (personnelMatch && method === "DELETE") {
-      const result = await runEffect(db.removePersonnel(personnelMatch[1]));
-      sendJson(res, 200, result);
-      return;
-    }
-
-    // Backup endpoints are desktop-only (IPC) — not exposed over LAN
-    // to prevent authenticated LAN devices from writing to arbitrary
-    // filesystem paths on the host.
-
-    // PUT /api/language
-    if (pathname === "/api/language" && method === "PUT") {
-      const raw = await readBody(req, messages);
-      const body = decodeBody(UpdateLanguageBody, raw);
-      await runEffect(db.updateLanguage(body.language));
-      sendJson(res, 200, { ok: true });
-      return;
-    }
+    // Personnel, item CRUD, receive, language, and backup endpoints are
+    // desktop-only (IPC) — not exposed over LAN.
 
     // GET /api/audit/movements
     if (pathname === "/api/audit/movements" && method === "GET") {
+      const sortDir = url.searchParams.get("sortDir");
       const filters: AuditMovementFilters = {
         dateFrom: url.searchParams.get("dateFrom") || undefined,
         dateTo: url.searchParams.get("dateTo") || undefined,
@@ -191,6 +131,8 @@ async function handleApiRoute(
         itemSearch: url.searchParams.get("itemSearch") || undefined,
         performedBy: url.searchParams.get("performedBy") || undefined,
         textSearch: url.searchParams.get("textSearch") || undefined,
+        sortBy: url.searchParams.get("sortBy") || undefined,
+        sortDir: sortDir === "asc" || sortDir === "desc" ? sortDir : undefined,
         page: parseInt(url.searchParams.get("page") ?? "1", 10),
         pageSize: Math.min(parseInt(url.searchParams.get("pageSize") ?? "50", 10), 10000),
       };
@@ -221,7 +163,7 @@ async function handleApiRoute(
       return;
     }
 
-    sendJson(res, 404, { message: messages.notFound });
+    sendJson(res, 404, serializeAppError(notFoundError(messages.notFound)));
   } catch (error: unknown) {
     handleApiError(res, error, messages);
   }
@@ -234,6 +176,9 @@ async function handlePublicRoute(
   res: http.ServerResponse,
   db: DatabaseServiceApi,
   messages: ReturnType<typeof backendMessages>,
+  pendingPublicIssues: Map<string, Promise<PublicIssueContext>>,
+  recentPublicIssues: Map<string, { response: PublicIssueContext; completedAt: number }>,
+  PUBLIC_ISSUE_REPLAY_WINDOW_MS: number,
 ): Promise<void> {
   try {
     // GET /public/items/:id/context
@@ -243,7 +188,7 @@ async function handlePublicRoute(
       const snapshot = await runEffect(db.loadSnapshot());
       const item = snapshot.items.find((i) => i.id === itemId);
       if (!item) {
-        sendJson(res, 404, { message: messages.itemNotFound });
+        sendJson(res, 404, serializeAppError(notFoundError(messages.itemNotFound)));
         return;
       }
       sendJson(res, 200, {
@@ -260,19 +205,46 @@ async function handlePublicRoute(
       const raw = await readBody(req, messages);
       const body = decodeBody(PublicIssueBody, raw);
       const input = { ...body, itemId: issueMatch[1] };
-      const result = await runEffect(db.issueMaterial(input));
-      // Return PublicIssueContext shape (not the full snapshot) so the
-      // frontend can update the QuickIssuePage with the refreshed item.
-      const item = result.snapshot.items.find((i) => i.id === issueMatch[1]);
-      sendJson(res, 200, {
-        item: item ?? null,
-        personnel: result.snapshot.personnel,
-        language: result.snapshot.language,
-      });
+      const idempotencyKey = (req.headers["x-idempotency-key"] as string | undefined)?.trim();
+      const dedupeKey = idempotencyKey || `public-issue:${issueMatch[1]}:${body.quantity}:${body.performedBy.trim()}`;
+      const recentRequest = recentPublicIssues.get(dedupeKey);
+
+      if (recentRequest && Date.now() - recentRequest.completedAt <= PUBLIC_ISSUE_REPLAY_WINDOW_MS) {
+        sendJson(res, 200, recentRequest.response);
+        return;
+      }
+
+      const existingRequest = pendingPublicIssues.get(dedupeKey);
+
+      const request = existingRequest ?? (async () => {
+        const result = await runEffect(db.issueMaterial(input));
+        // Return PublicIssueContext shape (not the full snapshot) so the
+        // frontend can update the QuickIssuePage with the refreshed item.
+        const item = result.snapshot.items.find((i) => i.id === issueMatch[1]);
+        return {
+          item: item ?? null,
+          personnel: result.snapshot.personnel,
+          language: result.snapshot.language,
+        };
+      })();
+
+      if (!existingRequest) {
+        pendingPublicIssues.set(dedupeKey, request);
+      }
+
+      try {
+        const response = await request;
+        recentPublicIssues.set(dedupeKey, { response, completedAt: Date.now() });
+        sendJson(res, 200, response);
+      } finally {
+        if (!existingRequest) {
+          pendingPublicIssues.delete(dedupeKey);
+        }
+      }
       return;
     }
 
-    sendJson(res, 404, { message: messages.notFound });
+    sendJson(res, 404, serializeAppError(notFoundError(messages.notFound)));
   } catch (error: unknown) {
     handleApiError(res, error, messages);
   }
@@ -304,14 +276,22 @@ function handleApiError(
   if (error && typeof error === "object" && "_tag" in error) {
     const appError = error as AppError;
     const status = errorToHttpStatus(appError);
-    sendJson(res, status, { _tag: appError._tag, message: appError.message });
+    sendJson(res, status, serializeAppError(appError));
   } else {
-    sendJson(res, 500, { _tag: "ServerError", message: messages.unexpectedError });
+    sendJson(res, 500, {
+      _tag: "ServerError",
+      messageId: messages.unexpectedError,
+      debugMessage: String(error),
+    });
   }
 }
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { "Content-Type": "application/json" });
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -328,7 +308,7 @@ function readBody(
       bytes += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
       if (bytes > MAX_BODY_BYTES) {
         req.destroy();
-        reject(new ValidationError({ message: messages.requestBodyTooLarge }));
+        reject(validationError(messages.requestBodyTooLarge));
         return;
       }
       data += chunk;
@@ -337,7 +317,7 @@ function readBody(
       try {
         resolve(data ? JSON.parse(data) : {});
       } catch {
-        reject(new ValidationError({ message: messages.invalidJsonBody }));
+        reject(validationError(messages.invalidJsonBody));
       }
     });
     req.on("error", reject);
@@ -348,9 +328,7 @@ function decodeBody<A, I>(schema: Schema.Schema<A, I>, raw: unknown): A {
   try {
     return Schema.decodeUnknownSync(schema)(raw);
   } catch (e) {
-    throw new ValidationError({
-      message: e instanceof Error ? e.message : "Invalid request body.",
-    });
+    throw validationError("invalidRequestBody", undefined, e instanceof Error ? e.message : "Invalid request body.");
   }
 }
 
@@ -418,6 +396,12 @@ function serveStaticFile(
         `<html lang="en" data-platform="${platform}">`);
   }
 
-  res.writeHead(200, { "Content-Type": contentType });
-  res.end(content);
+  const contentBuffer = typeof content === "string" ? Buffer.from(content) : content;
+  res.writeHead(200, {
+    "Content-Type": contentType,
+    "Content-Length": Buffer.byteLength(contentBuffer).toString(),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+  });
+  res.end(contentBuffer);
 }

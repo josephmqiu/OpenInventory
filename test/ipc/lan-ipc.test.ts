@@ -41,7 +41,7 @@ beforeEach(() => {
 afterEach(async () => {
   await run(lanService.shutdown());
   dbService.close();
-  t.cleanup();
+  await t.cleanup();
 });
 
 describe("LAN IPC handler delegation", () => {

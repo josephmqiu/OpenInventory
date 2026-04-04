@@ -5,7 +5,8 @@ interface Migration {
   apply: (db: Database.Database) => void;
 }
 
-/** Check whether a column exists on a table. */
+/** Check whether a column exists on a table.
+ *  SAFETY: `table` is interpolated into SQL — only pass trusted string literals. */
 function hasColumn(
   db: Database.Database,
   table: string,
@@ -19,7 +20,8 @@ function hasColumn(
   return row.c > 0;
 }
 
-/** Drop a column if it exists (idempotent). Requires SQLite 3.35+. */
+/** Drop a column if it exists (idempotent). Requires SQLite 3.35+.
+ *  SAFETY: `table` and `column` are interpolated into SQL — only pass trusted string literals. */
 function dropColumnIfExists(
   db: Database.Database,
   table: string,
@@ -82,6 +84,9 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  // TODO: suppliers and locations tables are intentionally kept — foreign key
+  // references still exist in inventory_items. Removal deferred until those
+  // FKs are cleaned up or the tables are repurposed.
   {
     version: 4,
     apply: (db) => {
@@ -132,6 +137,14 @@ const MIGRATIONS: Migration[] = [
       deleteSetting.run("backup.retention");
       deleteSetting.run("backup.target_type");
       deleteSetting.run("backup.next_scheduled");
+    },
+  },
+  {
+    version: 5,
+    apply: (db) => {
+      // Drop unused channel_summary column from low_stock_alerts.
+      // SQLite DROP COLUMN requires 3.35+ — better-sqlite3 bundles 3.45+.
+      dropColumnIfExists(db, "low_stock_alerts", "channel_summary");
     },
   },
 ];

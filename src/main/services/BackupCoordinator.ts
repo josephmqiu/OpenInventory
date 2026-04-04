@@ -8,6 +8,30 @@ import { LanServerService } from "./LanServerService";
 import type { AppSnapshot, BackupValidationResult, RestoreComparisonData } from "../../shared/types";
 
 /**
+ * Rename with retry — Windows may hold file locks briefly after db.close().
+ * Retries up to `retries` times with `delayMs` between attempts.
+ */
+async function renameWithRetry(
+  src: string,
+  dest: string,
+  retries = 5,
+  delayMs = 100,
+): Promise<void> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      fs.renameSync(src, dest);
+      return;
+    } catch (err: any) {
+      if (err.code === "EBUSY" && i < retries - 1) {
+        await new Promise((r) => setTimeout(r, delayMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+/**
  * BackupCoordinator is a plain class (NOT an Effect service) that orchestrates
  * backup, restore, and scheduling. Instantiated in index.ts after the Effect
  * runtime is created, matching the autoUpdateService pattern.
@@ -88,10 +112,11 @@ export class BackupCoordinator {
       Effect.gen(function* () {
         const db = yield* DatabaseService;
         const snapshot = yield* db.loadSnapshot();
+        const movementCount = yield* db.countMovements();
         return {
           items: snapshot.items.length,
           personnel: snapshot.personnel.length,
-          movements: 0, // Movement count requires a query not exposed via snapshot
+          movements: movementCount,
           lastActivity: snapshot.backupPlan.lastSuccessfulBackup || "",
         };
       }),
@@ -141,19 +166,28 @@ export class BackupCoordinator {
     }
 
     // Step 1: Preflight while the runtime is still alive.
-    const currentTargetPath = await this.runtime.runPromise(
+    // Read ALL critical settings so they survive the restore.
+    const preserveSettings = await this.runtime.runPromise(
       Effect.gen(function* () {
         const db = yield* DatabaseService;
         const snapshot = yield* db.loadSnapshot();
-        return snapshot.backupPlan.targetPath;
+        const lanSettings = yield* db.loadLanAccessSettings();
+        return {
+          "backup.target_path": snapshot.backupPlan.targetPath,
+          "backup.interval_value": String(snapshot.backupPlan.schedule.intervalValue),
+          "backup.interval_unit": snapshot.backupPlan.schedule.intervalUnit,
+          "backup.on_startup": snapshot.backupPlan.schedule.onStartup ? "true" : "false",
+          "lan.enabled": lanSettings.enabled ? "true" : "false",
+          "lan.port": String(lanSettings.port),
+          "lan.access_key": lanSettings.accessKey,
+          "app.language": snapshot.language,
+        };
       }),
     );
 
     const restorePendingPath = path.join(dataDir, ".restore-pending.json");
     const restorePending = {
-      preserveSettings: {
-        "backup.target_path": currentTargetPath,
-      },
+      preserveSettings,
       backupDir,
       restoredAt: new Date().toISOString(),
     };
@@ -188,26 +222,28 @@ export class BackupCoordinator {
       fs.mkdirSync(safetyCopyDir, { recursive: true });
 
       if (fs.existsSync(this.dbPath)) {
-        fs.renameSync(this.dbPath, safetyDbPath);
+        await renameWithRetry(this.dbPath, safetyDbPath);
       }
       if (fs.existsSync(walPath)) {
-        fs.renameSync(walPath, safetyWalPath);
+        await renameWithRetry(walPath, safetyWalPath);
       }
       if (fs.existsSync(shmPath)) {
-        fs.renameSync(shmPath, safetyShmPath);
+        await renameWithRetry(shmPath, safetyShmPath);
       }
 
       fs.copyFileSync(backupDbPath, this.dbPath);
     } catch (copyError) {
       // Roll back the original data, clean pending state, and restart cleanly.
-      try {
-        if (fs.existsSync(this.dbPath)) {
-          fs.unlinkSync(this.dbPath);
-        }
-      } catch {
-        // Ignore cleanup failures and restore what we can.
-      }
+      // Only delete + restore if the original was already moved to the safety dir.
+      // If mkdirSync failed before any rename, the original DB is still at this.dbPath.
       if (fs.existsSync(safetyDbPath)) {
+        try {
+          if (fs.existsSync(this.dbPath)) {
+            fs.unlinkSync(this.dbPath);
+          }
+        } catch {
+          // Ignore cleanup failures and restore what we can.
+        }
         fs.renameSync(safetyDbPath, this.dbPath);
       }
       if (fs.existsSync(safetyWalPath)) {

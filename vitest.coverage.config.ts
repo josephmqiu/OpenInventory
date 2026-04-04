@@ -20,10 +20,10 @@ export default defineConfig({
         "**/*.test.tsx",
       ],
       thresholds: {
-        statements: 40,
-        branches: 35,
-        functions: 35,
-        lines: 40,
+        statements: 50,
+        branches: 45,
+        functions: 45,
+        lines: 50,
       },
     },
     projects: [

@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import "./app/i18n";
 import { QuickIssueApp } from "./issue/QuickIssueApp";
 import "./issue/issue.css";
 

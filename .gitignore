@@ -3,14 +3,17 @@ dist/
 out/
 *.dmg
 .vite/
-.claude/
+.claude/*
+!.claude/rules/
 # Test artifacts
 coverage/
 playwright-report/
 test-results/
 e2e/.seed-cache/
 *.log
+*.tsbuildinfo
 .DS_Store
+.playwright-mcp/
 Thumbs.db
 
 # Runtime app data

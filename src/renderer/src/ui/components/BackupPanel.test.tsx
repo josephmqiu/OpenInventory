@@ -1,10 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dictionaries } from "../../app/i18n";
+import "../../app/i18n";
 import type { BackupPlan } from "../../domain/models";
 import { BackupPanel } from "./BackupPanel";
-
-const dictionary = dictionaries.en;
 
 function makePlan(overrides: Partial<BackupPlan> = {}): BackupPlan {
   return {
@@ -30,7 +28,6 @@ describe("BackupPanel", () => {
       <BackupPanel
         busy={false}
         backupPlan={makePlan()}
-        dictionary={dictionary}
         language="en"
         onBackupNow={vi.fn().mockResolvedValue(undefined)}
         onSave={vi.fn().mockResolvedValue(undefined)}
@@ -45,7 +42,6 @@ describe("BackupPanel", () => {
       <BackupPanel
         busy={false}
         backupPlan={makePlan({ targetPath: "/tmp/backups", status: "healthy" })}
-        dictionary={dictionary}
         language="en"
         onBackupNow={vi.fn().mockResolvedValue(undefined)}
         onSave={vi.fn().mockResolvedValue(undefined)}
@@ -60,14 +56,13 @@ describe("BackupPanel", () => {
       <BackupPanel
         busy={false}
         backupPlan={makePlan()}
-        dictionary={dictionary}
         language="en"
         onBackupNow={vi.fn().mockResolvedValue(undefined)}
         onSave={vi.fn().mockResolvedValue(undefined)}
       />,
     );
 
-    expect(screen.getByText(dictionary.backupNotConfigured)).toBeTruthy();
+    expect(screen.getByText("Backup destination not configured yet.")).toBeTruthy();
   });
 
   it("shows status strip when configured with last backup", () => {
@@ -81,7 +76,6 @@ describe("BackupPanel", () => {
           lastFileSize: 13000000,
           lastVerified: true,
         })}
-        dictionary={dictionary}
         language="en"
         onBackupNow={vi.fn().mockResolvedValue(undefined)}
         onSave={vi.fn().mockResolvedValue(undefined)}
@@ -101,7 +95,6 @@ describe("BackupPanel", () => {
           status: "error",
           lastError: "Disk full",
         })}
-        dictionary={dictionary}
         language="en"
         onBackupNow={vi.fn().mockResolvedValue(undefined)}
         onSave={vi.fn().mockResolvedValue(undefined)}
@@ -120,14 +113,13 @@ describe("BackupPanel", () => {
           status: "healthy",
           cloudProvider: "Dropbox",
         })}
-        dictionary={dictionary}
         language="en"
         onBackupNow={vi.fn().mockResolvedValue(undefined)}
         onSave={vi.fn().mockResolvedValue(undefined)}
       />,
     );
 
-    expect(screen.getByText(/synced by Dropbox/)).toBeTruthy();
+    expect(screen.getByText("This folder is synced by Dropbox")).toBeTruthy();
   });
 
   it("shows restore button when onRestore is provided", () => {
@@ -136,7 +128,6 @@ describe("BackupPanel", () => {
       <BackupPanel
         busy={false}
         backupPlan={makePlan()}
-        dictionary={dictionary}
         language="en"
         onBackupNow={vi.fn().mockResolvedValue(undefined)}
         onSave={vi.fn().mockResolvedValue(undefined)}
@@ -155,7 +146,6 @@ describe("BackupPanel", () => {
       <BackupPanel
         busy={false}
         backupPlan={makePlan({ targetPath: "/tmp/backups", status: "backing_up" })}
-        dictionary={dictionary}
         language="en"
         onBackupNow={vi.fn().mockResolvedValue(undefined)}
         onSave={vi.fn().mockResolvedValue(undefined)}
@@ -165,6 +155,6 @@ describe("BackupPanel", () => {
 
     expect((screen.getByTestId("backup-now") as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId("backup-restore") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(dictionary.backupNowInProgress)).toBeTruthy();
+    expect(screen.getByText("Backing Up...")).toBeTruthy();
   });
 });

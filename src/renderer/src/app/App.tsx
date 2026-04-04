@@ -1,77 +1,75 @@
 import { useEffect, useState } from "react";
-import { buildDashboardMetrics } from "../domain/inventory";
+import { useTranslation } from "react-i18next";
 import type { ActionKind } from "../domain/models";
-import { dictionaries } from "./i18n";
-import { AlertsPanel } from "../ui/components/AlertsPanel";
 import { BackupPanel } from "../ui/components/BackupPanel";
-import { InventoryTable } from "../ui/components/InventoryTable";
-import { ItemManagementTable } from "../ui/components/ItemManagementTable";
-import { MetricCard } from "../ui/components/MetricCard";
+import { DashboardView } from "../ui/components/DashboardView";
+import { UnifiedInventoryTable } from "../ui/components/UnifiedInventoryTable";
 import { PersonnelPanel } from "../ui/components/PersonnelPanel";
 import { ActionPanel } from "../ui/components/ActionPanel";
 import { BatchIssuePanel } from "../ui/components/BatchIssuePanel";
 import { LanAccessPanel } from "../ui/components/LanAccessPanel";
 import { AuditPanel } from "../ui/components/AuditPanel";
 import { RestoreDialog } from "../ui/components/RestoreDialog";
-import type { Dictionary } from "./i18n";
 import { useInventoryState } from "./useInventoryState";
 import { useAutoUpdate } from "./useAutoUpdate";
+import { useTheme } from "./useTheme";
 import { UpdateBanner } from "../ui/components/UpdateBanner";
 import {
-  Bell,
   ClipboardList,
   LayoutDashboard,
   LogOut,
   Moon,
-  Package,
   PanelLeft,
   Settings,
   Sun,
   SunMoon,
-  Users,
   Warehouse,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-type Section = "dashboard" | "inventory" | "itemManagement" | "alerts" | "audit" | "personnel" | "settings";
+type Section = "dashboard" | "inventory" | "activity" | "settings";
+type SettingsTab = "personnel" | "backup" | "lan";
 
-const navOrder: Section[] = ["dashboard", "inventory", "itemManagement", "alerts", "audit", "personnel", "settings"];
+const navOrder: Section[] = ["dashboard", "inventory", "activity", "settings"];
 
 const sectionIcons: Record<Section, LucideIcon> = {
   dashboard: LayoutDashboard,
   inventory: Warehouse,
-  itemManagement: Package,
-  alerts: Bell,
-  audit: ClipboardList,
-  personnel: Users,
+  activity: ClipboardList,
   settings: Settings,
 };
 
-function sectionSubtitle(section: Section, dictionary: Dictionary): string {
+function sectionTitle(section: Section, t: ReturnType<typeof useTranslation>["t"]): string {
+  if (section === "activity") return t("activity");
+  return t(section);
+}
+
+function sectionSubtitle(section: Section, t: ReturnType<typeof useTranslation>["t"]): string {
   switch (section) {
+    case "dashboard":
+      return t("dashboardHint");
     case "inventory":
-      return dictionary.inventoryOperationsHint;
-    case "itemManagement":
-      return dictionary.manageItemsHint;
-    case "alerts":
-      return dictionary.noAlertsHint;
-    case "audit":
-      return dictionary.auditHint;
-    case "personnel":
-      return dictionary.managePersonnelHint;
+      return t("inventoryHint");
+    case "activity":
+      return t("auditHint", { ns: "audit" });
     case "settings":
-      return dictionary.backupStorageHint;
+      return t("settingsHint");
     default:
-      return dictionary.currentInventoryLevels;
+      return "";
   }
 }
 
 export function App() {
+  const { t } = useTranslation(["common", "inventory", "backup", "audit"]);
   const [section, setSection] = useState<Section>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [action, setAction] = useState<ActionKind | null>(null);
   const [activeItemId, setActiveItemId] = useState<string>("");
   const [batchIssueItemIds, setBatchIssueItemIds] = useState<string[]>([]);
+  const [inventoryFilter, setInventoryFilter] = useState<"all" | "low_stock" | "out_of_stock">("all");
+  const [inventorySearch, setInventorySearch] = useState("");
+  const [inventoryDetailItemId, setInventoryDetailItemId] = useState("");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("personnel");
   const {
     runtime,
     language,
@@ -89,6 +87,7 @@ export function App() {
     disconnectBrowser,
     clearFeedback,
     reportActionError,
+    reportNotice,
     handleCreateItem,
     handleUpdateItem,
     handleReceiveStock,
@@ -106,40 +105,13 @@ export function App() {
     handleLanguageChange,
     handleLanAccessSave,
     handleLanAccessKeyRegenerate,
+    pollError,
   } = useInventoryState();
   const { updateStatus, downloadUpdate, installUpdate, dismissUpdate } = useAutoUpdate();
-  type ThemeMode = "dark" | "light" | "auto";
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    if (typeof localStorage !== "undefined") {
-      return (localStorage.getItem("oi-theme") as ThemeMode) || "auto";
-    }
-    return "auto";
-  });
-  const [systemDark, setSystemDark] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : true,
-  );
-  useEffect(() => {
-    const mql = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, []);
-
-  const resolvedTheme = theme === "auto" ? (systemDark ? "dark" : "light") : theme;
-
-  useEffect(() => {
-    if (resolvedTheme === "light") {
-      document.documentElement.setAttribute("data-theme", "light");
-    } else {
-      document.documentElement.removeAttribute("data-theme");
-    }
-    localStorage.setItem("oi-theme", theme);
-  }, [resolvedTheme, theme]);
-
-  const cycleTheme = () => setTheme(theme === "auto" ? "light" : theme === "light" ? "dark" : "auto");
+  const { theme, resolvedTheme, cycleTheme } = useTheme();
 
   const browserRuntime = runtime !== "desktop";
-  const dictionary = dictionaries[language];
+  const themeLabel = theme === "auto" ? t("autoMode") : theme === "light" ? t("lightMode") : t("darkMode");
 
   const openAction = (nextAction: ActionKind, itemId?: string) => {
     setAction(nextAction);
@@ -164,68 +136,49 @@ export function App() {
     setBatchIssueItemIds([]);
   };
 
-  const onCreateItem = async (input: Parameters<typeof handleCreateItem>[0]) => {
-    if (await handleCreateItem(input)) {
-      closeAction();
-    }
+  const navigateToInventory = (filter: "all" | "low_stock" | "out_of_stock") => {
+    setInventoryFilter(filter);
+    setInventoryDetailItemId("");
+    closeAction();
+    closeBatchIssue();
+    setSection("inventory");
   };
 
-  const onUpdateItem = async (input: Parameters<typeof handleUpdateItem>[0]) => {
-    if (await handleUpdateItem(input)) {
-      closeAction();
-    }
+  const navigateToItem = (itemId: string) => {
+    setInventoryFilter("all");
+    setInventoryDetailItemId(itemId);
+    closeAction();
+    closeBatchIssue();
+    setSection("inventory");
   };
 
-  const onReceiveStock = async (input: Parameters<typeof handleReceiveStock>[0]) => {
-    if (await handleReceiveStock(input)) {
-      closeAction();
-    }
+  const navigateToPersonnel = () => {
+    setSettingsTab("personnel");
+    closeAction();
+    closeBatchIssue();
+    setSection("settings");
   };
 
-  const onIssueMaterial = async (input: Parameters<typeof handleIssueMaterial>[0]) => {
-    if (await handleIssueMaterial(input)) {
-      closeAction();
-    }
-  };
+  const withClose = <A extends unknown[]>(handler: (...args: A) => Promise<boolean>) =>
+    async (...args: A) => {
+      if (await handler(...args)) closeAction();
+    };
 
-  const onBatchIssueMaterial = async (input: Parameters<typeof handleBatchIssueMaterial>[0]) =>
-    handleBatchIssueMaterial(input);
-
-  const onRemoveItem = async (itemId: string) => {
-    if (await handleRemoveItem(itemId)) {
-      closeAction();
-    }
-  };
-
-  const onBackupPlanSave = async (input: Parameters<typeof handleBackupPlanSave>[0]) => {
-    await handleBackupPlanSave(input);
-  };
-
-  const onBackupNow = async () => {
-    await handleBackupNow();
-  };
-
-  const onAddPersonnel = async (name: string) => {
-    await handleAddPersonnel(name);
-  };
-
-  const onRemovePersonnel = async (personnelId: string) => {
-    await handleRemovePersonnel(personnelId);
-  };
-
-  const onLanAccessSave = async (input: Parameters<typeof handleLanAccessSave>[0]) => {
-    await handleLanAccessSave(input);
-  };
+  const onCreateItem = withClose(handleCreateItem);
+  const onUpdateItem = withClose(handleUpdateItem);
+  const onReceiveStock = withClose(handleReceiveStock);
+  const onIssueMaterial = withClose(handleIssueMaterial);
+  const onRemoveItem = withClose(handleRemoveItem);
 
   if (requiresBrowserAuth) {
     return (
       <main className="state-screen state-screen--auth">
         <div className="auth-card">
-          <span className="sidebar__eyebrow">{dictionary.authTitle}</span>
-          <h1>{dictionary.appName}</h1>
-          <p>{dictionary.authDescription}</p>
+          <span className="sidebar__eyebrow">{t("authTitle")}</span>
+          <h1>{t("appName")}</h1>
+          <p>{t("authDescription")}</p>
           <label className="auth-card__field">
-            <span>{dictionary.authAccessKeyLabel}</span>
+            <span>{t("authAccessKeyLabel")}</span>
             <input
               autoFocus
               type="password"
@@ -235,7 +188,7 @@ export function App() {
           </label>
           {loadError && <div className="feedback-banner feedback-banner--error">{loadError}</div>}
           <button onClick={connectBrowser} type="button">
-            {dictionary.authConnect}
+            {t("authConnect")}
           </button>
         </div>
       </main>
@@ -245,7 +198,7 @@ export function App() {
   if (loadError) {
     return (
       <main className="state-screen">
-        <h1>{dictionary.appName}</h1>
+        <h1>{t("appName")}</h1>
         <p>{loadError}</p>
       </main>
     );
@@ -254,27 +207,19 @@ export function App() {
   if (!snapshot) {
     return (
       <main className="state-screen">
-        <h1>{dictionary.appName}</h1>
-        <p>{dictionary.loadingWorkspace}</p>
+        <h1>{t("appName")}</h1>
+        <p>{t("loadingWorkspace")}</p>
       </main>
     );
   }
 
-  const metrics = snapshot ? buildDashboardMetrics(snapshot.items, snapshot.alerts) : null;
   const selectedBatchItems =
     snapshot?.items.filter((item) => batchIssueItemIds.includes(item.id)) ?? [];
-  const headerTitle = dictionary[section];
-  const headerSubtitle = sectionSubtitle(section, dictionary);
+  const headerTitle = sectionTitle(section, t);
+  const headerSubtitle = sectionSubtitle(section, t);
   return (
     <div className={`app-shell${sidebarCollapsed ? " app-shell--collapsed" : ""}`}>
       <aside className={`sidebar${sidebarCollapsed ? " sidebar--collapsed" : ""}`}>
-        {!sidebarCollapsed && (
-          <div className="sidebar__brand">
-            <span className="sidebar__eyebrow">{browserRuntime ? dictionary.inventoryLan : dictionary.inventoryDesktop}</span>
-            <h1>{dictionary.appName}</h1>
-            <p>{dictionary.tagline}</p>
-          </div>
-        )}
         <nav className="sidebar__nav">
           {navOrder.map((item) => {
             const Icon = sectionIcons[item];
@@ -285,10 +230,10 @@ export function App() {
                 className={section === item ? "nav-item nav-item--active" : "nav-item"}
                 onClick={() => { closeAction(); closeBatchIssue(); setSection(item); }}
                 type="button"
-                title={sidebarCollapsed ? dictionary[item] : undefined}
+                title={sidebarCollapsed ? sectionTitle(item, t) : undefined}
               >
                 <Icon size={16} strokeWidth={1.5} />
-                {!sidebarCollapsed && <span>{dictionary[item]}</span>}
+                {!sidebarCollapsed && <span>{sectionTitle(item, t)}</span>}
               </button>
             );
           })}
@@ -298,8 +243,8 @@ export function App() {
             className="button-secondary button-icon-only"
             onClick={() => setSidebarCollapsed((prev) => !prev)}
             type="button"
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={sidebarCollapsed ? t("expandSidebar") : t("collapseSidebar")}
+            aria-label={sidebarCollapsed ? t("expandSidebar") : t("collapseSidebar")}
           >
             <PanelLeft size={16} strokeWidth={1.5} />
           </button>
@@ -317,8 +262,8 @@ export function App() {
                 className="button-secondary button-icon-only"
                 onClick={disconnectBrowser}
                 type="button"
-                title={dictionary.disconnect}
-                aria-label={dictionary.disconnect}
+                title={t("disconnect")}
+                aria-label={t("disconnect")}
               >
                 <LogOut size={16} strokeWidth={1.5} />
               </button>
@@ -328,8 +273,8 @@ export function App() {
               className="button-secondary button-icon-only"
               onClick={cycleTheme}
               type="button"
-              title={theme === "auto" ? dictionary.autoMode : theme === "light" ? dictionary.lightMode : dictionary.darkMode}
-              aria-label={theme === "auto" ? dictionary.autoMode : theme === "light" ? dictionary.lightMode : dictionary.darkMode}
+              title={themeLabel}
+              aria-label={themeLabel}
             >
               {theme === "auto" && <SunMoon size={16} strokeWidth={1.5} />}
               {theme === "light" && <Sun size={16} strokeWidth={1.5} />}
@@ -340,8 +285,8 @@ export function App() {
               className="button-secondary button-icon-only"
               onClick={() => handleLanguageChange(language === "en" ? "zh-CN" : "en")}
               type="button"
-              title={language === "en" ? "切换到中文" : "Switch to English"}
-              aria-label={language === "en" ? "切换到中文" : "Switch to English"}
+              title={language === "en" ? t("switchToChinese") : t("switchToEnglish")}
+              aria-label={language === "en" ? t("switchToChinese") : t("switchToEnglish")}
             >
               <span style={{ fontSize: 12, fontWeight: 600, fontFamily: "var(--font-sans)", letterSpacing: "0.02em" }}>
                 {language === "en" ? "中" : "EN"}
@@ -353,7 +298,6 @@ export function App() {
         {runtime === "desktop" && (
           <UpdateBanner
             status={updateStatus}
-            dictionary={dictionary}
             onDownload={downloadUpdate}
             onInstall={installUpdate}
             onDismiss={dismissUpdate}
@@ -363,13 +307,18 @@ export function App() {
         {notice && (
           <div data-testid="feedback-banner" className={`feedback-banner feedback-banner--${notice.tone}`}>
             <span>{notice.message}</span>
-            <button data-testid="feedback-dismiss" className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label={dictionary.dismiss}>&times;</button>
+            <button data-testid="feedback-dismiss" className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label={t("dismiss")}>&times;</button>
           </div>
         )}
         {actionError && (
           <div data-testid="feedback-banner" className="feedback-banner feedback-banner--error">
             <span>{actionError}</span>
-            <button data-testid="feedback-dismiss" className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label={dictionary.dismiss}>&times;</button>
+            <button data-testid="feedback-dismiss" className="button-inline button-secondary feedback-banner__dismiss" onClick={clearFeedback} type="button" aria-label={t("dismiss")}>&times;</button>
+          </div>
+        )}
+        {pollError && (
+          <div className="feedback-banner feedback-banner--warning" role="alert">
+            {t("pollError")}
           </div>
         )}
 
@@ -383,113 +332,133 @@ export function App() {
                 onConfirm={() => void confirmRestoreFromBackup()}
               />
             )}
-            {batchIssueItemIds.length > 0 && (
-              <BatchIssuePanel
-                busy={busy}
-                dictionary={dictionary}
-                errorMessage={actionError}
-                items={selectedBatchItems}
+
+            {section === "inventory" && (
+              <>
+                <ActionPanel
+                  action={action}
+                  activeItemId={activeItemId}
+                  busy={busy}
+                  language={language}
+                  items={snapshot.items}
+                  personnel={snapshot.personnel}
+                  onClose={closeAction}
+                  onCreateItem={onCreateItem}
+                  onUpdateItem={onUpdateItem}
+                  onReceiveStock={onReceiveStock}
+                  onIssueMaterial={onIssueMaterial}
+                  onRemoveItem={onRemoveItem}
+                  onError={reportActionError}
+                  onNavigateToPersonnel={navigateToPersonnel}
+                />
+                {batchIssueItemIds.length > 0 && (
+                  <BatchIssuePanel
+                    busy={busy}
+                    errorMessage={actionError}
+                    items={selectedBatchItems}
+                    language={language}
+                    personnel={snapshot.personnel}
+                    onClose={closeBatchIssue}
+                    onSubmit={handleBatchIssueMaterial}
+                  />
+                )}
+                <UnifiedInventoryTable
+                  busy={busy}
+                  language={language}
+                  items={snapshot.items}
+                  filter={inventoryFilter}
+                  onFilterChange={setInventoryFilter}
+                  search={inventorySearch}
+                  onSearchChange={setInventorySearch}
+                  detailItemId={inventoryDetailItemId}
+                  onDetailItemIdChange={setInventoryDetailItemId}
+                  onAction={openAction}
+                  onBatchIssue={openBatchIssue}
+                  onError={reportActionError}
+                  onNotice={reportNotice}
+                />
+              </>
+            )}
+
+            {section === "dashboard" && (
+              <DashboardView
+                items={snapshot.items}
+                alerts={snapshot.alerts}
                 language={language}
-                personnel={snapshot.personnel}
-                onClose={closeBatchIssue}
-                onSubmit={onBatchIssueMaterial}
+                onNavigateToInventory={navigateToInventory}
+                onNavigateToItem={navigateToItem}
               />
             )}
-            <ActionPanel
-              action={action}
-              activeItemId={activeItemId}
-              preSelectedItemId={activeItemId || undefined}
-              busy={busy}
-              dictionary={dictionary}
-              language={language}
-              items={snapshot.items}
-              personnel={snapshot.personnel}
-              onClose={closeAction}
-              onCreateItem={onCreateItem}
-              onUpdateItem={onUpdateItem}
-              onReceiveStock={onReceiveStock}
-              onIssueMaterial={onIssueMaterial}
-              onRemoveItem={onRemoveItem}
-              onError={reportActionError}
-            />
 
-            {section === "dashboard" && metrics && (
-              <section className="metrics-grid">
-                <MetricCard label={dictionary.totalItems} value={metrics.totalItems} />
-                <MetricCard label={dictionary.totalUnits} value={metrics.totalUnits} />
-                <MetricCard label={dictionary.lowStock} value={metrics.lowStockCount} tone="warning" />
-                <MetricCard label={dictionary.outOfStock} value={metrics.outOfStockCount} tone="danger" />
-                <MetricCard label={dictionary.openAlerts} value={metrics.openAlertCount} tone="warning" />
-              </section>
+            {section === "activity" && (
+              <AuditPanel
+                language={language}
+                personnel={snapshot.personnel}
+              />
             )}
 
-            <section className="content-stack">
-              {(section === "dashboard" || section === "inventory") && (
-                <InventoryTable
-                  busy={busy}
-                  dictionary={dictionary}
-                  language={language}
-                  items={snapshot.items}
-                  onIssueMaterial={(itemId) => openAction("issueMaterial", itemId)}
-                  onReceiveStock={(itemId) => openAction("receiveStock", itemId)}
-                />
-              )}
-              {section === "itemManagement" && (
-                <ItemManagementTable
-                  busy={busy}
-                  dictionary={dictionary}
-                  language={language}
-                  items={snapshot.items}
-                  onBatchIssue={openBatchIssue}
-                  onCreateItem={() => openAction("createItem")}
-                  onError={reportActionError}
-                  onModifyItem={(itemId) => openAction("modifyItem", itemId)}
-                  onRemoveItem={(itemId) => openAction("removeItem", itemId)}
-                />
-              )}
-              {section === "alerts" && (
-                <AlertsPanel dictionary={dictionary} alerts={snapshot.alerts} language={language} />
-              )}
-              {section === "audit" && (
-                <AuditPanel
-                  dictionary={dictionary}
-                  language={language}
-                  personnel={snapshot.personnel}
-                />
-              )}
-              {section === "personnel" && (
-                <PersonnelPanel
-                  busy={busy}
-                  dictionary={dictionary}
-                  personnel={snapshot.personnel}
-                  onAddPersonnel={onAddPersonnel}
-                  onRemovePersonnel={onRemovePersonnel}
-                />
-              )}
-              {section === "settings" && (
-                <>
+            {section === "settings" && (
+              <>
+                <div className="filter-tabs settings-tabs" role="tablist">
+                  <button
+                    className={`filter-tab${settingsTab === "personnel" ? " filter-tab--active" : ""}`}
+                    onClick={() => setSettingsTab("personnel")}
+                    type="button"
+                    role="tab"
+                    aria-selected={settingsTab === "personnel"}
+                  >
+                    {t("personnelSettings")}
+                  </button>
+                  <button
+                    className={`filter-tab${settingsTab === "backup" ? " filter-tab--active" : ""}`}
+                    onClick={() => setSettingsTab("backup")}
+                    type="button"
+                    role="tab"
+                    aria-selected={settingsTab === "backup"}
+                  >
+                    {t("backupSettings")}
+                  </button>
+                  {lanAccess && (
+                    <button
+                      className={`filter-tab${settingsTab === "lan" ? " filter-tab--active" : ""}`}
+                      onClick={() => setSettingsTab("lan")}
+                      type="button"
+                      role="tab"
+                      aria-selected={settingsTab === "lan"}
+                    >
+                      {t("lanSettings")}
+                    </button>
+                  )}
+                </div>
+                {settingsTab === "personnel" && (
+                  <PersonnelPanel
+                    busy={busy}
+                    personnel={snapshot.personnel}
+                    onAddPersonnel={handleAddPersonnel}
+                    onRemovePersonnel={handleRemovePersonnel}
+                  />
+                )}
+                {settingsTab === "backup" && (
                   <BackupPanel
                     busy={busy}
                     backupPlan={snapshot.backupPlan}
-                    dictionary={dictionary}
                     language={language}
-                    onBackupNow={onBackupNow}
-                    onSave={onBackupPlanSave}
+                    onBackupNow={handleBackupNow}
+                    onSave={handleBackupPlanSave}
                     onBrowse={handleSelectBackupDirectory}
                     onRestore={() => void startRestoreFromBackup()}
                   />
-                  {lanAccess && (
-                    <LanAccessPanel
-                      busy={busy}
-                      dictionary={dictionary}
-                      lanAccess={lanAccess}
-                      onRegenerateKey={handleLanAccessKeyRegenerate}
-                      onSave={onLanAccessSave}
-                    />
-                  )}
-                </>
-              )}
-            </section>
+                )}
+                {settingsTab === "lan" && lanAccess && (
+                  <LanAccessPanel
+                    busy={busy}
+                    lanAccess={lanAccess}
+                    onRegenerateKey={handleLanAccessKeyRegenerate}
+                    onSave={handleLanAccessSave}
+                  />
+                )}
+              </>
+            )}
           </>
         )}
       </main>

@@ -1,7 +1,8 @@
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QuickIssueMobile } from "./QuickIssueMobile";
 import type { InventoryItem, PersonnelMember } from "../../../shared/types";
+import i18n from "i18next";
 
 afterEach(cleanup);
 
@@ -28,14 +29,15 @@ const personnel: PersonnelMember[] = [
   { id: "p2", name: "Li Ming" },
 ];
 
-const dictionary = (await import("../app/i18n")).dictionaries.en;
-
 describe("QuickIssueMobile", () => {
+  beforeEach(async () => {
+    await i18n.changeLanguage("en");
+  });
+
   it("renders item name, SKU, category, location, and current qty", () => {
     render(
       <QuickIssueMobile
         busy={false}
-        dictionary={dictionary}
         item={makeItem()}
         language="en"
         personnel={personnel}
@@ -49,7 +51,7 @@ describe("QuickIssueMobile", () => {
 
   it("preset +1 sets quantity to 1", () => {
     render(
-      <QuickIssueMobile busy={false} dictionary={dictionary} item={makeItem()} language="en" personnel={personnel} onIssue={vi.fn()} />,
+      <QuickIssueMobile busy={false} item={makeItem()} language="en" personnel={personnel} onIssue={vi.fn()} />,
     );
     fireEvent.click(screen.getByText("+1"));
     const input = screen.getByRole("spinbutton") as HTMLInputElement;
@@ -58,7 +60,7 @@ describe("QuickIssueMobile", () => {
 
   it("presets are cumulative: +5 then +10 = 15", () => {
     render(
-      <QuickIssueMobile busy={false} dictionary={dictionary} item={makeItem()} language="en" personnel={personnel} onIssue={vi.fn()} />,
+      <QuickIssueMobile busy={false} item={makeItem()} language="en" personnel={personnel} onIssue={vi.fn()} />,
     );
     fireEvent.click(screen.getByText("+5"));
     fireEvent.click(screen.getByText("+10"));
@@ -68,7 +70,7 @@ describe("QuickIssueMobile", () => {
 
   it("preset caps at currentQuantity", () => {
     render(
-      <QuickIssueMobile busy={false} dictionary={dictionary} item={makeItem({ currentQuantity: 3 })} language="en" personnel={personnel} onIssue={vi.fn()} />,
+      <QuickIssueMobile busy={false} item={makeItem({ currentQuantity: 3 })} language="en" personnel={personnel} onIssue={vi.fn()} />,
     );
     fireEvent.click(screen.getByText("+5"));
     const input = screen.getByRole("spinbutton") as HTMLInputElement;
@@ -77,7 +79,7 @@ describe("QuickIssueMobile", () => {
 
   it("clear button resets quantity to empty", () => {
     render(
-      <QuickIssueMobile busy={false} dictionary={dictionary} item={makeItem()} language="en" personnel={personnel} onIssue={vi.fn()} />,
+      <QuickIssueMobile busy={false} item={makeItem()} language="en" personnel={personnel} onIssue={vi.fn()} />,
     );
     fireEvent.click(screen.getByText("+5"));
     fireEvent.click(screen.getByText("Clear"));
@@ -87,7 +89,7 @@ describe("QuickIssueMobile", () => {
 
   it("disables presets and submit when zero stock", () => {
     render(
-      <QuickIssueMobile busy={false} dictionary={dictionary} item={makeItem({ currentQuantity: 0 })} language="en" personnel={personnel} onIssue={vi.fn()} />,
+      <QuickIssueMobile busy={false} item={makeItem({ currentQuantity: 0 })} language="en" personnel={personnel} onIssue={vi.fn()} />,
     );
     const presetButtons = screen.getAllByRole("button").filter((b) => b.textContent?.startsWith("+"));
     for (const btn of presetButtons) {
@@ -99,15 +101,15 @@ describe("QuickIssueMobile", () => {
 
   it("disables submit when no personnel", () => {
     render(
-      <QuickIssueMobile busy={false} dictionary={dictionary} item={makeItem()} language="en" personnel={[]} onIssue={vi.fn()} />,
+      <QuickIssueMobile busy={false} item={makeItem()} language="en" personnel={[]} onIssue={vi.fn()} />,
     );
-    expect(screen.getByText(dictionary.personnelRequiredForIssue)).toBeDefined();
+    expect(screen.getByText("No personnel configured. Add personnel in the desktop app before issuing material.")).toBeDefined();
   });
 
   it("calls onIssue with correct input on submit", async () => {
     const onIssue = vi.fn().mockResolvedValue("Success");
     render(
-      <QuickIssueMobile busy={false} dictionary={dictionary} item={makeItem()} language="en" personnel={personnel} onIssue={onIssue} />,
+      <QuickIssueMobile busy={false} item={makeItem()} language="en" personnel={personnel} onIssue={onIssue} />,
     );
     fireEvent.click(screen.getByText("+5"));
     fireEvent.click(screen.getByRole("button", { name: /issue material/i }));
@@ -117,7 +119,7 @@ describe("QuickIssueMobile", () => {
       itemId: "item-1",
       quantity: 5,
       performedBy: "Chen Jun",
-      reason: dictionary.qrIssueReason,
+      reason: "QR issue",
     });
   });
 });

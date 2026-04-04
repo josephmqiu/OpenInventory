@@ -16,6 +16,39 @@ Electron desktop app (TypeScript + Effect TS backend, React 19 + Vite frontend) 
 - `src/renderer/src/` — React frontend (app, domain, services, ui)
 - `test/` — Backend test suite (services, lan, ipc, integration)
 
+## Native module builds (better-sqlite3)
+
+better-sqlite3 compiles to a `.node` binary tied to a specific ABI. Vitest backend
+tests need the Node.js ABI; Electron (dev, E2E, packaged app) needs the Electron ABI.
+The project handles this with wrapper scripts — use them, never bypass them.
+
+**Wrapper scripts:**
+- `scripts/run-with-node-native-restore.ts` — rebuilds for Node, runs command, restores
+  Electron ABI in a `finally` block. Used by `test:backend`, `test:coverage`, `test:e2e`,
+  `dev:api`, `dev:preview`.
+- `scripts/rebuild-electron-native-deps.ts` — rebuilds for Electron ABI + codesigns on
+  macOS. Used by `dev`, `pack`, `dist`.
+
+**Always use the npm scripts — never run vitest or playwright directly:**
+
+```bash
+npm run test           # Frontend unit tests (Vitest, jsdom) — no native deps needed
+npm run test:backend   # Backend tests — wrapper handles Node ABI swap + restore
+npm run test:coverage  # Combined coverage — wrapper handles ABI swap
+npm run test:e2e       # E2E — seeds with Node ABI, rebuilds Electron, runs Playwright
+npm run dev            # Desktop dev — rebuilds Electron ABI first
+```
+
+**When touching build scripts, package.json, CI workflows, or native module code:**
+think about all environments — local dev (Mac), CI (Mac + Windows), packaged app,
+and E2E tests. A change that works in one environment may break another. The E2E
+pipeline has a strict order: rebuild Node → build Vite → generate seed DBs → rebuild
+Electron → run Playwright. Do not reorder these steps.
+
+Config files: `vitest.config.ts` (frontend), `vitest.config.node.ts` (backend),
+`playwright.config.ts` (E2E), `electron.vite.config.ts` (externalizes better-sqlite3),
+`electron-builder.yml` (unpacks `.node` files from ASAR).
+
 ## Testing
 
 Run all three test suites before every commit:
@@ -27,9 +60,7 @@ npm run test:coverage  # Combined Vitest coverage report under coverage/
 npm run test:e2e       # Electron E2E workflow (Playwright, builds app first)
 ```
 
-- `test:e2e` handles native module rebuild/restore automatically.
 - E2E tests launch a real Electron instance with an isolated temp database.
-- Config files: `vitest.config.ts` (frontend), `vitest.config.node.ts` (backend), `playwright.config.ts` (E2E).
 
 ## Skill routing
 

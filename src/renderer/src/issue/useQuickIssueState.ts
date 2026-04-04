@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Language, PublicIssueContext, StockMutationInput } from "../../../shared/types";
-import { dictionaries, localizeBackendMessage, type Dictionary } from "../app/i18n";
+import { i18n, localizeBackendMessage, setAppLanguage } from "../app/i18n";
+import { i18nResources } from "../app/i18nResources";
 import { loadPublicIssueContext, issueMaterialPublic, IssueGatewayError } from "./issueGateway";
 
 export interface QuickIssueState {
   language: Language;
-  dictionary: Dictionary;
   issueContext: PublicIssueContext | null;
   loadError: string | null;
   notice: { message: string; tone: "success" | "error" } | null;
@@ -33,7 +33,7 @@ export function useQuickIssueState(itemId: string): QuickIssueState {
   const [notice, setNotice] = useState<{ message: string; tone: "success" | "error" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const dictionary = dictionaries[language];
+  const inFlightIssueRef = useRef<Promise<string> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,33 +50,56 @@ export function useQuickIssueState(itemId: string): QuickIssueState {
       .catch((err: unknown) => {
         if (!cancelled) {
           const msg = err instanceof IssueGatewayError && err.status === 404
-            ? dictionary.qrItemNotFound
-            : err instanceof Error
-              ? localizeBackendMessage(err.message, dictionary)
-              : dictionary.genericActionError;
+            ? i18nResources[language].quickIssue.qrItemNotFound
+            : localizeBackendMessage(
+                err as Error & { messageId?: string; messageValues?: Record<string, string | number> },
+                language,
+                i18nResources[language].common.genericActionError,
+              );
           setLoadError(msg);
         }
       });
 
     return () => { cancelled = true; };
-  }, [itemId, reloadKey, dictionary]);
+  }, [itemId, reloadKey]);
+
+  useEffect(() => {
+    setAppLanguage(language);
+  }, [language]);
 
   const handleQuickIssueMaterial = async (input: StockMutationInput): Promise<string> => {
-    try {
-      setBusy(true);
-      setNotice(null);
-      const next = await issueMaterialPublic(input);
-      setIssueContext(next);
-      setLanguage(next.language);
-      setNotice({ message: dictionary.successIssueMaterial, tone: "success" });
-      return dictionary.successIssueMaterial;
-    } catch (err) {
-      const msg = err instanceof Error ? localizeBackendMessage(err.message, dictionary) : dictionary.genericActionError;
-      setNotice({ message: msg, tone: "error" });
-      throw new Error(msg);
-    } finally {
-      setBusy(false);
+    if (inFlightIssueRef.current) {
+      return inFlightIssueRef.current;
     }
+
+    const request = (async () => {
+      try {
+        setBusy(true);
+        setNotice(null);
+        const next = await issueMaterialPublic(input);
+        setIssueContext(next);
+        setLanguage(next.language);
+        const tInventory = i18n.getFixedT(next.language, "inventory");
+        setNotice({ message: tInventory("successIssueMaterial"), tone: "success" });
+        return tInventory("successIssueMaterial");
+      } catch (err) {
+        const msg = localizeBackendMessage(
+          err as Error & { messageId?: string; messageValues?: Record<string, string | number> },
+          language,
+          i18nResources[language].common.genericActionError,
+        );
+        setNotice({ message: msg, tone: "error" });
+        throw new Error(msg);
+      } finally {
+        setBusy(false);
+        if (inFlightIssueRef.current === request) {
+          inFlightIssueRef.current = null;
+        }
+      }
+    })();
+
+    inFlightIssueRef.current = request;
+    return request;
   };
 
   const clearNotice = () => setNotice(null);
@@ -84,7 +107,6 @@ export function useQuickIssueState(itemId: string): QuickIssueState {
 
   return {
     language,
-    dictionary,
     issueContext,
     loadError,
     notice,

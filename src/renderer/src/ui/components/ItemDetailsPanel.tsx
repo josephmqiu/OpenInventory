@@ -1,159 +1,111 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { formatDate } from "../../app/formatDate";
-import { localizeBackendMessage, localizeCategory, localizeUnit, type Dictionary } from "../../app/i18n";
+import { formatNumber } from "../../app/formatters";
+import { translateErrorMessage, localizeCategory, localizeUnit } from "../../app/i18n";
 import type { InventoryItem, InventoryMovement, Language } from "../../domain/models";
 import { getItemMovements } from "../../services/inventoryGateway";
+import { useAsyncData } from "../hooks/useAsyncData";
+import { useTT } from "../hooks/useTT";
+import { sortDataByKey } from "../utils/sortData";
+import { DataTable, type ColumnDef, type SortState } from "./DataTable";
 import { QrCodeImage } from "./QrCodeImage";
 
 interface ItemDetailsPanelProps {
-  dictionary: Dictionary;
   language: Language;
   item: InventoryItem;
   onBack: () => void;
-  onPrint: () => void;
+  onExport: () => void;
+  onModifyItem?: (itemId: string) => void;
+  onRemoveItem?: (itemId: string) => void;
 }
 
-export function ItemDetailsPanel({ dictionary, language, item, onBack, onPrint }: ItemDetailsPanelProps) {
-  const [movements, setMovements] = useState<InventoryMovement[]>([]);
-  const [loadingMovements, setLoadingMovements] = useState(true);
-  const [movementError, setMovementError] = useState<string | null>(null);
+export function ItemDetailsPanel({ language, item, onBack, onExport, onModifyItem, onRemoveItem }: ItemDetailsPanelProps) {
+  const tt = useTT();
+  const [sortState, setSortState] = useState<SortState | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const { data: movements, loading: loadingMovements, error: movementError } = useAsyncData(
+    () => getItemMovements(item.id).catch((error: unknown) => {
+      throw new Error(
+        error instanceof Error
+          ? translateErrorMessage(error as Error & { messageId?: string; messageValues?: Record<string, string | number> }, language, tt("noMovements", "No movements recorded yet."))
+          : tt("noMovements", "No movements recorded yet."),
+      );
+    }),
+    [item.id, language],
+  );
 
-    setLoadingMovements(true);
-    setMovementError(null);
+  const sortedMovements = useMemo(
+    () => sortDataByKey(movements ?? [], sortState),
+    [movements, sortState],
+  );
 
-    getItemMovements(item.id)
-      .then((result) => {
-        if (cancelled) {
-          return;
-        }
-        setMovements(result);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) {
-          return;
-        }
-        setMovementError(error instanceof Error ? localizeBackendMessage(error.message, dictionary) : dictionary.noMovements);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoadingMovements(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [dictionary, item.id]);
+  const movementColumns: ColumnDef<InventoryMovement>[] = [
+    { key: "date", header: tt("date", "Date"), sortable: true, sortKey: "createdAt", render: (m) => formatDate(m.createdAt, language) },
+    { key: "type", header: tt("type", "Type"), sortable: true, sortKey: "movementType", render: (m) => (m.movementType === "receive" ? tt("receiveStock", "Receive Stock") : tt("issueMaterial", "Issue Material")) },
+    { key: "quantity", header: tt("quantity", "Quantity"), sortable: true, sortKey: "quantity", render: (m) => formatNumber(m.quantity, language) },
+    { key: "performedBy", header: tt("performedBy", "Performed By"), sortable: true, sortKey: "performedBy", render: (m) => m.performedBy || tt("notProvided", "Not provided") },
+    { key: "reason", header: tt("reason", "Reason"), render: (m) => m.reason || tt("notProvided", "Not provided") },
+  ];
 
   return (
     <section className="panel item-details-panel" data-testid="item-details-panel">
       <div className="panel__header">
         <div>
-          <h2>{dictionary.itemDetails}</h2>
-          <p>{dictionary.itemDetailsHint}</p>
+          <h2>{tt("itemDetails", "Item Details")}</h2>
+          <p>{tt("itemDetailsHint", "Review item information, preview the SKU QR label, and export it.")}</p>
         </div>
         <div className="panel__actions">
           <button className="button-secondary" onClick={onBack} type="button">
-            {dictionary.backToList}
+            {tt("backToList", "Back To List")}
           </button>
-          <button disabled={!item.qrCodeDataUrl} onClick={onPrint} type="button">
-            {dictionary.printQrLabel}
-          </button>
-        </div>
-      </div>
-      <div className="item-details-layout">
-        <dl className="item-details-grid">
-          <div>
-            <dt>{dictionary.sku}</dt>
-            <dd>{item.sku}</dd>
-          </div>
-          <div>
-            <dt>{dictionary.itemName}</dt>
-            <dd>{item.name}</dd>
-          </div>
-          <div>
-            <dt>{dictionary.category}</dt>
-            <dd>{localizeCategory(item.category, language)}</dd>
-          </div>
-          <div>
-            <dt>{dictionary.location}</dt>
-            <dd>{item.location}</dd>
-          </div>
-          <div>
-            <dt>{dictionary.unit}</dt>
-            <dd>{localizeUnit(item.unit, language)}</dd>
-          </div>
-          <div>
-            <dt>{dictionary.supplier}</dt>
-            <dd>{item.supplier || dictionary.notProvided}</dd>
-          </div>
-          <div>
-            <dt>{dictionary.currentQuantity}</dt>
-            <dd>{item.currentQuantity}</dd>
-          </div>
-          <div>
-            <dt>{dictionary.reorderLevel}</dt>
-            <dd>{item.reorderQuantity}</dd>
-          </div>
-          <div>
-            <dt>{dictionary.lastUpdated}</dt>
-            <dd>{formatDate(item.lastUpdated, language)}</dd>
-          </div>
-        </dl>
-        <div className="item-details-qr">
-          <h3>{dictionary.qrCode}</h3>
-          {item.qrCodeDataUrl ? (
-            <QrCodeImage text={item.qrCodeDataUrl} alt={item.sku} />
-          ) : (
-            <p>{dictionary.qrCodeUnavailable}</p>
+          {onModifyItem && (
+            <button className="button-secondary" onClick={() => onModifyItem(item.id)} type="button">
+              {tt("modifyItem", "Modify Item")}
+            </button>
           )}
+          {onRemoveItem && (
+            <button className="button-danger-ghost" onClick={() => onRemoveItem(item.id)} type="button">
+              {tt("removeItem", "Remove Item")}
+            </button>
+          )}
+          <button data-testid="item-export-qr-label" disabled={!item.qrCodeDataUrl} onClick={onExport} type="button">
+            {tt("exportQrLabel", "Export QR Label")}
+          </button>
         </div>
       </div>
+      {/* Key-value detail table stays as a description list, not DataTable */}
+      <table className="item-details-table">
+        <tbody>
+          <tr><td className="item-details-table__label">{tt("sku", "SKU")}</td><td className="cell-mono">{item.sku}</td><td className="item-details-table__label">{tt("category", "Category")}</td><td>{localizeCategory(item.category, language)}</td></tr>
+          <tr><td className="item-details-table__label">{tt("itemName", "Item Name")}</td><td>{item.name}</td><td className="item-details-table__label">{tt("location", "Location")}</td><td>{item.location}</td></tr>
+          <tr><td className="item-details-table__label">{tt("unit", "Unit")}</td><td>{localizeUnit(item.unit, language)}</td><td className="item-details-table__label">{tt("supplier", "Supplier")}</td><td>{item.supplier || tt("notProvided", "Not provided")}</td></tr>
+          <tr><td className="item-details-table__label">{tt("currentQuantity", "Qty")}</td><td className="cell-strong">{formatNumber(item.currentQuantity, language)}</td><td className="item-details-table__label">{tt("reorderLevel", "Reorder")}</td><td>{formatNumber(item.reorderQuantity, language)}</td></tr>
+          <tr><td className="item-details-table__label">{tt("lastUpdated", "Updated")}</td><td>{formatDate(item.lastUpdated, language)}</td><td className="item-details-table__label">{tt("qrCode", "QR Code")}</td><td>{item.qrCodeDataUrl ? <QrCodeImage text={item.qrCodeDataUrl} alt={item.sku} /> : tt("qrCodeUnavailable", "N/A")}</td></tr>
+        </tbody>
+      </table>
       <div className="item-movements-section">
         <div className="panel__header">
           <div>
-            <h3>{dictionary.movementHistory}</h3>
-            <p>{dictionary.movementHistoryHint}</p>
+            <h3>{tt("movementHistory", "Movement History")}</h3>
+            <p>{tt("movementHistoryHint", "Latest 50 stock movements for this item.")}</p>
           </div>
         </div>
-        {loadingMovements ? (
-          <div className="empty-state">
-            <h3>{dictionary.loadingMovements}</h3>
-          </div>
-        ) : movementError ? (
-          <div className="feedback-banner feedback-banner--error">{movementError}</div>
-        ) : movements.length === 0 ? (
-          <div className="empty-state">
-            <h3>{dictionary.noMovements}</h3>
-          </div>
+        {movementError ? (
+          <div className="feedback-banner feedback-banner--error">{
+            typeof movementError === "string" ? movementError : tt("noMovements", "No movements recorded yet.")
+          }</div>
         ) : (
-          <div className="table-wrap">
-            <table data-testid="movement-history-table">
-              <thead>
-                <tr>
-                  <th>{dictionary.date}</th>
-                  <th>{dictionary.type}</th>
-                  <th>{dictionary.quantity}</th>
-                  <th>{dictionary.performedBy}</th>
-                  <th>{dictionary.reason}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movements.map((movement) => (
-                  <tr key={movement.id}>
-                    <td>{formatDate(movement.createdAt, language)}</td>
-                    <td>{movement.movementType === "receive" ? dictionary.receiveStock : dictionary.issueMaterial}</td>
-                    <td>{movement.quantity}</td>
-                    <td>{movement.performedBy || dictionary.notProvided}</td>
-                    <td>{movement.reason || dictionary.notProvided}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={movementColumns}
+            data={sortedMovements}
+            rowKey={(m) => m.id}
+            loading={loadingMovements}
+            loadingMessage={tt("loadingMovements", "Loading movement history...")}
+            emptyTitle={tt("noMovements", "No movements recorded yet.")}
+            testId="movement-history-table"
+            sortState={sortState}
+            onSortChange={setSortState}
+          />
         )}
       </div>
     </section>

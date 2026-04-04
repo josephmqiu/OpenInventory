@@ -100,8 +100,8 @@ function insertAlert(
   db.prepare(
     `INSERT INTO low_stock_alerts
      (id, item_id, threshold_quantity, quantity_at_trigger, status,
-      triggered_at, channel_summary)
-     VALUES (?, ?, ?, ?, ?, ?, 'desktop,in_app')`,
+      triggered_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     itemId,
@@ -192,22 +192,104 @@ function seedAuditHistory(dbPath: string): void {
   db.close();
 }
 
-// ─── Seed: lan-ready ─────────────────────────────────────────────────────────
+// ─── Seed: LAN-ready variants ────────────────────────────────────────────────
 
-function seedLanReady(dbPath: string): void {
+function seedLanFixture(
+  dbPath: string,
+  opts: { port: number; accessKey: string; includePersonnel?: boolean },
+): void {
   const db = createFreshDb(dbPath);
 
   // Same items and personnel as inventory-basics
   insertItem(db, "item-bolts", "SKU-BOLTS-M6", "Bolts M6", { currentQty: 100, reorderQty: 20 });
   insertItem(db, "item-washers", "SKU-WASHERS-M6", "Washers M6", { currentQty: 8, reorderQty: 10 });
   insertItem(db, "item-nuts", "SKU-NUTS-M6", "Nuts M6", { currentQty: 0, reorderQty: 5 });
-  insertPersonnel(db, "person-alice", "Alice");
-  insertPersonnel(db, "person-bob", "Bob");
+  if (opts.includePersonnel !== false) {
+    insertPersonnel(db, "person-alice", "Alice");
+    insertPersonnel(db, "person-bob", "Bob");
+  }
 
   // LAN access settings — the app will start the server on boot
   writeSetting(db, "lan.enabled", "true");
-  writeSetting(db, "lan.port", "19877");
-  writeSetting(db, "lan.access_key", "e2e-test-access-key-2026");
+  writeSetting(db, "lan.port", String(opts.port));
+  writeSetting(db, "lan.access_key", opts.accessKey);
+
+  db.close();
+}
+
+function seedLanAccess(dbPath: string): void {
+  seedLanFixture(dbPath, {
+    port: 19877,
+    accessKey: "e2e-lan-access-key-2026",
+  });
+}
+
+function seedLanMobile(dbPath: string): void {
+  seedLanFixture(dbPath, {
+    port: 19879,
+    accessKey: "e2e-mobile-access-key-2026",
+  });
+}
+
+function seedLanQr(dbPath: string): void {
+  seedLanFixture(dbPath, {
+    port: 19880,
+    accessKey: "e2e-qr-access-key-2026",
+  });
+}
+
+function seedLanWarning(dbPath: string): void {
+  seedLanFixture(dbPath, {
+    port: 19881,
+    accessKey: "e2e-lan-warning-key-2026",
+  });
+}
+
+// ─── Seed: no-personnel-lan ──────────────────────────────────────────────────
+
+function seedNoPersonnelLan(dbPath: string): void {
+  seedLanFixture(dbPath, {
+    port: 19878,
+    accessKey: "e2e-no-personnel-key-2026",
+    includePersonnel: false,
+  });
+}
+
+// ─── Seed: backup-overdue ────────────────────────────────────────────────────
+
+function seedBackupOverdue(dbPath: string): void {
+  const db = createFreshDb(dbPath);
+
+  insertItem(db, "item-bolts", "SKU-BOLTS-M6", "Bolts M6", { currentQty: 100, reorderQty: 20 });
+  insertPersonnel(db, "person-alice", "Alice");
+  insertPersonnel(db, "person-bob", "Bob");
+
+  writeSetting(db, "backup.target_path", "/tmp/oi-e2e-backup-overdue");
+  writeSetting(db, "backup.interval_value", "4");
+  writeSetting(db, "backup.interval_unit", "hours");
+  writeSetting(db, "backup.on_startup", "false");
+  writeSetting(db, "backup.last_successful", new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString());
+  writeSetting(db, "backup.last_file_size", "4096");
+  writeSetting(db, "backup.last_verified", "true");
+  writeSetting(db, "backup.status", "healthy");
+
+  db.close();
+}
+
+// ─── Seed: backup-error ──────────────────────────────────────────────────────
+
+function seedBackupError(dbPath: string): void {
+  const db = createFreshDb(dbPath);
+
+  insertItem(db, "item-bolts", "SKU-BOLTS-M6", "Bolts M6", { currentQty: 100, reorderQty: 20 });
+  insertPersonnel(db, "person-alice", "Alice");
+
+  writeSetting(db, "backup.target_path", "/tmp/oi-e2e-backup-error");
+  writeSetting(db, "backup.interval_value", "8");
+  writeSetting(db, "backup.interval_unit", "hours");
+  writeSetting(db, "backup.on_startup", "false");
+  writeSetting(db, "backup.last_error", "Backup operation failed.");
+  writeSetting(db, "backup.status", "error");
 
   db.close();
 }
@@ -225,7 +307,13 @@ function main(): void {
     empty: seedEmpty,
     "inventory-basics": seedInventoryBasics,
     "audit-history": seedAuditHistory,
-    "lan-ready": seedLanReady,
+    "lan-access": seedLanAccess,
+    "lan-mobile": seedLanMobile,
+    "lan-qr": seedLanQr,
+    "lan-warning": seedLanWarning,
+    "no-personnel-lan": seedNoPersonnelLan,
+    "backup-overdue": seedBackupOverdue,
+    "backup-error": seedBackupError,
   };
 
   for (const [name, seed] of Object.entries(scenarios)) {

@@ -1,4 +1,8 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 /**
  * Dismiss the top-level feedback banner if visible.
@@ -31,12 +35,38 @@ export async function expectSuccess(page: Page): Promise<void> {
   await dismissBanner(page);
 }
 
+export async function expectError(
+  page: Page,
+  expectedText?: string | RegExp,
+): Promise<void> {
+  const banner = page.locator("[data-testid='feedback-banner'].feedback-banner--error");
+  await expect(banner).toBeVisible({ timeout: 10_000 });
+  if (expectedText) {
+    await expect(banner).toContainText(expectedText);
+  }
+}
+
 /**
  * Navigate to a section using the sidebar nav data-testid.
  * Section names match the camelCase keys used in App.tsx navOrder:
- * dashboard, inventory, itemManagement, alerts, audit, personnel, settings
+ * dashboard, inventory, activity, settings
  */
 export async function navigateTo(page: Page, section: string): Promise<void> {
   await page.getByTestId(`nav-${section}`).click();
   await page.waitForLoadState("domcontentloaded");
+}
+
+export function inventoryRow(page: Page, itemName: string): Locator {
+  return page.locator("tbody tr", {
+    has: page.locator(".cell-title, td").filter({
+      hasText: new RegExp(`^${escapeRegExp(itemName)}$`),
+    }),
+  });
+}
+
+export async function connectLanBrowser(page: Page, accessKey: string): Promise<void> {
+  await expect(page.locator(".auth-card")).toBeVisible({ timeout: 10_000 });
+  await page.locator(".auth-card__field input").fill(accessKey);
+  await page.getByRole("button", { name: "Connect" }).click();
+  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
 }

@@ -3,10 +3,55 @@ import { join } from "path";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { is } from "@electron-toolkit/utils";
 
+// ─── Module-level shutdown state ────────────────────────────────────────────
+// Hoisted so the uncaughtException / unhandledRejection handlers (registered
+// before app.whenReady) can attempt a graceful flush when they fire *after*
+// the runtime has been initialised.
+let disposed = false;
+let backupScheduler: { stop(): void } | null = null;
+let backupCoordinator: { awaitPendingBackup(): Promise<void> } | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- typed fully inside whenReady(); only dispose() is used from error handlers
+let managedRuntime: ManagedRuntime.ManagedRuntime<any, any> | null = null;
+
 // Surface fatal startup errors instead of silently exiting.
+// These handlers attempt a 2-second emergency shutdown to flush in-flight
+// mutations before exiting.  The module-level refs may still be null if the
+// error fires during early startup, so use optional chaining.
 process.on("uncaughtException", (err) => {
   dialog.showErrorBox("OpenInventory — Fatal Error", err.stack ?? err.message);
-  app.exit(1);
+  const emergencyShutdown = async (): Promise<void> => {
+    if (disposed) return;
+    disposed = true;
+    backupScheduler?.stop();
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000));
+    await Promise.race([
+      backupCoordinator?.awaitPendingBackup()
+        .then(() => managedRuntime?.dispose())
+        .catch(() => {}),
+      timeout,
+    ]);
+  };
+  void emergencyShutdown().finally(() => app.exit(1));
+});
+
+process.on("unhandledRejection", (reason) => {
+  const message = reason instanceof Error
+    ? (reason.stack ?? reason.message)
+    : String(reason);
+  dialog.showErrorBox("OpenInventory — Fatal Error", message);
+  const emergencyShutdown = async (): Promise<void> => {
+    if (disposed) return;
+    disposed = true;
+    backupScheduler?.stop();
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000));
+    await Promise.race([
+      backupCoordinator?.awaitPendingBackup()
+        .then(() => managedRuntime?.dispose())
+        .catch(() => {}),
+      timeout,
+    ]);
+  };
+  void emergencyShutdown().finally(() => app.exit(1));
 });
 
 import { DatabaseService, makeDatabaseLayer } from "./services/DatabaseService";
@@ -38,6 +83,18 @@ function initializeDatabase(dbPath: string): { restored: boolean } {
   const db = new Database(dbPath);
   configureSqlitePragmas(db);
 
+  // Quick integrity check (single page, <50ms)
+  const integrityResult = db.prepare("PRAGMA integrity_check(1)").get() as { integrity_check: string };
+  if (integrityResult.integrity_check !== "ok") {
+    db.close();
+    dialog.showErrorBox(
+      "OpenInventory — Database Corruption Detected",
+      "The database file appears to be corrupted. Please restore from a backup.\n\n" +
+      `Details: ${integrityResult.integrity_check}`,
+    );
+    app.exit(1);
+  }
+
   const schemaPath = join(__dirname, "infrastructure/schema.sql");
   if (fs.existsSync(schemaPath)) {
     db.exec(fs.readFileSync(schemaPath, "utf-8"));
@@ -55,7 +112,7 @@ function initializeDatabase(dbPath: string): { restored: boolean } {
     },
   );
   if (result.restored) {
-    console.log(`[Backup] Restored from backup (${result.restoredAt}). Settings preserved.`);
+    // Restore detected — settings have been preserved from the pre-restore snapshot.
   }
 
   db.close();
@@ -73,12 +130,22 @@ function createWindow(): void {
     show: false,
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
-      sandbox: false,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
     },
   });
 
   mainWindow.on("ready-to-show", () => {
     mainWindow?.show();
+  });
+
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    dialog.showErrorBox(
+      "OpenInventory — Renderer Crash",
+      `The UI process exited before the window became visible (${details.reason}).`,
+    );
+    app.exit(1);
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -136,7 +203,7 @@ if (!gotLock) {
     const rendererDir = is.dev
       ? join(__dirname, "../renderer")
       : join(__dirname, "../renderer").replace("app.asar", "app.asar.unpacked");
-    console.log(`[LAN] rendererDir=${rendererDir}, exists=${fs.existsSync(rendererDir)}`);
+    // rendererDir resolved for LAN server static file serving.
 
     // Merged layer: DB (scoped) + Notifications + LAN server (scoped, depends on DB) + Backup
     // IMPORTANT: reuse the same DbLayer reference so Effect memoizes a single connection.
@@ -146,12 +213,15 @@ if (!gotLock) {
     const CoreLayer = Layer.merge(DbAndNotifications, LanLayer);
     const AppLayer = Layer.merge(CoreLayer, BackupServiceLive);
 
-    const managedRuntime = ManagedRuntime.make(AppLayer);
+    // Local alias keeps full generic type for callers inside whenReady();
+    // the module-level `managedRuntime` is for shutdown handlers only.
+    const runtime = ManagedRuntime.make(AppLayer);
+    managedRuntime = runtime;
 
     // Auto-start LAN server if previously enabled; populate lanState.
     if (!isSmokeTest) {
       try {
-        const state = await managedRuntime.runPromise(
+        const state = await runtime.runPromise(
           Effect.flatMap(LanServerService, (s) => s.loadState()),
         );
         if (state.status === "running" && state.urls.length > 0) {
@@ -171,12 +241,12 @@ if (!gotLock) {
     });
 
     // ─── Backup coordinator + scheduler ─────────────────────────────────
-    const backupCoordinator = new BackupCoordinator(managedRuntime, dbPath);
+    backupCoordinator = new BackupCoordinator(runtime, dbPath);
 
-    const backupScheduler = new BackupScheduler(
+    backupScheduler = new BackupScheduler(
       backupCoordinator,
       async () => {
-        const snapshot = await managedRuntime.runPromise(
+        const snapshot = await runtime.runPromise(
           Effect.flatMap(DatabaseService, (s) => s.loadSnapshot()),
         );
         return {
@@ -188,14 +258,14 @@ if (!gotLock) {
       },
     );
 
-    registerIpcHandlers(managedRuntime, lanState, autoUpdateService, backupCoordinator);
+    registerIpcHandlers(runtime, lanState, autoUpdateService, backupCoordinator);
 
     createWindow();
 
     // ─── Smoke test: verify DB exists, then exit ───────────────────────
     if (isSmokeTest) {
       const dbExists = fs.existsSync(join(app.getPath("userData"), "data", "inventory-monitor.db"));
-      console.log(`[smoke-test] DB exists: ${dbExists}`);
+      // Smoke test: exit 0 if DB initialised successfully, 1 otherwise.
       app.exit(dbExists ? 0 : 1);
       return;
     }
@@ -215,23 +285,43 @@ if (!gotLock) {
     });
 
     // ─── Graceful shutdown ─────────────────────────────────────────────
-    // Await in-flight backup, stop scheduler, dispose runtime.
-    // Idempotent: may fire from multiple hooks (before-quit, will-quit, session-end).
-    let disposed = false;
-    const gracefulShutdown = (): void => {
+    // Await in-flight backup (up to 5 s), stop scheduler, dispose runtime.
+    // Idempotent: the module-level `disposed` flag prevents double-execution
+    // across before-quit, will-quit, and session-end hooks.
+    const gracefulShutdown = async (): Promise<void> => {
       if (disposed) return;
       disposed = true;
-      backupScheduler.stop();
-      backupCoordinator.awaitPendingBackup()
-        .then(() => managedRuntime.dispose())
-        .catch(() => {});
+      backupScheduler?.stop();
+      const timeout = new Promise<void>((resolve) => setTimeout(resolve, 5000));
+      await Promise.race([
+        backupCoordinator?.awaitPendingBackup()
+          .then(() => managedRuntime?.dispose())
+          .catch(() => {}),
+        timeout,
+      ]);
     };
 
-    app.on("before-quit", gracefulShutdown);
-    app.on("will-quit", gracefulShutdown);
+    // before-quit: prevent default, run async shutdown, then re-trigger quit.
+    app.on("before-quit", (event) => {
+      if (!disposed) {
+        event.preventDefault();
+        void gracefulShutdown().finally(() => app.quit());
+      }
+    });
+
+    // will-quit: belt-and-suspenders — if before-quit was skipped, flush here.
+    app.on("will-quit", (event) => {
+      if (!disposed) {
+        event.preventDefault();
+        void gracefulShutdown().finally(() => app.quit());
+      }
+    });
+
     // session-end: fires on Windows shutdown, restart, or logout
     // (before-quit is NOT emitted in those scenarios).
-    app.on("session-end", gracefulShutdown);
+    app.on("session-end", () => {
+      void gracefulShutdown();
+    });
   });
 
   app.on("window-all-closed", () => {

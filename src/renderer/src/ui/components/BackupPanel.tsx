@@ -1,24 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatDate } from "../../app/formatDate";
-import type { Dictionary } from "../../app/i18n";
+import { formatFileSize } from "../../app/formatters";
 import type { BackupPlan, BackupIntervalUnit, Language, UpdateBackupPlanInput } from "../../domain/models";
+import { useTranslation } from "react-i18next";
 
 interface BackupPanelProps {
   busy: boolean;
-  dictionary: Dictionary;
   language: Language;
   backupPlan: BackupPlan;
   onBackupNow: () => Promise<void>;
   onSave: (input: UpdateBackupPlanInput) => Promise<void>;
   onBrowse?: () => Promise<string | null>;
   onRestore?: () => void;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function createFormState(backupPlan: BackupPlan): UpdateBackupPlanInput {
@@ -30,15 +23,8 @@ function createFormState(backupPlan: BackupPlan): UpdateBackupPlanInput {
   };
 }
 
-const INTERVAL_UNITS: { value: BackupIntervalUnit; label: string }[] = [
-  { value: "hours", label: "hours" },
-  { value: "days", label: "days" },
-  { value: "weeks", label: "weeks" },
-];
-
 export function BackupPanel({
   busy,
-  dictionary,
   language,
   backupPlan,
   onBackupNow,
@@ -46,6 +32,8 @@ export function BackupPanel({
   onBrowse,
   onRestore,
 }: BackupPanelProps) {
+  const { i18n } = useTranslation(["common", "backup"]);
+  const t = i18n.getFixedT(language, ["common", "backup"]);
   const [form, setForm] = useState<UpdateBackupPlanInput>(() => createFormState(backupPlan));
 
   useEffect(() => {
@@ -75,9 +63,9 @@ export function BackupPanel({
 
   // Status pill
   const statusLabel =
-    backupPlan.status === "error" ? dictionary.needsAttention
-    : !isConfigured ? dictionary.needsAttention
-    : dictionary.backupReady;
+    backupPlan.status === "error" || !isConfigured
+      ? t("needsAttention", { ns: "backup" })
+      : t("backupReady", { ns: "backup" });
   const statusClass =
     backupPlan.status === "error" ? "backup-error"
     : !isConfigured ? "backup-warning"
@@ -91,39 +79,42 @@ export function BackupPanel({
     }
   };
 
+  const intervalUnits: { value: BackupIntervalUnit; label: string }[] = [
+    { value: "hours", label: t("hours", { ns: "backup" }) },
+    { value: "days", label: t("days", { ns: "backup" }) },
+    { value: "weeks", label: t("weeks", { ns: "backup" }) },
+  ];
+
   return (
     <section className="panel">
       {/* Header */}
       <div className="panel__header">
         <div>
-          <h2>{dictionary.backupPlan}</h2>
-          <p>{dictionary.backupStorageHint}</p>
+          <h2>{t("backupPlan", { ns: "backup" })} <span className={`status-pill status-pill--${statusClass}`}>{statusLabel}</span></h2>
+          <p>{t("backupStorageHint", { ns: "backup" })}</p>
         </div>
-        <span className={`status-pill status-pill--${statusClass}`}>
-          {statusLabel}
-        </span>
       </div>
 
       {/* Status strip — visible when configured */}
       {isConfigured && (
         <dl className="backup-status-strip" aria-live="polite">
           <div className="backup-status-strip__cell">
-            <dt>{dictionary.lastBackup}</dt>
+            <dt>{t("lastBackup", { ns: "backup" })}</dt>
             <dd>
               {hasBackedUp ? (
                 <>
                   {formatDate(backupPlan.lastSuccessfulBackup, language)}
-                  {backupPlan.lastFileSize > 0 && `, ${formatFileSize(backupPlan.lastFileSize)}`}
-                  {backupPlan.lastVerified && ", verified"}
+                  {backupPlan.lastFileSize > 0 && `, ${formatFileSize(backupPlan.lastFileSize, language)}`}
+                  {backupPlan.lastVerified && `, ${t("verified", { ns: "backup" })}`}
                 </>
               ) : (
-                <span className="text-muted">No backups yet</span>
+                <span className="text-muted">{t("noBackupsYet", { ns: "backup" })}</span>
               )}
             </dd>
           </div>
           {isOverdue && (
             <div className="backup-status-strip__badge backup-status-strip__badge--warning">
-              Overdue
+              {t("backupOverdue", { ns: "backup" })}
             </div>
           )}
         </dl>
@@ -131,7 +122,9 @@ export function BackupPanel({
 
       {/* Warning banners */}
       {!isConfigured && (
-        <div className="panel-banner panel-banner--warning">{dictionary.backupNotConfigured}</div>
+        <div className="panel-banner panel-banner--warning">
+          {t("backupNotConfigured", { ns: "backup" })}
+        </div>
       )}
       {backupPlan.lastError && (
         <div className="panel-banner panel-banner--error" role="alert">{backupPlan.lastError}</div>
@@ -146,7 +139,9 @@ export function BackupPanel({
           onClick={() => void onBackupNow()}
           type="button"
         >
-          {isBacking ? dictionary.backupNowInProgress : dictionary.backupNow}
+          {isBacking
+            ? t("backupNowInProgress", { ns: "backup" })
+            : t("backupNow", { ns: "backup" })}
         </button>
         {onRestore && (
           <button
@@ -156,7 +151,7 @@ export function BackupPanel({
             onClick={onRestore}
             type="button"
           >
-            Restore from Backup
+            {t("restoreFromBackup", { ns: "backup" })}
           </button>
         )}
       </div>
@@ -165,23 +160,22 @@ export function BackupPanel({
       <div className="form-grid">
         {/* Destination: read-only input + Browse button */}
         <label>
-          <span>{dictionary.targetPath}</span>
+          <span>{t("targetPath", { ns: "backup" })}</span>
           <div className="backup-path-row">
             <input
               className="backup-path-input"
               value={form.targetPath}
-              placeholder="No destination selected"
+              placeholder={t("noDestinationSelected", { ns: "backup" })}
               onChange={(e) => setForm({ ...form, targetPath: e.target.value })}
-              onClick={() => void handleBrowse()}
             />
             <button
               className="button-secondary backup-browse-btn"
               type="button"
               disabled={busy || isBacking}
               onClick={() => void handleBrowse()}
-              aria-label="Choose backup destination folder"
+              aria-label={t("chooseDestination", { ns: "backup" })}
             >
-              Browse
+              {t("browse", { ns: "backup" })}
             </button>
           </div>
         </label>
@@ -189,15 +183,15 @@ export function BackupPanel({
         {/* Cloud detection info */}
         {backupPlan.cloudProvider && (
           <p className="backup-cloud-info">
-            This folder is synced by {backupPlan.cloudProvider}
+            {t("syncedBy", { ns: "backup", provider: backupPlan.cloudProvider })}
           </p>
         )}
 
         {/* Schedule: number + unit + startup checkbox */}
         <label>
-          <span>{dictionary.schedule}</span>
+          <span>{t("schedule", { ns: "backup" })}</span>
           <div className="backup-schedule-row">
-            <span className="backup-schedule-label">Every</span>
+            <span className="backup-schedule-label">{t("every", { ns: "backup" })}</span>
             <input
               type="number"
               min={0}
@@ -206,6 +200,7 @@ export function BackupPanel({
               onChange={(e) =>
                 setForm({ ...form, intervalValue: parseInt(e.target.value, 10) || 0 })
               }
+              onKeyDown={(e) => { if (e.key === "Enter" && !busy && hasChanges) { e.preventDefault(); void onSave(form); } }}
             />
             <select
               className="backup-schedule-unit"
@@ -214,7 +209,7 @@ export function BackupPanel({
                 setForm({ ...form, intervalUnit: e.target.value as BackupIntervalUnit })
               }
             >
-              {INTERVAL_UNITS.map((u) => (
+              {intervalUnits.map((u) => (
                 <option key={u.value} value={u.value}>
                   {u.label}
                 </option>
@@ -228,7 +223,7 @@ export function BackupPanel({
             checked={form.onStartup}
             onChange={(e) => setForm({ ...form, onStartup: e.target.checked })}
           />
-          <span>Also back up when the app starts</span>
+          <span>{t("alsoBackupOnStartup", { ns: "backup" })}</span>
         </label>
       </div>
 
@@ -239,10 +234,12 @@ export function BackupPanel({
           className="button-secondary"
           data-testid="backup-save"
           disabled={busy || !hasChanges}
-          onClick={() => void onSave(form)}
-          type="button"
-        >
-          {busy ? `${dictionary.save}...` : dictionary.save}
+        onClick={() => void onSave(form)}
+        type="button"
+      >
+          {busy
+            ? `${t("save", { ns: "common" })}...`
+            : t("save", { ns: "common" })}
         </button>
       </div>
     </section>

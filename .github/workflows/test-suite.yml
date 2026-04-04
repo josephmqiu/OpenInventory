@@ -20,7 +20,7 @@ jobs:
         run: npm run test && npm run test:backend
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,10 +51,8 @@ jobs:
       - run: npm ci
       - name: Install Playwright browser
         run: npx playwright install chromium
-      - name: Build app
-        run: npm run build
       - name: Run end-to-end tests
-        run: npm run test:e2e:run
+        run: npm run test:e2e
       - name: Upload Playwright traces
         uses: actions/upload-artifact@v4
         if: failure()

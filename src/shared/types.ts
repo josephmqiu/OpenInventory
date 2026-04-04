@@ -83,6 +83,7 @@ export interface LanAccessState {
   urls: string[];
   status: LanAccessStatus;
   statusMessage: string;
+  ipChanged?: boolean;
 }
 
 export interface PublicIssueContext {
@@ -105,6 +106,11 @@ export interface DashboardMetrics {
   lowStockCount: number;
   outOfStockCount: number;
   openAlertCount: number;
+}
+
+export interface QrLabelExportPayload {
+  suggestedFileName: string;
+  pngDataUrl: string;
 }
 
 // ─── Input Types ────────────────────────────────────────────────────────────
@@ -217,6 +223,8 @@ export interface AuditMovementFilters {
   itemSearch?: string;
   performedBy?: string;
   textSearch?: string;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
   page: number;
   pageSize: number;
 }

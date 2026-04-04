@@ -41,7 +41,7 @@ beforeEach(() => {
 afterEach(async () => {
   await run(lanService.shutdown());
   dbService.close();
-  t.cleanup();
+  await t.cleanup();
 });
 
 describe("LanServerService", () => {
@@ -126,7 +126,7 @@ describe("LanServerService", () => {
   it("auto-starts on loadState when previously enabled", async () => {
     // Enable with a specific port to avoid port-0-in-DB issue
     await run(lanService.loadState());
-    await run(lanService.updateAccess({ enabled: true, port: 19876 }));
+    await run(lanService.updateAccess({ enabled: true, port: 51876 }));
     await run(lanService.shutdown());
 
     // Recreate service (simulating app restart) — use same DB
@@ -134,7 +134,7 @@ describe("LanServerService", () => {
     const freshService = makeLanServerService(freshDbService, "");
 
     const state = await run(freshService.loadState());
-    expect(state.statusMessage).toBe("LAN server is running.");
+    expect(state.statusMessage).toBe("lanServerRunning");
     expect(state.status).toBe("running");
     expect(state.enabled).toBe(true);
     expect(state.urls.length).toBeGreaterThan(0);

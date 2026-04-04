@@ -1,11 +1,10 @@
 import type { ComponentProps } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dictionaries } from "../../app/i18n";
-import type { InventoryItem, PersonnelMember } from "../../domain/models";
+import type { InventoryItem, Language, PersonnelMember } from "../../domain/models";
+import { renderWithI18n } from "../../test/renderWithI18n";
 import { ActionPanel } from "./ActionPanel";
 
-const dictionary = dictionaries.en;
 const item: InventoryItem = {
   id: "item-1",
   sku: "SKU-001",
@@ -27,8 +26,7 @@ function renderPanel(overrides: Partial<ComponentProps<typeof ActionPanel>> = {}
     action: "createItem",
     activeItemId: "",
     busy: false,
-    dictionary,
-    language: "en",
+    language: "en" as Language,
     items: [item],
     personnel,
     onClose: vi.fn(),
@@ -41,7 +39,7 @@ function renderPanel(overrides: Partial<ComponentProps<typeof ActionPanel>> = {}
     ...overrides,
   };
 
-  render(<ActionPanel {...props} />);
+  renderWithI18n(<ActionPanel {...props} />, props.language);
   return props;
 }
 
@@ -58,10 +56,10 @@ describe("ActionPanel", () => {
 
     const nameInput = screen.getByRole("textbox", { name: /Item Name/ }) as HTMLInputElement;
     fireEvent.change(nameInput, { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: dictionary.modifyItem }));
+    fireEvent.click(screen.getByRole("button", { name: "Modify Item" }));
 
     await waitFor(() => {
-      expect(props.onError).toHaveBeenCalledWith(dictionary.formValidationError);
+      expect(props.onError).toHaveBeenCalledWith("Check the required fields and quantity values.");
     });
     expect(props.onUpdateItem).not.toHaveBeenCalled();
   });
@@ -77,8 +75,8 @@ describe("ActionPanel", () => {
     });
 
     fireEvent.change(screen.getByRole("spinbutton", { name: /Quantity/ }), { target: { value: "7" } });
-    fireEvent.change(screen.getByRole("textbox", { name: dictionary.reason }), { target: { value: "Cycle count" } });
-    fireEvent.click(screen.getByRole("button", { name: dictionary.save }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Reason" }), { target: { value: "Cycle count" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(props.onReceiveStock).toHaveBeenCalledWith({
@@ -96,7 +94,7 @@ describe("ActionPanel", () => {
       activeItemId: item.id,
     });
 
-    fireEvent.click(screen.getByRole("button", { name: dictionary.removeItem }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Item" }));
 
     await waitFor(() => {
       expect(props.onRemoveItem).toHaveBeenCalledWith(item.id);

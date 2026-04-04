@@ -25,7 +25,7 @@ describe("configureSqlitePragmas", () => {
     configureSqlitePragmas(t.db);
 
     const result = t.db.pragma("busy_timeout", { simple: true });
-    expect(result).toBe(5000);
+    expect(result).toBe(15000);
   });
 
   it("sets synchronous to FULL (2)", () => {

@@ -1,18 +1,15 @@
-import { test, expect } from "./fixtures/electron-app";
+import { isolatedTest as test, expect } from "./fixtures/electron-app";
 import { navigateTo } from "./fixtures/helpers";
 
 const topbarTitle = (page: import("@playwright/test").Page) =>
   page.locator(".topbar h2");
 
 test.describe.serial("smoke tests (empty seed)", () => {
-  test("all 7 sidebar nav sections render", async ({ page }) => {
+  test("all 4 sidebar nav sections render", async ({ page }) => {
     const sections: Array<{ id: string; title: string }> = [
       { id: "dashboard", title: "Dashboard" },
       { id: "inventory", title: "Inventory" },
-      { id: "itemManagement", title: "Item Management" },
-      { id: "alerts", title: "Alerts" },
-      { id: "audit", title: "Audit" },
-      { id: "personnel", title: "Personnel" },
+      { id: "activity", title: "Activity" },
       { id: "settings", title: "Settings" },
     ];
 
@@ -42,18 +39,22 @@ test.describe.serial("smoke tests (empty seed)", () => {
 
   test("empty personnel section shows no cards", async ({ page }) => {
 
-    await navigateTo(page, "personnel");
-    await expect(topbarTitle(page)).toHaveText("Personnel");
+    await navigateTo(page, "settings");
+    await expect(topbarTitle(page)).toHaveText("Settings");
 
-    await expect(page.locator(".personnel-card")).toHaveCount(0);
+    // Click the Personnel sub-tab inside Settings
+    await page.getByRole("tab", { name: "Personnel" }).click();
+
+    await expect(page.locator(".empty-state")).toBeVisible();
   });
 
-  test("empty alerts section shows no alert cards", async ({ page }) => {
+  test("empty alerts section shows empty state", async ({ page }) => {
 
-    await navigateTo(page, "alerts");
-    await expect(topbarTitle(page)).toHaveText("Alerts");
+    await navigateTo(page, "dashboard");
+    await expect(topbarTitle(page)).toHaveText("Dashboard");
 
-    await expect(page.locator(".alert-card")).toHaveCount(0);
+    // Dashboard shows empty states for movements and alerts when no data exists
+    await expect(page.locator(".empty-state").first()).toBeVisible();
   });
 
   test("no quick-issue CSS classes in desktop DOM", async ({ page }) => {

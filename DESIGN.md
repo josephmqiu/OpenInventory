@@ -30,8 +30,7 @@
   - Section heading: 13-15px (IBM Plex Sans 600)
   - Body: 13-14px (IBM Plex Sans 400)
   - Table data: 12-13px (IBM Plex Mono 400)
-  - Labels: 10-11px (IBM Plex Sans 600, uppercase, letter-spacing 0.08em)
-  - Micro: 9-10px (labels in instrument strip, column headers)
+  - Labels / column headers: 11px minimum (IBM Plex Sans 600, uppercase, letter-spacing 0.08em)
 - **Rules:**
   - ALL-CAPS with letter-spacing for labels, column headers, section labels
   - font-variant-numeric: tabular-nums on all numeric data

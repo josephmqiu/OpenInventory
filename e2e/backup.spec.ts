@@ -1,33 +1,25 @@
 import { test, expect } from "./fixtures/electron-app";
-import { navigateTo, dismissBanner } from "./fixtures/helpers";
+import { navigateTo, dismissBanner, expectError } from "./fixtures/helpers";
+import {
+  readRestoreFromBackupCalls,
+  restoreElectronTestStubs,
+  stubRestoreFromBackupSuccess,
+  stubRestoreSelection,
+  stubValidateBackupResult,
+} from "./fixtures/dialogs";
 import fs from "fs";
 import os from "os";
 import path from "path";
 
 let backupDir = "";
 
-/**
- * Stub the native directory-picker dialog at the **main process** level.
- * contextBridge freezes the electronAPI object exposed to the renderer,
- * so renderer-side stubs silently fail. Instead we remove and re-register
- * the `select-restore-source` ipcMain handler.
- *
- * Only stubs the file selection dialog — the real `restore-from-backup`
- * handler is left intact so actual restores (app.relaunch + exit) work.
- */
-async function stubRestoreSelection(
-  app: import("@playwright/test").ElectronApplication,
-  selectedPath: string,
-): Promise<void> {
-  await app.evaluate(async ({ ipcMain }, nextPath) => {
-    ipcMain.removeHandler("select-restore-source");
-    ipcMain.handle("select-restore-source", async () => ({ ok: true, data: nextPath }));
-  }, selectedPath);
-}
-
 // inventory-basics seed: 3 items, 2 personnel (Alice, Bob)
 
 test.describe.serial("backup and restore", () => {
+  test.afterEach(async ({ app }) => {
+    await restoreElectronTestStubs(app);
+  });
+
   test.afterAll(() => {
     if (backupDir) {
       fs.rmSync(backupDir, { force: true, recursive: true });
@@ -36,6 +28,7 @@ test.describe.serial("backup and restore", () => {
 
   test("shows status-first layout with not-configured banner", async ({ page }) => {
     await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Backup" }).click();
     const backupPanel = page.locator(".panel").filter({ has: page.locator("h2:has-text('Backup Plan')") });
 
     // Status pill should show "Needs attention" (not configured)
@@ -52,6 +45,7 @@ test.describe.serial("backup and restore", () => {
     backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-e2e-backup-"));
 
     await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Backup" }).click();
     const backupPanel = page.locator(".panel").filter({ has: page.locator("h2:has-text('Backup Plan')") });
 
     // In real use, Browse button opens a native dialog. In E2E, we type the path directly.
@@ -107,6 +101,7 @@ test.describe.serial("backup and restore", () => {
   test("status strip shows last backup info after successful backup", async ({ page }) => {
     await dismissBanner(page);
     await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Backup" }).click();
 
     const statusStrip = page.locator(".backup-status-strip");
     await expect(statusStrip).toBeVisible({ timeout: 10_000 });
@@ -122,17 +117,12 @@ test.describe.serial("backup and restore", () => {
     const dbFile = path.join(backupDir, "OpenInventory-Backup", "database.db");
     const mtimeBefore = fs.statSync(dbFile).mtimeMs;
 
-    // Small delay to ensure mtime changes
-    await page.waitForTimeout(1100);
-
     await page.getByTestId("backup-now").click();
     await expect(page.getByTestId("feedback-banner")).toContainText("Backup completed.", {
       timeout: 15_000,
     });
 
-    // Same file, different mtime
-    const mtimeAfter = fs.statSync(dbFile).mtimeMs;
-    expect(mtimeAfter).toBeGreaterThan(mtimeBefore);
+    await expect.poll(() => fs.statSync(dbFile).mtimeMs).toBeGreaterThan(mtimeBefore);
 
     // Still only one database.db (no timestamped copies)
     const files = fs.readdirSync(path.join(backupDir, "OpenInventory-Backup"));
@@ -143,6 +133,7 @@ test.describe.serial("backup and restore", () => {
   test("restore from settings requires confirmation and can be cancelled safely", async ({ page, app }) => {
     await dismissBanner(page);
     await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Backup" }).click();
 
     await stubRestoreSelection(app, path.join(backupDir, "OpenInventory-Backup"));
 
@@ -154,6 +145,151 @@ test.describe.serial("backup and restore", () => {
     await expect(page.getByTestId("restore-dialog")).toHaveCount(0);
     // App should still be running (cancel did not trigger restore)
     expect(app.process().exitCode).toBeNull();
+  });
+
+  test("relative backup paths are rejected with a validation error", async ({ page }) => {
+    await dismissBanner(page);
+    await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Backup" }).click();
+
+    const backupPanel = page.locator(".panel").filter({
+      has: page.locator("h2:has-text('Backup Plan')"),
+    });
+
+    await backupPanel.locator(".backup-path-input").fill("relative/backups");
+    await page.getByTestId("backup-save").click();
+    await expectError(page, "absolute path");
+    await dismissBanner(page);
+  });
+
+  test("backup paths that cannot be treated as writable directories are rejected", async ({ page }) => {
+    const tempFile = path.join(os.tmpdir(), `oi-e2e-backup-file-${Date.now()}.txt`);
+    fs.writeFileSync(tempFile, "not-a-directory");
+
+    try {
+      await dismissBanner(page);
+      await navigateTo(page, "settings");
+      await page.getByRole("tab", { name: "Backup" }).click();
+
+      const backupPanel = page.locator(".panel").filter({
+        has: page.locator("h2:has-text('Backup Plan')"),
+      });
+
+      await backupPanel.locator(".backup-path-input").fill(tempFile);
+      await page.getByTestId("backup-save").click();
+      await expectError(page, /write/i);
+      await dismissBanner(page);
+    } finally {
+      fs.rmSync(tempFile, { force: true });
+    }
+  });
+
+  test("invalid restore sources surface an actionable error", async ({ page, app }) => {
+    const invalidDir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-e2e-invalid-restore-"));
+
+    try {
+      await dismissBanner(page);
+      await navigateTo(page, "settings");
+      await page.getByRole("tab", { name: "Backup" }).click();
+
+      await stubRestoreSelection(app, invalidDir);
+      await page.getByTestId("backup-restore").click();
+
+      await expectError(page, "No database.db found");
+    } finally {
+      fs.rmSync(invalidDir, { recursive: true, force: true });
+    }
+  });
+
+  test("restore comparison failure surfaces an error without opening the dialog", async ({ page, app }) => {
+    await dismissBanner(page);
+    await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Backup" }).click();
+
+    await stubRestoreSelection(app, path.join(backupDir, "OpenInventory-Backup"));
+    await stubValidateBackupResult(app, {
+      validation: { valid: true },
+    });
+
+    await page.getByTestId("backup-restore").click();
+    await expect(page.getByTestId("restore-dialog")).toHaveCount(0);
+    await expectError(page, "Unable to compare the selected backup");
+    await dismissBanner(page);
+  });
+
+  test("confirming restore uses the selected backup path", async ({ page, app }) => {
+    await dismissBanner(page);
+    await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Backup" }).click();
+
+    await stubRestoreSelection(app, path.join(backupDir, "OpenInventory-Backup"));
+    await stubValidateBackupResult(app, {
+      validation: { valid: true },
+      comparison: {
+        backup: {
+          createdAt: new Date().toISOString(),
+          items: 3,
+          movements: 0,
+          personnel: 2,
+          schemaVersion: 0,
+          appVersion: "test",
+        },
+        current: {
+          lastActivity: new Date(Date.now() - 60_000).toISOString(),
+          items: 3,
+          movements: 0,
+          personnel: 2,
+        },
+        backupIsNewer: true,
+      },
+    });
+    await stubRestoreFromBackupSuccess(app);
+
+    await page.getByTestId("backup-restore").click();
+    await expect(page.getByTestId("restore-dialog")).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("restore-dialog-confirm").click();
+
+    await expect.poll(() => readRestoreFromBackupCalls(app)).toContain(
+      path.join(backupDir, "OpenInventory-Backup"),
+    );
+    await expect(page.getByTestId("restore-dialog")).toHaveCount(0);
+  });
+
+  test("saves backup schedule settings", async ({ page }) => {
+    await dismissBanner(page);
+    await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Backup" }).click();
+    const backupPanel = page.locator(".panel").filter({ has: page.locator("h2:has-text('Backup Plan')") });
+
+    await backupPanel.locator(".backup-path-input").fill(backupDir);
+
+    // Change interval to 4 hours
+    const scheduleNumber = backupPanel.locator(".backup-schedule-number");
+    await scheduleNumber.fill("4");
+
+    // Toggle on-startup checkbox
+    const startupCheckbox = backupPanel.locator(".backup-startup-check input[type='checkbox']");
+    const wasChecked = await startupCheckbox.isChecked();
+    if (wasChecked) {
+      await startupCheckbox.uncheck();
+    }
+    await startupCheckbox.check();
+
+    await page.getByTestId("backup-save").click();
+    await expect(page.getByTestId("feedback-banner")).toContainText("Backup settings updated.", {
+      timeout: 10_000,
+    });
+    await dismissBanner(page);
+
+    // Navigate away and back to verify persistence
+    await navigateTo(page, "inventory");
+    await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Backup" }).click();
+
+    // Verify saved values persisted
+    const panel = page.locator(".panel").filter({ has: page.locator("h2:has-text('Backup Plan')") });
+    await expect(panel.locator(".backup-schedule-number")).toHaveValue("4");
+    await expect(panel.locator(".backup-startup-check input[type='checkbox']")).toBeChecked();
   });
 
 });

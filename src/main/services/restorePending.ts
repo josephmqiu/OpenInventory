@@ -41,8 +41,9 @@ export function applyRestorePending(
       backupDir: pending.backupDir,
       restoredAt: pending.restoredAt,
     };
-  } catch {
-    // Corrupt pending file — clean up and continue
+  } catch (error) {
+    // Corrupt pending file — log warning, clean up, and continue
+    console.error("[Restore] Failed to apply .restore-pending.json — preserved settings (backup path, LAN config, language) may have been lost:", error);
     try { fs.unlinkSync(pendingPath); } catch { /* ignore */ }
     return { restored: false };
   }

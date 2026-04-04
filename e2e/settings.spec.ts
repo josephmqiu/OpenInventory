@@ -6,6 +6,7 @@ import { navigateTo, expectSuccess, dismissBanner } from "./fixtures/helpers";
 test.describe.serial("settings", () => {
   test("backup panel shows status-first layout", async ({ page }) => {
     await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Backup" }).click();
     const backupPanel = page.locator(".panel").filter({ has: page.locator("h2:has-text('Backup Plan')") });
 
     // Panel header with status pill
@@ -23,22 +24,41 @@ test.describe.serial("settings", () => {
     await expect(backupPanel.locator(".backup-startup-check input[type='checkbox']")).toBeVisible();
   });
 
-  test("remove a personnel member", async ({ page }) => {
+  test("add a personnel member", async ({ page }) => {
     await dismissBanner(page);
-    await navigateTo(page, "personnel");
+    await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Personnel" }).click();
 
-    // Verify Alice is present
-    await expect(page.locator(".personnel-card strong:has-text('Alice')")).toBeVisible({ timeout: 10_000 });
-
-    // Click remove button for Alice
-    await page.getByTestId("personnel-remove-Alice").click();
-
+    await page.locator("#personnel-name-input").fill("Charlie");
+    await page.getByRole("button", { name: "Add Personnel" }).click();
     await expectSuccess(page);
+    await expect(page.locator(".cell-title:has-text('Charlie')")).toBeVisible();
+  });
 
-    // Verify Alice is gone
-    await expect(page.locator(".personnel-card strong:has-text('Alice')")).toHaveCount(0);
+  test("removing all personnel blocks stock actions until settings are revisited", async ({ page }) => {
+    await dismissBanner(page);
+    await navigateTo(page, "settings");
+    await page.getByRole("tab", { name: "Personnel" }).click();
 
-    // Bob should still be there
-    await expect(page.locator(".personnel-card strong:has-text('Bob')")).toBeVisible();
+    for (const name of ["Alice", "Bob", "Charlie"]) {
+      const removeButton = page.getByTestId(`personnel-remove-${name}`);
+      await expect(removeButton).toBeVisible();
+      await removeButton.click();
+      await page.getByTestId(`personnel-confirm-${name}`).click();
+      await expectSuccess(page);
+    }
+
+    await expect(page.locator(".empty-state")).toContainText("No personnel records yet.");
+
+    await navigateTo(page, "inventory");
+    await page.locator(".panel__actions").getByRole("button", { name: "Receive Stock" }).click();
+    await expect(page.locator(".action-panel")).toContainText(
+      "Add at least one personnel record before receiving or issuing stock.",
+    );
+    await expect(page.getByTestId("action-submit")).toBeDisabled();
+
+    await page.getByRole("button", { name: /Go to Settings/i }).click();
+    await expect(page.locator(".topbar h2")).toHaveText("Settings");
+    await expect(page.getByRole("tab", { name: "Personnel" })).toHaveClass(/filter-tab--active/);
   });
 });

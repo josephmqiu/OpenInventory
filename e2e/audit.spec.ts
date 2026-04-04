@@ -1,128 +1,162 @@
-import { test, expect } from "./fixtures/electron-app";
+import { isolatedTest as test, expect } from "./fixtures/electron-app";
 import { navigateTo } from "./fixtures/helpers";
+import { installRendererDownloadCapture, readCapturedRendererDownload } from "./fixtures/downloads";
 
-test.describe.serial("audit features", () => {
+test.describe("audit features", () => {
+  test.beforeEach(async ({ page }) => {
+    await navigateTo(page, "activity");
+    await expect(page.getByTestId("audit-tab-log")).toHaveClass(/filter-tab--active/);
+  });
+
   test("navigates to audit and shows activity log", async ({ page }) => {
-    await navigateTo(page, "audit");
-
-    // Activity Log tab should be active by default
-    const logTab = page.getByTestId("audit-tab-log");
-    await expect(logTab).toHaveClass(/audit-tab--active/);
-
-    // Table should be visible with data rows
-    const table = page.locator(".audit-table table");
-    await expect(table).toBeVisible();
-
-    const rows = table.locator("tbody tr");
-    await expect(rows.nth(9)).toBeVisible();
+    const table = page.locator("table.audit-table");
+    await expect(table).toBeVisible({ timeout: 15_000 });
+    await expect(table.locator("tbody tr").nth(9)).toBeVisible();
   });
 
   test("activity log has correct columns", async ({ page }) => {
-    const table = page.locator(".audit-table table");
-    const headers = table.locator("thead th");
-
-    await expect(headers.nth(0)).toHaveText("Date");
-    await expect(headers.nth(1)).toHaveText("Item Name");
-    await expect(headers.nth(2)).toHaveText("Type");
-    await expect(headers.nth(3)).toHaveText("Quantity");
-
-    // Item names are clickable links
-    const itemLinks = table.locator("tbody .cell-link");
-    await expect(itemLinks.first()).toBeVisible();
+    const headers = page.locator("table.audit-table thead th");
+    await expect(headers.nth(0)).toContainText("Date");
+    await expect(headers.nth(1)).toContainText("Item Name");
+    await expect(headers.nth(2)).toContainText("Type");
+    await expect(headers.nth(3)).toContainText("Quantity");
+    await expect(page.locator("table.audit-table tbody .cell-link").first()).toBeVisible();
   });
 
   test("date filter changes displayed results", async ({ page }) => {
-    // Count rows before applying the "Today" preset
-    const table = page.locator(".audit-table table");
+    const table = page.locator("table.audit-table");
     const rowsBefore = await table.locator("tbody tr").count();
 
-    // Click "Today" preset — this calls applyPreset() which fires onFiltersChange immediately
-    const todayBtn = page.locator(".audit-date-presets button:has-text('Today')");
-    await todayBtn.click();
-
-    // Wait for the table to re-render; row count should differ from the 7-day default
-    // because movements span 30 days, so "Today" shows only today's subset
+    await page.locator(".audit-date-presets button:has-text('Today')").click();
     await expect(async () => {
       const rowsAfter = await table.locator("tbody tr").count();
       expect(rowsAfter).not.toEqual(rowsBefore);
     }).toPass();
 
-    // Clear filters to reset back to defaults
     await page.getByTestId("audit-filter-clear").click();
     await expect(table).toBeVisible();
   });
 
-  test("switches to Activity Summary tab", async ({ page }) => {
-    await page.getByTestId("audit-tab-summary").click();
+  test("switches between activity summary tabs", async ({ page }) => {
+    await page.getByTestId("audit-tab-personnel").click();
+    await expect(page.getByTestId("audit-tab-personnel")).toHaveClass(/filter-tab--active/);
+    await expect(page.locator("table")).toBeVisible();
 
-    // Active tab should change
-    const summaryTab = page.getByTestId("audit-tab-summary");
-    await expect(summaryTab).toHaveClass(/audit-tab--active/);
+    await page.getByTestId("audit-tab-items").click();
+    await expect(page.getByTestId("audit-tab-items")).toHaveClass(/filter-tab--active/);
+    await expect(page.locator("table")).toBeVisible();
 
-    // All three summary sections should be visible
-    await expect(page.locator(".audit-summary-section h3:has-text('By Personnel')")).toBeVisible();
-    await expect(page.locator(".audit-summary-section h3:has-text('By Item')")).toBeVisible();
-    await expect(page.locator(".audit-summary-section h3:has-text('Alert Frequency')")).toBeVisible();
+    await page.getByTestId("audit-tab-alerts").click();
+    await expect(page.getByTestId("audit-tab-alerts")).toHaveClass(/filter-tab--active/);
+    await expect(page.locator("table")).toBeVisible();
   });
 
   test("drill-down shows item balance sheet", async ({ page }) => {
-    // Click an item name in the By Item summary table
-    const byItemSection = page.locator(".audit-summary-section:has(h3:has-text('By Item'))");
-    const itemLink = byItemSection.locator(".cell-link").first();
+    await page.getByTestId("audit-tab-items").click();
+
+    const itemLink = page.locator(".cell-link").first();
     const itemName = await itemLink.textContent();
     await itemLink.click();
 
-    // Breadcrumb should appear with the item name
-    const breadcrumb = page.locator(".audit-breadcrumb");
-    await expect(breadcrumb).toBeVisible();
-    await expect(breadcrumb).toContainText(itemName!);
-
-    // "Back To List" button should be visible
-    await expect(page.locator("button:has-text('Back To List')")).toBeVisible();
-
-    // Drill-down table should have a "Balance" column header
+    await expect(page.locator(".audit-breadcrumb")).toContainText(itemName ?? "");
+    await expect(page.getByRole("button", { name: "Back To List" })).toBeVisible();
     await expect(page.locator("table thead th:has-text('Balance')")).toBeVisible();
 
-    // Return to the summary view
-    await page.locator("button:has-text('Back To List')").click();
-    await expect(page.locator(".audit-summary-section h3:has-text('By Item')")).toBeVisible();
+    await page.getByRole("button", { name: "Back To List" }).click();
+    await expect(page.locator("table")).toBeVisible();
   });
 
   test("pagination shows page 2", async ({ page }) => {
-    // Switch back to the Activity Log tab
-    await page.getByTestId("audit-tab-log").click();
-    await expect(page.locator(".audit-table table")).toBeVisible();
+    await page.locator(".audit-date-presets button:has-text('Last 30 Days')").click();
 
-    // Use "Last 30 Days" preset so all 55 movements are in range (pageSize=50 means 2 pages)
-    const last30Btn = page.locator(".audit-date-presets button:has-text('Last 30 Days')");
-    await last30Btn.click();
-
-    // Pagination element should be visible with page info
     const pagination = page.locator(".audit-pagination");
-    await expect(pagination).toBeVisible();
     await expect(pagination).toContainText("Page 1");
-
-    // Click "Next" to go to page 2
-    const nextBtn = pagination.locator("button:has-text('Next')");
-    await nextBtn.click();
-
-    // Should now show page 2
+    await pagination.locator("button:has-text('Next')").click();
     await expect(pagination).toContainText("Page 2");
-
-    // Table should still have rows on page 2
-    const rowsPage2 = page.locator(".audit-table table tbody tr");
-    await expect(rowsPage2.first()).toBeVisible();
+    await expect(page.locator("table.audit-table tbody tr").first()).toBeVisible();
   });
 
-  test("CSV export button is visible and clickable", async ({ page }) => {
-    // The Export CSV button lives inside .audit-pagination__controls
+  test("CSV export produces a downloadable CSV payload with audit rows", async ({ page }) => {
+    await installRendererDownloadCapture(page);
+
     const exportBtn = page.locator(".audit-pagination button:has-text('Export CSV')");
     await expect(exportBtn).toBeVisible();
-
-    // Click to verify it does not error (actual file download cannot be asserted in Electron)
     await exportBtn.click();
+    await expect.poll(() => readCapturedRendererDownload(page)).not.toBeNull();
 
-    // The table should remain visible after export (no crash or navigation)
-    await expect(page.locator(".audit-table table")).toBeVisible();
+    const capture = await readCapturedRendererDownload(page);
+    expect(capture?.download).toMatch(/^audit-export-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(capture?.text).toContain('"Date","Item Name","SKU"');
+    expect(capture?.text).toContain('"Bolts M6"');
+  });
+
+  test("filters by movement type", async ({ page }) => {
+    const table = page.locator("table.audit-table");
+    await page.getByTestId("audit-filter-clear").click();
+    await page.locator(".audit-filter-bar select").first().selectOption("issue");
+    await page.getByTestId("audit-filter-apply").click();
+
+    await expect(table.locator("tbody tr").first()).toBeVisible();
+    await expect(table.locator("tbody td:nth-child(3)").first()).toContainText(/issue/i);
+  });
+
+  test("text search input accepts input and apply button works", async ({ page }) => {
+    const table = page.locator("table.audit-table");
+    const textSearchInput = page.getByRole("textbox", { name: "Item Name or SKU" });
+    await textSearchInput.fill("Bolts");
+    await expect(textSearchInput).toHaveValue("Bolts");
+
+    await page.getByTestId("audit-filter-apply").click();
+    await expect(table).toBeVisible();
+  });
+
+  test("combined filters can be applied and then cleared back to the default range", async ({ page }) => {
+    const table = page.locator("table.audit-table");
+    await page.getByTestId("audit-filter-clear").click();
+
+    await page.getByRole("textbox", { name: "Item Name or SKU" }).fill("Bolts");
+    await page.locator(".audit-filter-bar select").first().selectOption("issue");
+    await page.getByTestId("audit-filter-apply").click();
+
+    await expect(table.locator("tbody tr").first()).toContainText("Bolts");
+    await expect(table.locator("tbody td:nth-child(3)").first()).toContainText(/issue/i);
+
+    await page.getByTestId("audit-filter-clear").click();
+    await expect(page.getByRole("textbox", { name: "Item Name or SKU" })).toHaveValue("");
+    await expect(table.locator("tbody tr").first()).toBeVisible();
+  });
+
+  test("non-matching filters show the filtered empty state", async ({ page }) => {
+    await page.getByRole("textbox", { name: "Item Name or SKU" }).fill("definitely-not-a-real-item");
+    await page.getByTestId("audit-filter-apply").click();
+    await expect(page.locator(".empty-state")).toContainText("No movements match the current filters");
+  });
+
+  test("applies preset date range", async ({ page }) => {
+    const dateFromInput = page.locator(".audit-date-range input[type='date']").first();
+    const dateToInput = page.locator(".audit-date-range input[type='date']").last();
+    const dateBefore = await dateFromInput.inputValue();
+
+    const thisWeekBtn = page.locator(".audit-date-presets button:has-text('This Week')");
+    await thisWeekBtn.click();
+
+    await expect(async () => {
+      const dateAfter = await dateFromInput.inputValue();
+      expect(dateAfter).not.toEqual(dateBefore);
+    }).toPass();
+
+    const today = new Date().toISOString().slice(0, 10);
+    await expect(dateToInput).toHaveValue(today);
+    await expect(thisWeekBtn).toHaveClass(/audit-preset--active/);
+  });
+});
+
+test.describe("audit resilience", () => {
+  test.use({ seedScenario: "empty" });
+
+  test("empty audit history shows the first-run empty state", async ({ page }) => {
+    await navigateTo(page, "activity");
+    await expect(page.locator(".empty-state")).toContainText("No movements recorded yet");
+    await expect(page.locator(".empty-state")).toContainText("Receive or issue inventory to see activity here");
   });
 });

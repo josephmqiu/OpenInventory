@@ -31,6 +31,7 @@ export type {
   PersonnelActivityRow,
   PersonnelMember,
   PublicIssueContext,
+  QrLabelExportPayload,
   RestoreComparisonData,
   StockMutationInput,
   StockStatus,

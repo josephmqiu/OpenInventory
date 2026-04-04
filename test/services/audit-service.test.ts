@@ -20,9 +20,9 @@ beforeEach(() => {
   db = makeDatabaseService(testDb.dbPath);
 });
 
-afterEach(() => {
+afterEach(async () => {
   db.close();
-  testDb.cleanup();
+  await testDb.cleanup();
 });
 
 const run = <A>(effect: Effect.Effect<A, unknown>): A => Effect.runSync(effect);
@@ -328,5 +328,64 @@ describe("migration v3", () => {
     expect(names).toContain("idx_inventory_movements_type");
     expect(names).toContain("idx_inventory_movements_performed_by");
     expect(names).toContain("idx_inventory_movements_item_date");
+  });
+
+  it("sortBy date asc returns oldest first", () => {
+    const itemId = seedItem(testDb.db);
+    seedMovement(testDb.db, itemId, { performedAt: "2026-03-10 10:00:00" });
+    seedMovement(testDb.db, itemId, { performedAt: "2026-03-15 10:00:00" });
+    seedMovement(testDb.db, itemId, { performedAt: "2026-03-01 10:00:00" });
+
+    const result = run(db.getAuditMovements({ sortBy: "date", sortDir: "asc", page: 1, pageSize: 50 }));
+    expect(result.rows).toHaveLength(3);
+    expect(result.rows[0].performedAt).toBe("2026-03-01 10:00:00");
+    expect(result.rows[2].performedAt).toBe("2026-03-15 10:00:00");
+  });
+
+  it("sortBy quantity orders by quantity", () => {
+    const itemId = seedItem(testDb.db);
+    seedMovement(testDb.db, itemId, { quantity: 100 });
+    seedMovement(testDb.db, itemId, { quantity: 10 });
+    seedMovement(testDb.db, itemId, { quantity: 50 });
+
+    const asc = run(db.getAuditMovements({ sortBy: "quantity", sortDir: "asc", page: 1, pageSize: 50 }));
+    expect(asc.rows[0].quantity).toBe(10);
+    expect(asc.rows[2].quantity).toBe(100);
+
+    const desc = run(db.getAuditMovements({ sortBy: "quantity", sortDir: "desc", page: 1, pageSize: 50 }));
+    expect(desc.rows[0].quantity).toBe(100);
+    expect(desc.rows[2].quantity).toBe(10);
+  });
+
+  it("invalid sortBy falls back to default order (newest first)", () => {
+    const itemId = seedItem(testDb.db);
+    seedMovement(testDb.db, itemId, { performedAt: "2026-03-01 10:00:00" });
+    seedMovement(testDb.db, itemId, { performedAt: "2026-03-15 10:00:00" });
+
+    const result = run(db.getAuditMovements({ sortBy: "nonexistent", sortDir: "asc", page: 1, pageSize: 50 }));
+    expect(result.rows).toHaveLength(2);
+    // Default is newest first
+    expect(result.rows[0].performedAt).toBe("2026-03-15 10:00:00");
+  });
+
+  it("sort combined with filters and pagination", () => {
+    const itemId = seedItem(testDb.db);
+    for (let i = 0; i < 5; i++) {
+      seedMovement(testDb.db, itemId, { type: "receive", quantity: (i + 1) * 10 });
+    }
+    seedMovement(testDb.db, itemId, { type: "issue", quantity: 5 });
+
+    const result = run(db.getAuditMovements({
+      movementType: "receive",
+      sortBy: "quantity",
+      sortDir: "asc",
+      page: 1,
+      pageSize: 3,
+    }));
+    expect(result.rows).toHaveLength(3);
+    expect(result.total).toBe(5);
+    expect(result.rows[0].quantity).toBe(10);
+    expect(result.rows[1].quantity).toBe(20);
+    expect(result.rows[2].quantity).toBe(30);
   });
 });

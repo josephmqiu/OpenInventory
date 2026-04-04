@@ -24,7 +24,11 @@ export const QrCodeServiceLive: Layer.Layer<QrCodeService> = Layer.succeed(
             margin: 4,
             scale: 8,
           }),
-        catch: (e) => new DatabaseError({ message: `QR generation failed: ${e}` }),
+        catch: (e) =>
+          new DatabaseError({
+            messageId: "qrGenerationFailed",
+            debugMessage: `QR generation failed: ${e}`,
+          }),
       }),
   },
 );

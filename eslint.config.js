@@ -7,7 +7,7 @@ export default tseslint.config(
     ignores: ["dist", "out"],
   },
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "e2e/**/*.ts", "test/**/*.ts"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: {
       ecmaVersion: "latest",

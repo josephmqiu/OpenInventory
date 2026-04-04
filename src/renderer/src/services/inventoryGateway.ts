@@ -9,6 +9,7 @@ import type {
   InventoryMovement,
   Language,
   LanAccessState,
+  QrLabelExportPayload,
   UpdateBackupPlanInput,
   UpdateStatus,
   StockMutationInput,
@@ -20,15 +21,36 @@ import { detectRuntime } from "../app/runtime";
 const LANGUAGE_STORAGE_KEY = "inventory-monitor.language";
 const LAN_ACCESS_KEY_STORAGE_KEY = "inventory-monitor.lan-access-key";
 
+type TransportMessageValues = Record<string, string | number>;
+
+interface GatewayErrorInit {
+  message?: string;
+  status?: number;
+  errorTag?: string;
+  messageId?: string;
+  messageValues?: TransportMessageValues;
+  debugMessage?: string;
+}
+
 export class GatewayError extends Error {
   status?: number;
   errorTag?: string;
+  messageId?: string;
+  messageValues?: TransportMessageValues;
+  debugMessage?: string;
 
-  constructor(message: string, status?: number, errorTag?: string) {
-    super(message);
+  constructor(messageOrInit: string | GatewayErrorInit, status?: number, errorTag?: string) {
+    const init = typeof messageOrInit === "string"
+      ? { message: messageOrInit, status, errorTag }
+      : messageOrInit;
+
+    super(init.debugMessage ?? init.message ?? init.messageId ?? "Gateway error");
     this.name = "GatewayError";
-    this.status = status;
-    this.errorTag = errorTag;
+    this.status = init.status;
+    this.errorTag = init.errorTag;
+    this.messageId = init.messageId;
+    this.messageValues = init.messageValues;
+    this.debugMessage = init.debugMessage;
   }
 }
 
@@ -126,10 +148,28 @@ async function fetchJson<T>(path: string, init?: RequestInit, includeAccessKey =
   if (!response.ok) {
     let message = `Request failed with status ${response.status}.`;
     let errorTag: string | undefined;
+    let messageId: string | undefined;
+    let messageValues: TransportMessageValues | undefined;
+    let debugMessage: string | undefined;
     try {
-      const errorBody = (await response.json()) as { message?: string; _tag?: string };
+      const errorBody = (await response.json()) as {
+        message?: string;
+        _tag?: string;
+        messageId?: string;
+        messageValues?: TransportMessageValues;
+        debugMessage?: string;
+      };
       if (typeof errorBody.message === "string" && errorBody.message.trim()) {
         message = errorBody.message;
+      }
+      if (typeof errorBody.messageId === "string" && errorBody.messageId.trim()) {
+        messageId = errorBody.messageId;
+      }
+      if (errorBody.messageValues && typeof errorBody.messageValues === "object") {
+        messageValues = errorBody.messageValues;
+      }
+      if (typeof errorBody.debugMessage === "string" && errorBody.debugMessage.trim()) {
+        debugMessage = errorBody.debugMessage;
       }
       if (typeof errorBody._tag === "string") {
         errorTag = errorBody._tag;
@@ -137,7 +177,14 @@ async function fetchJson<T>(path: string, init?: RequestInit, includeAccessKey =
     } catch {
       // Ignore JSON parse errors and keep the default message.
     }
-    throw new GatewayError(message, response.status, errorTag);
+    throw new GatewayError({
+      message,
+      status: response.status,
+      errorTag,
+      messageId,
+      messageValues,
+      debugMessage,
+    });
   }
 
   if (response.status === 204) {
@@ -152,13 +199,18 @@ function supportsHttpApi(): boolean {
 }
 
 function unsupportedRuntimeError(action: string): GatewayError {
-  return new GatewayError(`${action} requires the desktop app or LAN HTTP access.`);
+  return new GatewayError({ messageId: "unsupportedRuntime", messageValues: { action }, debugMessage: `${action} requires the desktop app or LAN HTTP access.` });
 }
 
 interface IpcResult<T> {
   ok: boolean;
   data?: T;
-  error?: { _tag: string; message: string };
+  error?: {
+    _tag: string;
+    messageId: string;
+    messageValues?: TransportMessageValues;
+    debugMessage?: string;
+  };
 }
 
 async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -175,11 +227,12 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
       if (result.ok) {
         return result.data as T;
       }
-      throw new GatewayError(
-        result.error?.message ?? "Unknown error",
-        undefined,
-        result.error?._tag,
-      );
+      throw new GatewayError({
+        messageId: result.error?.messageId,
+        messageValues: result.error?.messageValues,
+        debugMessage: result.error?.debugMessage ?? "Unknown error",
+        errorTag: result.error?._tag,
+      });
     }
 
     // Backward compat: if the handler doesn't return an envelope (e.g. auto-update),
@@ -187,7 +240,7 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
     return result as unknown as T;
   } catch (error) {
     if (error instanceof GatewayError) throw error;
-    throw new GatewayError(typeof error === "string" ? error : String(error));
+    throw new GatewayError({ debugMessage: typeof error === "string" ? error : String(error), messageId: "serverError" });
   }
 }
 
@@ -209,21 +262,21 @@ export async function loadAppSnapshot(): Promise<AppSnapshot> {
 
 export async function loadLanAccessState(): Promise<LanAccessState> {
   if (detectRuntime() !== "desktop") {
-    throw new GatewayError("LAN access can only be managed from the desktop app.");
+    throw new GatewayError({ messageId: "lanDesktopOnly", debugMessage: "LAN access can only be managed from the desktop app." });
   }
   return invokeCommand<LanAccessState>("load_lan_access_state");
 }
 
 export async function updateLanAccess(input: UpdateLanAccessInput): Promise<LanAccessState> {
   if (detectRuntime() !== "desktop") {
-    throw new GatewayError("LAN access can only be managed from the desktop app.");
+    throw new GatewayError({ messageId: "lanDesktopOnly", debugMessage: "LAN access can only be managed from the desktop app." });
   }
   return invokeCommand<LanAccessState>("update_lan_access", { input });
 }
 
 export async function regenerateLanAccessKey(): Promise<LanAccessState> {
   if (detectRuntime() !== "desktop") {
-    throw new GatewayError("LAN access can only be managed from the desktop app.");
+    throw new GatewayError({ messageId: "lanDesktopOnly", debugMessage: "LAN access can only be managed from the desktop app." });
   }
   return invokeCommand<LanAccessState>("regenerate_lan_access_key");
 }
@@ -319,6 +372,22 @@ export async function backupNow(): Promise<AppSnapshot> {
 }
 
 // ─── Backup-specific gateway functions (desktop IPC only) ──────────────────
+
+export async function exportQrLabel(label: QrLabelExportPayload): Promise<string | null> {
+  if (detectRuntime() !== "desktop") {
+    throw unsupportedRuntimeError("Exporting QR labels");
+  }
+
+  return invokeCommand<string | null>("export_qr_label", { label });
+}
+
+export async function exportSelectedQrLabels(labels: QrLabelExportPayload[]): Promise<string[] | null> {
+  if (detectRuntime() !== "desktop") {
+    throw unsupportedRuntimeError("Exporting QR labels");
+  }
+
+  return invokeCommand<string[] | null>("export_qr_labels", { labels });
+}
 
 export async function selectBackupDirectory(): Promise<string | null> {
   if (detectRuntime() !== "desktop") return null;
@@ -423,12 +492,14 @@ export async function getAuditMovements(filters: AuditMovementFilters): Promise<
     if (filters.itemSearch) params.set("itemSearch", filters.itemSearch);
     if (filters.performedBy) params.set("performedBy", filters.performedBy);
     if (filters.textSearch) params.set("textSearch", filters.textSearch);
+    if (filters.sortBy) params.set("sortBy", filters.sortBy);
+    if (filters.sortDir) params.set("sortDir", filters.sortDir);
     params.set("page", String(filters.page));
     params.set("pageSize", String(filters.pageSize));
     return fetchJson<AuditPageResult>(`/api/audit/movements?${params}`, { method: "GET" });
   }
   if (detectRuntime() === "desktop") {
-    return invokeCommand<AuditPageResult>("get-audit-movements", { filters });
+    return invokeCommand<AuditPageResult>("get_audit_movements", { filters });
   }
   throw unsupportedRuntimeError("Loading audit data");
 }
@@ -448,7 +519,7 @@ export async function getAuditAnalytics(
     return fetchJson<AuditAnalyticsResult>(`/api/audit/analytics?${params}`, { method: "GET" });
   }
   if (detectRuntime() === "desktop") {
-    return invokeCommand<AuditAnalyticsResult>("get-audit-analytics", { filters });
+    return invokeCommand<AuditAnalyticsResult>("get_audit_analytics", { filters });
   }
   throw unsupportedRuntimeError("Loading audit analytics");
 }

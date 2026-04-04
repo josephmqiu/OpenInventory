@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  DEFAULT_CATEGORIES,
-  UNIT_OPTIONS,
-  localizeCategory,
-  localizeUnit,
-  type Dictionary,
-} from "../../app/i18n";
+import { formatNumber } from "../../app/formatters";
+import { DEFAULT_CATEGORIES, UNIT_OPTIONS, localizeCategory, localizeUnit } from "../../app/i18n";
+import { useTT } from "../hooks/useTT";
 import type {
   ActionKind,
   CreateInventoryItemInput,
@@ -19,9 +15,7 @@ import type {
 interface ActionPanelProps {
   action: ActionKind | null;
   activeItemId: string;
-  preSelectedItemId?: string;
   busy: boolean;
-  dictionary: Dictionary;
   language: Language;
   items: InventoryItem[];
   personnel: PersonnelMember[];
@@ -32,6 +26,7 @@ interface ActionPanelProps {
   onIssueMaterial: (input: StockMutationInput) => Promise<void>;
   onRemoveItem: (itemId: string) => Promise<void>;
   onError: (message: string) => void;
+  onNavigateToPersonnel?: () => void;
 }
 
 const NEW_CATEGORY_VALUE = "__new__";
@@ -50,12 +45,26 @@ function FieldLabel({ label, required, optionalText }: { label: string; required
   );
 }
 
+const ACTION_TITLE_FALLBACKS: Record<Exclude<ActionKind, null>, string> = {
+  createItem: "Create Inventory Item",
+  modifyItem: "Modify Inventory Item",
+  receiveStock: "Receive Stock",
+  issueMaterial: "Issue Material",
+  removeItem: "Remove Inventory Item",
+};
+
+const ACTION_HINT_FALLBACKS: Record<Exclude<ActionKind, null>, string> = {
+  createItem: "Register a new inventory record with on-hand quantity and reorder thresholds.",
+  modifyItem: "Update item master data without changing the on-hand quantity.",
+  receiveStock: "Add materials into inventory and refresh the current quantity immediately.",
+  issueMaterial: "Remove materials from inventory and evaluate low-stock alerts.",
+  removeItem: "Remove an item and its related operational records from the inventory database.",
+};
+
 export function ActionPanel({
   action,
   activeItemId,
-  preSelectedItemId,
   busy,
-  dictionary,
   language,
   items,
   personnel,
@@ -66,7 +75,10 @@ export function ActionPanel({
   onIssueMaterial,
   onRemoveItem,
   onError,
+  onNavigateToPersonnel,
 }: ActionPanelProps) {
+  const tt = useTT();
+
   const [itemForm, setItemForm] = useState<CreateInventoryItemInput>({
     sku: "",
     name: "",
@@ -92,21 +104,12 @@ export function ActionPanel({
     return Array.from(new Set([...DEFAULT_CATEGORIES, ...existing])).sort((left, right) => left.localeCompare(right));
   }, [items]);
 
-  const selectedManagedItem = useMemo(
-    () => items.find((item) => item.id === activeItemId) ?? null,
-    [activeItemId, items],
-  );
-  const selectedStockItem = useMemo(
-    () => items.find((item) => item.id === stockForm.itemId) ?? null,
-    [items, stockForm.itemId],
-  );
-  const selectedRemoveItem = useMemo(
-    () => items.find((item) => item.id === removeItemId) ?? null,
-    [items, removeItemId],
-  );
+  const selectedManagedItem = useMemo(() => items.find((item) => item.id === activeItemId) ?? null, [activeItemId, items]);
+  const selectedStockItem = useMemo(() => items.find((item) => item.id === stockForm.itemId) ?? null, [items, stockForm.itemId]);
+  const selectedRemoveItem = useMemo(() => items.find((item) => item.id === removeItemId) ?? null, [items, removeItemId]);
 
-  // Keep refs to polling-refreshed data so the form-reset effect can read
-  // the latest values without re-triggering on every background snapshot refresh.
+  // Keep refs to polling-refreshed data so the form-reset effect can read the latest values
+  // without re-triggering on every background snapshot refresh.
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const personnelRef = useRef(personnel);
@@ -119,7 +122,7 @@ export function ActionPanel({
     const currentPersonnel = personnelRef.current;
     const currentCategoryOptions = categoryOptionsRef.current;
     const firstCategory = currentCategoryOptions[0] ?? DEFAULT_CATEGORIES[0];
-    const preferredItemId = preSelectedItemId || activeItemId || currentItems[0]?.id || "";
+    const preferredItemId = activeItemId || currentItems[0]?.id || "";
     const preferredPersonnel = currentPersonnel[0]?.name ?? "";
     const managedItem = currentItems.find((item) => item.id === activeItemId) ?? null;
     const initialCategory = managedItem?.category ?? firstCategory;
@@ -152,7 +155,7 @@ export function ActionPanel({
             initialQuantity: 0,
           },
     );
-  }, [action, activeItemId, preSelectedItemId]);
+  }, [action, activeItemId]);
 
   if (!action) {
     return null;
@@ -185,7 +188,7 @@ export function ActionPanel({
           itemForm.reorderQuantity < 0 ||
           (action === "createItem" && itemForm.initialQuantity < 0)
         ) {
-          throw new Error(dictionary.formValidationError);
+          throw new Error(tt("formValidationError", "Check the required fields and quantity values."));
         }
 
         if (action === "createItem") {
@@ -197,7 +200,7 @@ export function ActionPanel({
         }
 
         if (!selectedManagedItem) {
-          throw new Error(dictionary.formValidationError);
+          throw new Error(tt("formValidationError", "Check the required fields and quantity values."));
         }
 
         await onUpdateItem({
@@ -214,16 +217,16 @@ export function ActionPanel({
       }
 
       if (!hasItems) {
-        throw new Error(dictionary.noInventoryItems);
+        throw new Error(tt("noInventoryItems", "No inventory records yet."));
       }
 
       if (requiresPersonnel && !hasPersonnel) {
-        throw new Error(dictionary.personnelRequiredHint);
+        throw new Error(tt("personnelRequiredHint", "Add at least one personnel record before receiving or issuing stock."));
       }
 
       if (action === "receiveStock") {
         if (!stockForm.itemId || stockForm.quantity <= 0 || !stockForm.performedBy) {
-          throw new Error(dictionary.formValidationError);
+          throw new Error(tt("formValidationError", "Check the required fields and quantity values."));
         }
         await onReceiveStock(stockForm);
         return;
@@ -231,18 +234,18 @@ export function ActionPanel({
 
       if (action === "issueMaterial") {
         if (!stockForm.itemId || stockForm.quantity <= 0 || !stockForm.performedBy) {
-          throw new Error(dictionary.formValidationError);
+          throw new Error(tt("formValidationError", "Check the required fields and quantity values."));
         }
         await onIssueMaterial(stockForm);
         return;
       }
 
       if (!removeItemId) {
-        throw new Error(dictionary.formValidationError);
+        throw new Error(tt("formValidationError", "Check the required fields and quantity values."));
       }
       await onRemoveItem(removeItemId);
     } catch (error) {
-      onError(toErrorMessage(error, dictionary.formValidationError));
+      onError(toErrorMessage(error, tt("formValidationError", "Check the required fields and quantity values.")));
     }
   };
 
@@ -253,55 +256,55 @@ export function ActionPanel({
     <section className="panel action-panel">
       <div className="panel__header">
         <div>
-          <h2>{dictionary.actionPanelTitle[action]}</h2>
-          <p>{dictionary.actionPanelHint[action]}</p>
+          <h2>{tt(`actionPanelTitle.${action}`, ACTION_TITLE_FALLBACKS[action])}</h2>
+          <p>{tt(`actionPanelHint.${action}`, ACTION_HINT_FALLBACKS[action])}</p>
         </div>
         <button className="button-secondary" onClick={onClose} type="button">
-          {dictionary.cancel}
+          {tt("cancel", "Cancel")}
         </button>
       </div>
 
       {requiresExistingItems && !hasItems ? (
         <div className="empty-state">
-          <h3>{dictionary.noInventoryItems}</h3>
-          <p>{dictionary.noInventoryItemsHint}</p>
+          <h3>{tt("noInventoryItems", "No inventory records yet.")}</h3>
+          <p>{tt("noInventoryItemsHint", "Create the first item to start tracking on-hand quantity and low-stock rules.")}</p>
         </div>
       ) : (
         <>
           {itemFormMode && (
             <div className="form-grid">
               <label>
-                <FieldLabel label={dictionary.sku} optionalText={dictionary.autoGeneratedIfBlank} />
-                <input placeholder={dictionary.autoGeneratedIfBlank} value={itemForm.sku} onChange={(event) => setItemForm({ ...itemForm, sku: event.target.value })} />
+                <FieldLabel label={tt("sku", "SKU")} optionalText={tt("autoGeneratedIfBlank", "Auto-generated if blank")} />
+                <input disabled={busy} placeholder={tt("autoGeneratedIfBlank", "Auto-generated if blank")} value={itemForm.sku} onChange={(event) => setItemForm({ ...itemForm, sku: event.target.value })} />
               </label>
               <label>
-                <FieldLabel label={dictionary.itemName} required />
-                <input required value={itemForm.name} onChange={(event) => setItemForm({ ...itemForm, name: event.target.value })} />
+                <FieldLabel label={tt("itemName", "Item Name")} required />
+                <input disabled={busy} required value={itemForm.name} onChange={(event) => setItemForm({ ...itemForm, name: event.target.value })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
               </label>
               <label>
-                <FieldLabel label={dictionary.category} required />
-                <select required value={categoryMode} onChange={(event) => handleCategoryChange(event.target.value)}>
+                <FieldLabel label={tt("category", "Category")} required />
+                <select disabled={busy} required value={categoryMode} onChange={(event) => handleCategoryChange(event.target.value)}>
                   {categoryOptions.map((category) => (
                     <option key={category} value={category}>
                       {localizeCategory(category, language)}
                     </option>
                   ))}
-                  <option value={NEW_CATEGORY_VALUE}>{dictionary.addNewCategory}</option>
+                  <option value={NEW_CATEGORY_VALUE}>{tt("addNewCategory", "Add New Category")}</option>
                 </select>
               </label>
               {categoryMode === NEW_CATEGORY_VALUE && (
                 <label>
-                  <FieldLabel label={dictionary.newCategoryName} required />
-                  <input required value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} />
+                  <FieldLabel label={tt("newCategoryName", "New Category Name")} required />
+                  <input disabled={busy} required value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} />
                 </label>
               )}
               <label>
-                <FieldLabel label={dictionary.location} required />
-                <input required value={itemForm.location} onChange={(event) => setItemForm({ ...itemForm, location: event.target.value })} />
+                <FieldLabel label={tt("location", "Location")} required />
+                <input disabled={busy} required value={itemForm.location} onChange={(event) => setItemForm({ ...itemForm, location: event.target.value })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
               </label>
               <label>
-                <FieldLabel label={dictionary.unit} required />
-                <select required value={itemForm.unit} onChange={(event) => setItemForm({ ...itemForm, unit: event.target.value })}>
+                <FieldLabel label={tt("unit", "Unit")} required />
+                <select disabled={busy} required value={itemForm.unit} onChange={(event) => setItemForm({ ...itemForm, unit: event.target.value })}>
                   {UNIT_OPTIONS.map((unit) => (
                     <option key={unit} value={unit}>
                       {localizeUnit(unit, language)}
@@ -310,25 +313,25 @@ export function ActionPanel({
                 </select>
               </label>
               <label>
-                <FieldLabel label={dictionary.supplier} optionalText={dictionary.optionalField} />
-                <input value={itemForm.supplier} onChange={(event) => setItemForm({ ...itemForm, supplier: event.target.value })} />
+                <FieldLabel label={tt("supplier", "Supplier")} optionalText={tt("optionalField", "Optional")} />
+                <input disabled={busy} value={itemForm.supplier} onChange={(event) => setItemForm({ ...itemForm, supplier: event.target.value })} />
               </label>
               <label>
-                <FieldLabel label={dictionary.reorderLevel} required />
-                <input required type="number" min="0" value={itemForm.reorderQuantity} onChange={(event) => setItemForm({ ...itemForm, reorderQuantity: Number(event.target.value) })} />
+                <FieldLabel label={tt("reorderLevel", "Reorder Level")} required />
+                <input disabled={busy} required type="number" min="0" value={itemForm.reorderQuantity} onChange={(event) => setItemForm({ ...itemForm, reorderQuantity: Number(event.target.value) })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
               </label>
               {action === "createItem" ? (
                 <label>
-                  <FieldLabel label={dictionary.initialQuantity} required />
-                  <input required type="number" min="0" value={itemForm.initialQuantity} onChange={(event) => setItemForm({ ...itemForm, initialQuantity: Number(event.target.value) })} />
+                  <FieldLabel label={tt("initialQuantity", "Initial Quantity")} required />
+                  <input disabled={busy} required type="number" min="0" value={itemForm.initialQuantity} onChange={(event) => setItemForm({ ...itemForm, initialQuantity: Number(event.target.value) })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
                 </label>
               ) : selectedManagedItem ? (
                 <div className="form-summary">
                   <strong>{selectedManagedItem.name}</strong>
                   <span>
-                    {dictionary.currentQuantity}: {selectedManagedItem.currentQuantity} {localizeUnit(selectedManagedItem.unit, language)}
+                    {tt("currentQuantity", "Current Quantity")}: {formatNumber(selectedManagedItem.currentQuantity, language)} {localizeUnit(selectedManagedItem.unit, language)}
                   </span>
-                  <span>{dictionary.currentQuantityManagedHint}</span>
+                  <span>{tt("currentQuantityManagedHint", "Current quantity is managed through Receive Stock and Issue Material, not through item editing.")}</span>
                 </div>
               ) : null}
             </div>
@@ -338,13 +341,18 @@ export function ActionPanel({
             <div className="form-grid">
               {!hasPersonnel && (
                 <div className="form-summary form-summary--warning">
-                  <strong>{dictionary.personnel}</strong>
-                  <span>{dictionary.personnelRequiredHint}</span>
+                  <strong>{tt("personnel", "Personnel")}</strong>
+                  <span>{tt("personnelRequiredHint", "Add at least one personnel record before receiving or issuing stock.")}</span>
+                  {onNavigateToPersonnel && (
+                    <button className="button-secondary button-inline" onClick={onNavigateToPersonnel} type="button" style={{ marginTop: 8 }}>
+                      {tt("goToPersonnel", "Go to Settings \u2192 Personnel")}
+                    </button>
+                  )}
                 </div>
               )}
               <label>
-                <FieldLabel label={dictionary.selectItem} required />
-                <select value={stockForm.itemId} onChange={(event) => setStockForm({ ...stockForm, itemId: event.target.value })}>
+                <FieldLabel label={tt("selectItem", "Select Item")} required />
+                <select disabled={busy} value={stockForm.itemId} onChange={(event) => setStockForm({ ...stockForm, itemId: event.target.value })}>
                   {items.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.sku} - {item.name}
@@ -353,20 +361,17 @@ export function ActionPanel({
                 </select>
               </label>
               <label>
-                <FieldLabel label={dictionary.quantity} required />
-                <input type="number" min="0" value={stockForm.quantity} onChange={(event) => setStockForm({ ...stockForm, quantity: Number(event.target.value) })} />
+                <FieldLabel label={tt("quantity", "Quantity")} required />
+                <input disabled={busy} type="number" min="0" value={stockForm.quantity} onChange={(event) => setStockForm({ ...stockForm, quantity: Number(event.target.value) })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
               </label>
               <label>
-                <FieldLabel label={dictionary.reason} />
-                <input value={stockForm.reason} onChange={(event) => setStockForm({ ...stockForm, reason: event.target.value })} />
+                <FieldLabel label={tt("reason", "Reason")} />
+                <input disabled={busy} value={stockForm.reason} onChange={(event) => setStockForm({ ...stockForm, reason: event.target.value })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
               </label>
               <label>
-                <FieldLabel label={dictionary.performedBy} required />
-                <select
-                  value={stockForm.performedBy}
-                  onChange={(event) => setStockForm({ ...stockForm, performedBy: event.target.value })}
-                >
-                  <option value="">{dictionary.selectPersonnel}</option>
+                <FieldLabel label={tt("performedBy", "Performed By")} required />
+                <select disabled={busy} value={stockForm.performedBy} onChange={(event) => setStockForm({ ...stockForm, performedBy: event.target.value })}>
+                  <option value="">{tt("selectPersonnel", "Select Personnel")}</option>
                   {personnel.map((member) => (
                     <option key={member.id} value={member.name}>
                       {member.name}
@@ -378,9 +383,11 @@ export function ActionPanel({
                 <div className="form-summary">
                   <strong>{selectedStockItem.name}</strong>
                   <span>
-                    {dictionary.currentQuantity}: {selectedStockItem.currentQuantity} {localizeUnit(selectedStockItem.unit, language)}
+                    {tt("currentQuantity", "Current Quantity")}: {formatNumber(selectedStockItem.currentQuantity, language)} {localizeUnit(selectedStockItem.unit, language)}
                   </span>
-                  <span>{dictionary.reorderLevel}: {selectedStockItem.reorderQuantity}</span>
+                  <span>
+                    {tt("reorderLevel", "Reorder Level")}: {formatNumber(selectedStockItem.reorderQuantity, language)}
+                  </span>
                 </div>
               )}
             </div>
@@ -389,8 +396,8 @@ export function ActionPanel({
           {action === "removeItem" && (
             <div className="form-grid">
               <label>
-                <FieldLabel label={dictionary.selectItemToRemove} required />
-                <select value={removeItemId} onChange={(event) => setRemoveItemId(event.target.value)}>
+                <FieldLabel label={tt("selectItemToRemove", "Select Item To Remove")} required />
+                <select disabled={busy} value={removeItemId} onChange={(event) => setRemoveItemId(event.target.value)}>
                   {items.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.sku} - {item.name}
@@ -402,11 +409,13 @@ export function ActionPanel({
                 <div className="form-summary form-summary--danger">
                   <strong>{selectedRemoveItem.name}</strong>
                   <span>
-                    {dictionary.currentQuantity}: {selectedRemoveItem.currentQuantity} {localizeUnit(selectedRemoveItem.unit, language)}
+                    {tt("currentQuantity", "Current Quantity")}: {formatNumber(selectedRemoveItem.currentQuantity, language)} {localizeUnit(selectedRemoveItem.unit, language)}
                   </span>
-                  <span>{dictionary.reorderLevel}: {selectedRemoveItem.reorderQuantity}</span>
-                  <span>{dictionary.deleteItemWarning}</span>
-                  <span>{dictionary.deleteItemImpact}</span>
+                  <span>
+                    {tt("reorderLevel", "Reorder Level")}: {formatNumber(selectedRemoveItem.reorderQuantity, language)}
+                  </span>
+                  <span>{tt("deleteItemWarning", "This permanently removes the item from inventory management.")}</span>
+                  <span>{tt("deleteItemImpact", "Related stock movements and alerts for this item will also be removed.")}</span>
                 </div>
               )}
             </div>
@@ -421,12 +430,12 @@ export function ActionPanel({
               type="button"
             >
               {busy
-                ? `${dictionary.save}...`
+                ? `${tt("save", "Save")}...`
                 : action === "removeItem"
-                  ? dictionary.removeItem
+                  ? tt("removeItem", "Remove Item")
                   : action === "modifyItem"
-                    ? dictionary.modifyItem
-                    : dictionary.save}
+                    ? tt("modifyItem", "Modify Item")
+                    : tt("save", "Save")}
             </button>
           </div>
         </>

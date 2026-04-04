@@ -4,11 +4,13 @@ import { Schema } from "@effect/schema";
 import { DatabaseService, type MutationResult } from "./services/DatabaseService";
 import { NotificationService } from "./services/NotificationService";
 import { LanServerService } from "./services/LanServerService";
-import { serializeAppError, ValidationError, type AppError } from "./domain/errors";
+import { BackupService } from "./services/BackupService";
+import { serializeAppError, type AppError, validationError } from "./domain/errors";
 import type { AutoUpdateServiceApi } from "./services/AutoUpdateService";
 import type { BackupCoordinator } from "./services/BackupCoordinator";
 import type { LanState } from "./index";
 import type { IpcResult, TransportError } from "../shared/schemas";
+import { normalizeQrLabelFileName } from "../shared/qrLabelExport";
 import {
   CreateInventoryItemArgs,
   UpdateInventoryItemArgs,
@@ -17,14 +19,17 @@ import {
   UpdateBackupPlanArgs,
   AddPersonnelArgs,
   UpdateLanAccessArgs,
+  ExportQrLabelArgs,
+  ExportQrLabelsArgs,
   ItemIdArgs,
   PersonnelIdArgs,
   LanguageArgs,
   AuditMovementFilterArgs,
   AuditAnalyticsFilterArgs,
+  DirPathArgs,
 } from "../shared/schemas";
 
-import { BackupService } from "./services/BackupService";
+import { writeQrLabelFile, writeQrLabelFiles } from "./qrLabelExportStorage";
 
 type AppRuntime = ManagedRuntime.ManagedRuntime<
   DatabaseService | NotificationService | LanServerService | BackupService,
@@ -41,15 +46,19 @@ function fail(error: TransportError): IpcResult<never> {
   return { ok: false, error };
 }
 
+/** getFocusedWindow() can return null on Windows when the app loses focus.
+ *  Fall back to the first available window so dialogs still work. */
+function getMainWindow(): BrowserWindow | null {
+  return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+}
+
 function decodeOrFail<A, I>(schema: Schema.Schema<A, I>): (input: unknown) => A {
   const decode = Schema.decodeUnknownSync(schema);
   return (input: unknown) => {
     try {
       return decode(input);
     } catch (e) {
-      throw new ValidationError({
-        message: e instanceof Error ? e.message : "Invalid input.",
-      });
+      throw validationError("invalidInput", undefined, e instanceof Error ? e.message : "Invalid input.");
     }
   };
 }
@@ -64,7 +73,7 @@ export function registerIpcHandlers(
 ): void {
   /** Run an Effect through the managed runtime, return a result envelope. */
   async function run<A>(
-    effect: Effect.Effect<A, AppError, DatabaseService | NotificationService | LanServerService>,
+    effect: Effect.Effect<A, AppError, DatabaseService | NotificationService | LanServerService | BackupService>,
   ): Promise<IpcResult<A>> {
     const result = await runtime.runPromise(
       effect.pipe(Effect.either),
@@ -194,9 +203,51 @@ export function registerIpcHandlers(
     }
   });
 
+  ipcMain.handle("export-qr-label", async (_event, rawArgs: unknown) => {
+    try {
+      const { label } = decodeOrFail(ExportQrLabelArgs)(rawArgs);
+      const win = getMainWindow();
+      if (!win) return ok(null);
+
+      const result = await dialog.showSaveDialog(win, {
+        defaultPath: normalizeQrLabelFileName(label.suggestedFileName),
+        filters: [{ name: "PNG Image", extensions: ["png"] }],
+      });
+
+      if (result.canceled || !result.filePath) {
+        return ok(null);
+      }
+
+      return ok(await writeQrLabelFile(result.filePath, label));
+    } catch (error) {
+      return fail(serializeAppError(error));
+    }
+  });
+
+  ipcMain.handle("export-qr-labels", async (_event, rawArgs: unknown) => {
+    try {
+      const { labels } = decodeOrFail(ExportQrLabelsArgs)(rawArgs);
+      const win = getMainWindow();
+      if (!win) return ok(null);
+
+      const result = await dialog.showOpenDialog(win, {
+        properties: ["openDirectory", "createDirectory"],
+        title: "Choose Export Folder",
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return ok(null);
+      }
+
+      return ok(await writeQrLabelFiles(result.filePaths[0], labels));
+    } catch (error) {
+      return fail(serializeAppError(error));
+    }
+  });
+
   ipcMain.handle("select-backup-directory", async () => {
     try {
-      const win = BrowserWindow.getFocusedWindow();
+      const win = getMainWindow();
       if (!win) return ok(null);
       const result = await dialog.showOpenDialog(win, {
         properties: ["openDirectory", "createDirectory"],
@@ -211,7 +262,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle("select-restore-source", async () => {
     try {
-      const win = BrowserWindow.getFocusedWindow();
+      const win = getMainWindow();
       if (!win) return ok(null);
       const result = await dialog.showOpenDialog(win, {
         properties: ["openDirectory"],
@@ -226,10 +277,15 @@ export function registerIpcHandlers(
 
   ipcMain.handle("validate-backup", async (_event, rawArgs: unknown) => {
     try {
-      if (!backupCoordinator) return fail({ _tag: "ValidationError", message: "Backup coordinator not available" });
-      const parsed = rawArgs as Record<string, unknown> | null;
-      const dirPath = typeof parsed?.dirPath === "string" ? parsed.dirPath : "";
-      if (!dirPath) throw new ValidationError({ message: "dirPath is required" });
+      if (!backupCoordinator) {
+        return fail({
+          _tag: "ValidationError",
+          messageId: "backupCoordinatorUnavailable",
+          debugMessage: "Backup coordinator not available",
+        });
+      }
+      const { dirPath } = decodeOrFail(DirPathArgs)(rawArgs);
+      if (!dirPath) throw validationError("required.dirPath");
       const result = await backupCoordinator.validateBackup(dirPath);
       return ok(result);
     } catch (error) {
@@ -239,10 +295,15 @@ export function registerIpcHandlers(
 
   ipcMain.handle("restore-from-backup", async (_event, rawArgs: unknown) => {
     try {
-      if (!backupCoordinator) return fail({ _tag: "ValidationError", message: "Backup coordinator not available" });
-      const parsed = rawArgs as Record<string, unknown> | null;
-      const dirPath = typeof parsed?.dirPath === "string" ? parsed.dirPath : "";
-      if (!dirPath) throw new ValidationError({ message: "dirPath is required" });
+      if (!backupCoordinator) {
+        return fail({
+          _tag: "ValidationError",
+          messageId: "backupCoordinatorUnavailable",
+          debugMessage: "Backup coordinator not available",
+        });
+      }
+      const { dirPath } = decodeOrFail(DirPathArgs)(rawArgs);
+      if (!dirPath) throw validationError("required.dirPath");
       await backupCoordinator.restoreFromBackup(dirPath);
       // Won't reach here — app.relaunch() + app.exit() fires during restore
       return ok(null);
@@ -353,4 +414,3 @@ function updateLanState(
       ? result.urls[0]
       : "";
 }
-

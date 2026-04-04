@@ -26,8 +26,8 @@ beforeEach(() => {
   t = createTestDb();
 });
 
-afterEach(() => {
-  t.cleanup();
+afterEach(async () => {
+  await t.cleanup();
 });
 
 // ─── Snapshot Loading ────────────────────────────────────────────────────────
@@ -101,6 +101,43 @@ describe("load_app_snapshot", () => {
       .all() as { status: string }[];
 
     expect(alerts).toHaveLength(2);
+  });
+
+  it("caps resolved alerts at 200 while returning all open alerts", async () => {
+    const itemId = seedItem(t.db, { currentQuantity: 5, reorderQuantity: 10 });
+
+    // Seed 5 open alerts (recent)
+    for (let i = 0; i < 5; i++) {
+      seedAlert(t.db, itemId, {
+        status: "open",
+        triggeredAt: `2026-03-01 12:00:${String(i).padStart(2, "0")}`,
+      });
+    }
+
+    // Seed 210 resolved alerts (exceeds 200 cap)
+    for (let i = 0; i < 210; i++) {
+      const hrs = Math.floor(i / 60);
+      const mins = i % 60;
+      seedAlert(t.db, itemId, {
+        status: "resolved",
+        triggeredAt: `2025-06-15 ${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:00`,
+      });
+    }
+
+    const service = makeDatabaseService(t.dbPath);
+    const snapshot = await Effect.runPromise(service.loadSnapshot());
+    service.close();
+
+    const openAlerts = snapshot.alerts.filter((a) => a.status === "open");
+    const resolvedAlerts = snapshot.alerts.filter((a) => a.status === "resolved");
+
+    expect(openAlerts).toHaveLength(5);
+    expect(resolvedAlerts).toHaveLength(200);
+
+    // Verify ordering: newest first across the combined result
+    for (let i = 1; i < snapshot.alerts.length; i++) {
+      expect(snapshot.alerts[i - 1].triggeredAt >= snapshot.alerts[i].triggeredAt).toBe(true);
+    }
   });
 
   it("returns personnel ordered by name", () => {
@@ -836,14 +873,14 @@ describe("lan_access_settings", () => {
     );
   });
 
-  it("defaults port to 4123 when not set or invalid", () => {
+  it("defaults port to 47123 when not set or invalid", () => {
     const rawPort = readSetting(t.db, "lan.port");
     const port =
       rawPort !== undefined ? parseInt(rawPort, 10) : undefined;
     const effectivePort =
-      port !== undefined && port > 0 ? port : 4123;
+      port !== undefined && port > 0 ? port : 47123;
 
-    expect(effectivePort).toBe(4123);
+    expect(effectivePort).toBe(47123);
   });
 });
 

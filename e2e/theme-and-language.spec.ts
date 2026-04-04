@@ -1,74 +1,63 @@
-import { test, expect } from "./fixtures/electron-app";
-// empty seed — no data needed for theme/language tests
+import { isolatedTest as test, expect } from "./fixtures/electron-app";
 
-test.describe.serial("theme and language", () => {
-  // ── Theme cycling ──────────────────────────────────────────────────
-
-  test("starts in auto mode", async ({ page }) => {
+test.describe("theme and language", () => {
+  test("theme toggle cycles through auto, light, dark, and back to auto", async ({ page }) => {
     const themeBtn = page.getByTestId("theme-toggle");
+
     await expect(themeBtn).toHaveAttribute("aria-label", "Auto");
 
-    // Auto mode: no data-theme on <html> (defaults to dark unless system prefers light)
-    const dataTheme = await page.locator("html").getAttribute("data-theme");
-    expect(dataTheme === null || dataTheme === "light").toBe(true);
+    await themeBtn.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(themeBtn).toHaveAttribute("aria-label", "Light");
+
+    await themeBtn.click();
+    await expect(themeBtn).toHaveAttribute("aria-label", "Dark");
+    await expect(page.locator("html")).not.toHaveAttribute("data-theme", "light");
+
+    await themeBtn.click();
+    await expect(themeBtn).toHaveAttribute("aria-label", "Auto");
   });
 
-  test("cycles to light mode", async ({ page }) => {
-    await page.getByTestId("theme-toggle").click();
+  test("theme preference persists after reload in the desktop shell", async ({ page }) => {
+    const themeBtn = page.getByTestId("theme-toggle");
+
+    await themeBtn.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await page.reload();
+    await page.waitForSelector(".sidebar", { timeout: 30_000 });
 
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    await expect(page.getByTestId("theme-toggle")).toHaveAttribute("aria-label", "Light");
+    await expect(themeBtn).toHaveAttribute("aria-label", "Light");
   });
 
-  test("cycles to dark mode", async ({ page }) => {
-    await page.getByTestId("theme-toggle").click();
-
-    await expect(page.getByTestId("theme-toggle")).toHaveAttribute("aria-label", "Dark");
-    const dataTheme = await page.locator("html").getAttribute("data-theme");
-    expect(dataTheme).toBeNull();
-  });
-
-  test("cycles back to auto mode", async ({ page }) => {
-    await page.getByTestId("theme-toggle").click();
-
-    await expect(page.getByTestId("theme-toggle")).toHaveAttribute("aria-label", "Auto");
-  });
-
-  // ── Language switching ─────────────────────────────────────────────
-
-  test("switches to Chinese and verifies labels", async ({ page }) => {
-    // Navigate to Dashboard so we have a known section
+  test("language switch localizes navigation and backup controls", async ({ page }) => {
     await page.getByTestId("nav-dashboard").click();
-    await expect(page.locator("button.nav-item").first()).toHaveText("Dashboard");
+    await expect(page.locator(".topbar h2")).toHaveText("Dashboard");
 
-    // Switch to Chinese
     await page.getByTestId("lang-toggle").click();
 
-    // Verify nav items switched to Chinese
     await expect(page.locator("button.nav-item").first()).toHaveText("概览");
     await expect(page.locator(".topbar h2")).toHaveText("概览");
-
-    // Verify other nav items
     await expect(page.locator("button.nav-item:has-text('库存')")).toBeVisible();
-    await expect(page.locator("button.nav-item:has-text('物料管理')")).toBeVisible();
-    await expect(page.locator("button.nav-item:has-text('预警')")).toBeVisible();
-    await expect(page.locator("button.nav-item:has-text('人员管理')")).toBeVisible();
+    await expect(page.locator("button.nav-item:has-text('活动')")).toBeVisible();
     await expect(page.locator("button.nav-item:has-text('设置')")).toBeVisible();
 
-    // Verify section content in Chinese
-    await page.locator("button.nav-item:has-text('人员管理')").click();
-    await expect(page.locator(".topbar h2")).toHaveText("人员管理");
-
-    // Theme button aria-label should be in Chinese
+    await page.locator("button.nav-item:has-text('设置')").click();
+    await page.getByRole("tab", { name: "备份" }).click();
+    await expect(page.getByTestId("backup-now")).toContainText("立即备份");
+    await expect(page.getByTestId("backup-restore")).toContainText("从备份恢复");
     await expect(page.getByTestId("theme-toggle")).toHaveAttribute("aria-label", "自动");
   });
 
-  test("switches back to English", async ({ page }) => {
+  test("language switch can return to English from a localized shell", async ({ page }) => {
     await page.getByTestId("lang-toggle").click();
+    await expect(page.locator("button.nav-item").first()).toHaveText("概览");
 
+    await page.getByTestId("lang-toggle").click();
     await expect(page.locator("button.nav-item").first()).toHaveText("Dashboard");
     await expect(page.locator("button.nav-item:has-text('Inventory')")).toBeVisible();
-    await expect(page.locator("button.nav-item:has-text('Personnel')")).toBeVisible();
+    await expect(page.locator("button.nav-item:has-text('Activity')")).toBeVisible();
+    await expect(page.locator("button.nav-item:has-text('Settings')")).toBeVisible();
     await expect(page.getByTestId("theme-toggle")).toHaveAttribute("aria-label", "Auto");
   });
 });

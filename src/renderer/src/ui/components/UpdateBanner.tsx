@@ -1,15 +1,16 @@
 import type { UpdateStatus } from "../../domain/models";
-import type { Dictionary } from "../../app/i18n";
+import { useTT } from "../hooks/useTT";
 
 interface UpdateBannerProps {
   status: UpdateStatus;
-  dictionary: Dictionary;
   onDownload: () => void;
   onInstall: () => void;
   onDismiss: () => void;
 }
 
-export function UpdateBanner({ status, dictionary, onDownload, onInstall, onDismiss }: UpdateBannerProps) {
+export function UpdateBanner({ status, onDownload, onInstall, onDismiss }: UpdateBannerProps) {
+  const tt = useTT();
+
   if (status.stage === "idle" || status.stage === "checking" || status.stage === "not-available") {
     return null;
   }
@@ -17,10 +18,14 @@ export function UpdateBanner({ status, dictionary, onDownload, onInstall, onDism
   if (status.stage === "available") {
     return (
       <div className="update-banner update-banner--info">
-        <span>{dictionary.updateAvailable.replace("{version}", status.version)}</span>
+        <span>{tt("updateAvailable", "Version {version} is available", { version: status.version })}</span>
         <div className="update-banner__actions">
-          <button className="button-secondary" onClick={onDownload} type="button">{dictionary.updateDownload}</button>
-          <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={dictionary.dismiss}>&times;</button>
+          <button className="button-secondary" onClick={onDownload} type="button">
+            {tt("updateDownload", "Download")}
+          </button>
+          <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={tt("dismiss", "Dismiss")}>
+            &times;
+          </button>
         </div>
       </div>
     );
@@ -30,7 +35,7 @@ export function UpdateBanner({ status, dictionary, onDownload, onInstall, onDism
     const pct = Math.round(status.percent);
     return (
       <div className="update-banner update-banner--info">
-        <span>{dictionary.updateDownloading.replace("{percent}", String(pct))}</span>
+        <span>{tt("updateDownloading", "Downloading update... {percent}%", { percent: pct })}</span>
         <div className="update-banner__progress">
           <div className="update-banner__progress-bar" style={{ width: `${pct}%` }} />
         </div>
@@ -41,10 +46,14 @@ export function UpdateBanner({ status, dictionary, onDownload, onInstall, onDism
   if (status.stage === "downloaded") {
     return (
       <div className="update-banner update-banner--success">
-        <span>{dictionary.updateReady}</span>
+        <span>{tt("updateReady", "Update ready — restart to apply")}</span>
         <div className="update-banner__actions">
-          <button className="button-secondary" onClick={onInstall} type="button">{dictionary.updateRestart}</button>
-          <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={dictionary.dismiss}>&times;</button>
+          <button className="button-secondary" onClick={onInstall} type="button">
+            {tt("updateRestart", "Restart Now")}
+          </button>
+          <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={tt("dismiss", "Dismiss")}>
+            &times;
+          </button>
         </div>
       </div>
     );
@@ -53,8 +62,10 @@ export function UpdateBanner({ status, dictionary, onDownload, onInstall, onDism
   if (status.stage === "error") {
     return (
       <div className="update-banner update-banner--error">
-        <span>{dictionary.updateError}</span>
-        <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={dictionary.dismiss}>&times;</button>
+        <span>{tt("updateError", "Update check failed")}</span>
+        <button className="button-inline button-secondary update-banner__dismiss" onClick={onDismiss} type="button" aria-label={tt("dismiss", "Dismiss")}>
+          &times;
+        </button>
       </div>
     );
   }

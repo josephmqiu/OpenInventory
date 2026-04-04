@@ -35,12 +35,12 @@ describe("migration system", () => {
     runPendingMigrations(t.db);
 
     const version = currentVersion(t.db);
-    expect(version).toBe(4);
+    expect(version).toBe(5);
 
     const count = t.db
       .prepare("SELECT COUNT(*) as c FROM schema_migrations")
       .get() as { c: number };
-    expect(count.c).toBe(4);
+    expect(count.c).toBe(5);
   });
 
   it("is idempotent — running twice does not duplicate entries", () => {
@@ -53,8 +53,8 @@ describe("migration system", () => {
     const count = t.db
       .prepare("SELECT COUNT(*) as c FROM schema_migrations")
       .get() as { c: number };
-    expect(count.c).toBe(4);
-    expect(currentVersion(t.db)).toBe(4);
+    expect(count.c).toBe(5);
+    expect(currentVersion(t.db)).toBe(5);
   });
 
   it("migration v2 removes dead columns from legacy database", () => {
@@ -110,7 +110,7 @@ describe("migration system", () => {
     // inventory_items. ALTER TABLE DROP COLUMN avoids this entirely.
     runPendingMigrations(t.db);
 
-    expect(currentVersion(t.db)).toBe(4);
+    expect(currentVersion(t.db)).toBe(5);
 
     // Verify child data is preserved
     const movements = t.db
@@ -137,7 +137,7 @@ describe("migration system", () => {
     // Clean DB has no dead columns — migration 2 should not error
     runPendingMigrations(t.db);
 
-    expect(currentVersion(t.db)).toBe(4);
+    expect(currentVersion(t.db)).toBe(5);
 
     // Schema still intact
     const items = t.db

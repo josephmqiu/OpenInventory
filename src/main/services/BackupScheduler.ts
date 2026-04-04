@@ -46,7 +46,6 @@ export class BackupScheduler {
     if (config.onStartup) {
       const elapsed = this.msElapsed(config.lastSuccessful);
       if (elapsed > STARTUP_DEBOUNCE_MS) {
-        console.log("[BackupScheduler] Startup backup triggered");
         this.triggerBackup();
       }
     }
@@ -54,7 +53,6 @@ export class BackupScheduler {
     // Start polling if interval is configured (intervalValue > 0)
     if (config.intervalValue > 0) {
       this.timer = setInterval(() => void this.pollCheck(), POLL_INTERVAL_MS);
-      console.log(`[BackupScheduler] Polling every 60s (interval: ${config.intervalValue} ${config.intervalUnit})`);
     }
   }
 
@@ -63,7 +61,6 @@ export class BackupScheduler {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      console.log("[BackupScheduler] Stopped");
     }
   }
 
@@ -77,7 +74,6 @@ export class BackupScheduler {
       const elapsed = this.msElapsed(config.lastSuccessful);
 
       if (elapsed >= intervalMs) {
-        console.log("[BackupScheduler] Scheduled backup triggered");
         this.triggerBackup();
       }
     } catch (e) {
