@@ -106,23 +106,27 @@ describe("load_app_snapshot", () => {
   it("caps resolved alerts at 200 while returning all open alerts", async () => {
     const itemId = seedItem(t.db, { currentQuantity: 5, reorderQuantity: 10 });
 
-    // Seed 5 open alerts (recent)
-    for (let i = 0; i < 5; i++) {
-      seedAlert(t.db, itemId, {
-        status: "open",
-        triggeredAt: `2026-03-01 12:00:${String(i).padStart(2, "0")}`,
-      });
-    }
+    // Wrap bulk inserts in a single transaction to avoid 215 implicit
+    // transactions — prevents timeout on Windows CI.
+    t.db.transaction(() => {
+      // Seed 5 open alerts (recent)
+      for (let i = 0; i < 5; i++) {
+        seedAlert(t.db, itemId, {
+          status: "open",
+          triggeredAt: `2026-03-01 12:00:${String(i).padStart(2, "0")}`,
+        });
+      }
 
-    // Seed 210 resolved alerts (exceeds 200 cap)
-    for (let i = 0; i < 210; i++) {
-      const hrs = Math.floor(i / 60);
-      const mins = i % 60;
-      seedAlert(t.db, itemId, {
-        status: "resolved",
-        triggeredAt: `2025-06-15 ${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:00`,
-      });
-    }
+      // Seed 210 resolved alerts (exceeds 200 cap)
+      for (let i = 0; i < 210; i++) {
+        const hrs = Math.floor(i / 60);
+        const mins = i % 60;
+        seedAlert(t.db, itemId, {
+          status: "resolved",
+          triggeredAt: `2025-06-15 ${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:00`,
+        });
+      }
+    })();
 
     const service = makeDatabaseService(t.dbPath);
     const snapshot = await Effect.runPromise(service.loadSnapshot());
