@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import i18n from "i18next";
 import { translateErrorMessage } from "../../app/i18n";
 import type { LanAccessState, UpdateLanAccessInput } from "../../domain/models";
@@ -11,23 +11,27 @@ interface LanAccessPanelProps {
   onRegenerateKey: () => Promise<void>;
 }
 
-function createFormState(lanAccess: LanAccessState): UpdateLanAccessInput {
-  return {
-    enabled: lanAccess.enabled,
-    port: lanAccess.port,
-  };
-}
-
 export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: LanAccessPanelProps) {
   const tt = useTT();
-  const [form, setForm] = useState<UpdateLanAccessInput>(() => createFormState(lanAccess));
+  const [formPort, setFormPort] = useState(lanAccess.port);
   const [copyFeedback, setCopyFeedback] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+  const [showRegenConfirm, setShowRegenConfirm] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    setForm(createFormState(lanAccess));
-  }, [lanAccess]);
+    setFormPort(lanAccess.port);
+  }, [lanAccess.port]);
 
-  const hasChanges = useMemo(() => JSON.stringify(form) !== JSON.stringify(createFormState(lanAccess)), [form, lanAccess]);
+  const hasChanges = useMemo(() => formPort !== lanAccess.port, [formPort, lanAccess.port]);
+
+  const handleToggle = () => {
+    if (busy) return;
+    void onSave({ enabled: !lanAccess.enabled, port: formPort });
+  };
+
+  const handlePortSave = () => {
+    void onSave({ enabled: lanAccess.enabled, port: formPort });
+  };
 
   const handleCopyAccessKey = async () => {
     try {
@@ -40,7 +44,13 @@ export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: Lan
     }
   };
 
+  const handleRegenConfirm = () => {
+    setShowRegenConfirm(false);
+    void onRegenerateKey();
+  };
+
   const statusLabel = (status: LanAccessState["status"]): string => {
+    if (busy && lanAccess.enabled) return tt("lanStatusStarting", "Starting...");
     switch (status) {
       case "running":
         return tt("lanStatusRunning", "Running");
@@ -51,93 +61,175 @@ export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: Lan
     }
   };
 
+  const statusClass = busy && lanAccess.enabled ? "lan-warning" : `lan-${lanAccess.status}`;
+
+  // Focus cancel button when regen dialog opens
+  useEffect(() => {
+    if (showRegenConfirm) cancelRef.current?.focus();
+  }, [showRegenConfirm]);
+
+  const handleDialogKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setShowRegenConfirm(false);
+      return;
+    }
+    if (e.key === "Tab") {
+      const dialog = e.currentTarget as HTMLElement;
+      const focusable = dialog.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  };
+
   return (
     <section className="panel">
+      {/* Header with toggle */}
       <div className="panel__header">
         <div>
-          <h2>{tt("lanAccess", "LAN Access")} <span className={`status-pill status-pill--lan-${lanAccess.status}`} data-testid="lan-status">{statusLabel(lanAccess.status)}</span></h2>
+          <h2>{tt("lanAccess", "LAN Access")} <span className={`status-pill status-pill--${statusClass}`} data-testid="lan-status">{statusLabel(lanAccess.status)}</span></h2>
           <p>{tt("lanEnableHint", "Serve the inventory app on your local network so phones and tablets can look up and manage items.")}</p>
+        </div>
+        <div className="lan-toggle-row">
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label={tt("lanEnabled", "Enabled")}
+              checked={lanAccess.enabled}
+              disabled={busy}
+              onChange={handleToggle}
+            />
+            <span className="toggle-switch__track" />
+          </label>
         </div>
       </div>
 
+      {/* IP changed warning */}
       {lanAccess.ipChanged && (
         <div className="panel-banner panel-banner--warning">{tt("lanIpChanged", "Your network address has changed. Printed QR codes may point to the old address.")}</div>
       )}
-      <div className="panel-banner panel-banner--info">{tt("lanNetworkHint", "Devices must be on the same local network and use the access key shown below.")}</div>
+
+      {/* Copy feedback */}
       {copyFeedback && <div className={`feedback-banner feedback-banner--${copyFeedback.tone}`}>{copyFeedback.message}</div>}
 
-      <div className="form-grid">
-        <label>
-          <span>{tt("lanEnabled", "Enabled")}</span>
-          <select
-            value={form.enabled ? "enabled" : "disabled"}
-            onChange={(event) => setForm({ ...form, enabled: event.target.value === "enabled" })}
-          >
-            <option value="enabled">{tt("lanEnabled", "Enabled")}</option>
-            <option value="disabled">{tt("lanDisabled", "Disabled")}</option>
-          </select>
-        </label>
-        <label>
-          <span>{tt("lanPort", "Port")}</span>
-          <input
-            min="1"
-            max="65535"
-            type="number"
-            value={form.port}
-            onChange={(event) => setForm({ ...form, port: Number(event.target.value) })}
-            onKeyDown={(e) => { if (e.key === "Enter" && !busy && hasChanges && form.port > 0 && form.port <= 65535) { e.preventDefault(); void onSave(form); } }}
-          />
-        </label>
-        <label>
-          <span>{tt("lanAccessKey", "Access Key")}</span>
-          <div className="row-actions row-actions--spread">
-            <input readOnly value={lanAccess.accessKey} />
-            <button className="button-secondary button-inline" disabled={busy} onClick={() => void handleCopyAccessKey()} type="button">
-              {tt("lanCopy", "Copy")}
-            </button>
+      {/* Config + status: dimmed when disabled */}
+      <div className={lanAccess.enabled ? "" : "lan-disabled-overlay"}>
+        {/* Config form: port + access key (single-column) */}
+        <div className="backup-config">
+          <label>
+            <span>{tt("lanPort", "Port")}</span>
+            <input
+              min="1"
+              max="65535"
+              type="number"
+              value={formPort}
+              onChange={(e) => setFormPort(Number(e.target.value))}
+              onKeyDown={(e) => { if (e.key === "Enter" && !busy && hasChanges && formPort > 0 && formPort <= 65535) { e.preventDefault(); handlePortSave(); } }}
+            />
+          </label>
+          <label>
+            <span>{tt("lanAccessKey", "Access Key")}</span>
+            <div className="row-actions row-actions--spread">
+              <input readOnly value={lanAccess.accessKey} />
+              <button className="button-secondary button-inline" disabled={busy} onClick={() => void handleCopyAccessKey()} type="button">
+                {tt("lanCopy", "Copy")}
+              </button>
+            </div>
+          </label>
+        </div>
+
+        {/* Status section (visually separated) */}
+        <dl className="lan-status-section">
+          <div>
+            <dt>{tt("lanStatus", "Status")}</dt>
+            <dd>
+              {lanAccess.statusMessage
+                ? translateErrorMessage(
+                    { messageId: lanAccess.statusMessage, debugMessage: lanAccess.statusMessage },
+                    i18n.language === "zh-CN" ? "zh-CN" : "en",
+                    tt("lanDesktopOnly", "LAN server management is only available in the desktop app."),
+                  )
+                : tt("notProvided", "Not provided")}
+            </dd>
           </div>
-        </label>
+          <div>
+            <dt>{tt("lanOpenOnDevice", "Open On Another Device")}</dt>
+            <dd className="lan-url-list">
+              {lanAccess.urls.length > 0 ? (
+                lanAccess.urls.map((url) => (
+                  <a key={url} href={url} rel="noreferrer" target="_blank">
+                    {url}
+                  </a>
+                ))
+              ) : (
+                <span>{tt("lanUrlsUnavailable", "Enable LAN access to see device URLs.")}</span>
+              )}
+            </dd>
+          </div>
+        </dl>
       </div>
 
-      <div className="backup-grid lan-access-grid">
-        <div>
-          <dt>{tt("lanStatus", "Status")}</dt>
-          <dd>
-            {lanAccess.statusMessage
-              ? translateErrorMessage(
-                  { messageId: lanAccess.statusMessage, debugMessage: lanAccess.statusMessage },
-                  i18n.language === "zh-CN" ? "zh-CN" : "en",
-                  tt("lanDesktopOnly", "LAN server management is only available in the desktop app."),
-                )
-              : tt("notProvided", "Not provided")}
-          </dd>
-        </div>
-        <div>
-          <dt>{tt("lanOpenOnDevice", "Open On Another Device")}</dt>
-          <dd className="lan-url-list">
-            {lanAccess.urls.length > 0 ? (
-              lanAccess.urls.map((url) => (
-                <a key={url} href={url} rel="noreferrer" target="_blank">
-                  {url}
-                </a>
-              ))
-            ) : (
-              <span>{tt("lanUrlsUnavailable", "Enable LAN access to see device URLs.")}</span>
-            )}
-          </dd>
-        </div>
-      </div>
-
-      <p className="panel-hint">{tt("lanStaticIpHint", "For reliable QR codes, use a static IP address on this machine.")}</p>
-
+      {/* Footer */}
       <div className="action-panel__footer action-panel__footer--spread">
-        <button className="button-secondary" data-testid="lan-regen-key" disabled={busy} onClick={() => void onRegenerateKey()} type="button">
+        <button className="button-secondary" data-testid="lan-regen-key" disabled={busy} onClick={() => setShowRegenConfirm(true)} type="button">
           {tt("lanRegenerateKey", "Regenerate Access Key")}
         </button>
-        <button data-testid="lan-save" disabled={busy || !hasChanges || form.port <= 0 || form.port > 65535} onClick={() => void onSave(form)} type="button">
+        <button data-testid="lan-save" disabled={busy || !hasChanges || formPort <= 0 || formPort > 65535} onClick={handlePortSave} type="button">
           {busy ? `${tt("save", "Save")}...` : tt("lanSaveSettings", "Save LAN Settings")}
         </button>
       </div>
+
+      {/* Regen confirm dialog */}
+      {showRegenConfirm && (
+        <div className="restore-dialog-backdrop" data-testid="regen-key-dialog" onClick={() => setShowRegenConfirm(false)}>
+          <div
+            className="restore-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="regen-dialog-title"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={handleDialogKeyDown}
+          >
+            <h2 id="regen-dialog-title" className="restore-dialog__title">
+              {tt("lanRegenConfirmTitle", "Regenerate Access Key")}
+            </h2>
+            <div className="restore-dialog__comparison">
+              <div className="restore-dialog__warning">
+                {tt("lanRegenConfirmWarning", "This will invalidate all printed QR codes and shared URLs. All devices will need the new access key to connect.")}
+              </div>
+            </div>
+            <div className="restore-dialog__footer">
+              <button
+                ref={cancelRef}
+                className="button-secondary"
+                data-testid="regen-dialog-cancel"
+                onClick={() => setShowRegenConfirm(false)}
+                type="button"
+              >
+                {tt("cancel", "Cancel")}
+              </button>
+              <button
+                className="button-secondary button-secondary--danger"
+                data-testid="regen-dialog-confirm"
+                onClick={handleRegenConfirm}
+                type="button"
+              >
+                {tt("lanRegenConfirmButton", "Regenerate Key")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
