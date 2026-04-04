@@ -248,12 +248,11 @@ test.describe.serial("LAN access and QR codes", () => {
 
   test("disable LAN and verify stopped status", async ({ page }) => {
     await navigateTo(page, "settings");
-    const lanPanel = page.locator(".panel:has-text('LAN Access')");
-    await expect(lanPanel).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("tab", { name: "LAN Access" }).click();
 
-    // Toggle switch OFF to disable LAN (click the visible track, not the hidden input)
-    await lanPanel.locator(".toggle-switch__track").click();
-    await expectSuccess(page);
+    // Toggle switch OFF — input is visually hidden, dispatch click via JS to trigger React onChange
+    // LAN panel uses inline feedback, not the top-level banner
+    await page.locator("input[role='switch']").dispatchEvent("click");
 
     await expect(page.getByTestId("lan-status")).toContainText("Stopped", { timeout: 10_000 });
   });
