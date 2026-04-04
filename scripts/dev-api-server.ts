@@ -3,6 +3,24 @@
  * Starts the same HTTP API as the LAN server but without authentication.
  * Used during development so the renderer can be previewed in a plain browser.
  */
+import { execSync } from "child_process";
+import { createRequire } from "module";
+
+// Preflight: ensure better-sqlite3 is compiled for the current Node ABI.
+// The Electron rebuild scripts may leave it compiled for a different ABI.
+const _require = createRequire(import.meta.url);
+try {
+  _require("better-sqlite3");
+} catch {
+  console.log("Rebuilding better-sqlite3 for current Node ABI...");
+  const npmPath = process.env.npm_execpath ?? "/opt/homebrew/bin/npm";
+  execSync(`${npmPath} rebuild better-sqlite3`, { stdio: "inherit" });
+  // Re-clear the module cache isn't possible for native addons — restart is needed.
+  // Since this runs at startup before anything else, the execSync is blocking
+  // and we can just re-require after rebuild.
+  _require("better-sqlite3");
+}
+
 import http from "http";
 import path from "path";
 import fs from "fs";
