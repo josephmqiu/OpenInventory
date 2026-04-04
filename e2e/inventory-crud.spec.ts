@@ -97,9 +97,11 @@ test.describe.serial("inventory CRUD (empty seed)", () => {
     const form = page.locator(".action-panel");
     await form.locator("label:has-text('SKU') input").fill("DUP-SKU-001");
     await form.locator("label:has-text('Item Name') input").fill("First Item");
-    await form.locator("label:has-text('Category') select").selectOption("Raw Material");
+    await form.locator("label:has-text('Category') select").selectOption({ label: "Add New Category" });
+    await form.locator("label:has-text('New Category Name') input").fill("Raw Material");
     await form.locator("label:has-text('Location') input").fill("Rack A");
-    await form.locator("label:has-text('Unit') select").selectOption("pcs");
+    await form.locator("label:has-text('Unit') select").selectOption({ label: "Add New Unit" });
+    await form.locator("label:has-text('New Unit Name') input").fill("pcs");
     await form.locator("label:has-text('Reorder Level') input").fill("5");
     await form.locator("label:has-text('Initial Quantity') input").fill("20");
     await page.getByTestId("action-submit").click();

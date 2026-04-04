@@ -251,8 +251,8 @@ test.describe.serial("LAN access and QR codes", () => {
     const lanPanel = page.locator(".panel:has-text('LAN Access')");
     await expect(lanPanel).toBeVisible({ timeout: 10_000 });
 
-    // Toggle switch OFF to disable LAN
-    await lanPanel.locator("input[role='switch']").click();
+    // Toggle switch OFF to disable LAN (click the visible track, not the hidden input)
+    await lanPanel.locator(".toggle-switch__track").click();
     await expectSuccess(page);
 
     await expect(page.getByTestId("lan-status")).toContainText("Stopped", { timeout: 10_000 });
