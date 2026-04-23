@@ -34,6 +34,9 @@ export const backendMessages = () => ({
   lanServerRunning: "lanServerRunning",
   lanServerStopped: "lanServerStopped",
   lanServerError: "lanServerError",
+  movementNotFound: "movementNotFound",
+  insufficientStockWhenDeletingMovement: "insufficientStockWhenDeletingMovement",
+  invalidMovementType: "invalidMovementType",
 }) as const;
 
 interface AppErrorPayload {

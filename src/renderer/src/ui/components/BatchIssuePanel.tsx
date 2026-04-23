@@ -152,16 +152,20 @@ export function BatchIssuePanel({
       render: (item) => (
         <input
           className="batch-issue-input"
-          min="0"
-          step="1"
-          type="number"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          type="text"
           value={quantities[item.id] ?? ""}
-          onChange={(event) =>
-            setQuantities((current) => ({
-              ...current,
-              [item.id]: event.target.value,
-            }))
-          }
+          onChange={(event) => {
+            const value = event.target.value;
+            // 只允许输入数字
+            if (/^$|^\d+$/.test(value)) {
+              setQuantities((current) => ({
+                ...current,
+                [item.id]: value,
+              }));
+            }
+          }}
         />
       ),
     },

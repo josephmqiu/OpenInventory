@@ -1473,6 +1473,67 @@ button.button-icon-only svg {
   z-index: 1000;
 }
 
+/* ---- Confirm Dialog ---- */
+
+.confirm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.confirm-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  max-width: 480px;
+  width: 90%;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.confirm-dialog__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.confirm-dialog__title {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 15px;
+  margin: 0;
+  color: var(--text);
+}
+
+.confirm-dialog__message {
+  margin-bottom: 20px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.confirm-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .restore-dialog {
   background: var(--surface);
   border: 1px solid var(--border-strong);

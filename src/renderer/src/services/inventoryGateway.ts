@@ -480,6 +480,20 @@ export async function updateAppLanguage(language: Language): Promise<void> {
   throw unsupportedRuntimeError("Updating the app language");
 }
 
+// ─── Movement deletion ────────────────────────────────────────────────────────
+
+export async function deleteMovement(movementId: string): Promise<AppSnapshot> {
+  if (supportsHttpApi()) {
+    return fetchJson<AppSnapshot>(`/api/movements/${encodeURIComponent(movementId)}`, {
+      method: "DELETE",
+    });
+  }
+  if (detectRuntime() === "desktop") {
+    return invokeCommand<AppSnapshot>("delete_movement", { movementId });
+  }
+  throw unsupportedRuntimeError("Deleting a movement");
+}
+
 // ─── Audit ────────────────────────────────────────────────────────────────────
 
 export async function getAuditMovements(filters: AuditMovementFilters): Promise<AuditPageResult> {

@@ -74,7 +74,7 @@ describe("ActionPanel", () => {
       expect((screen.getByRole("combobox", { name: /Performed By/ }) as HTMLSelectElement).value).toBe("Alice");
     });
 
-    fireEvent.change(screen.getByRole("spinbutton", { name: /Quantity/ }), { target: { value: "7" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Quantity/ }), { target: { value: "7" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Reason" }), { target: { value: "Cycle count" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -98,6 +98,208 @@ describe("ActionPanel", () => {
 
     await waitFor(() => {
       expect(props.onRemoveItem).toHaveBeenCalledWith(item.id);
+    });
+  });
+
+  it("renders category and unit input fields for first item creation", async () => {
+    renderPanel({
+      items: [],
+    });
+
+    // For first item, should show direct input fields for category and unit
+    await screen.findByRole("textbox", { name: /Category/ });
+    await screen.findByRole("textbox", { name: /Unit/ });
+  });
+
+  it("renders category and unit select dropdowns when items exist", async () => {
+    renderPanel({
+      items: [item],
+    });
+
+    // When items exist, should show select dropdowns
+    await screen.findByRole("combobox", { name: /Category/ });
+    await screen.findByRole("combobox", { name: /Unit/ });
+  });
+
+  it("allows creating first item with custom category and unit", async () => {
+    const props = renderPanel({
+      items: [],
+    });
+
+    // Fill form
+    fireEvent.change(screen.getByRole("textbox", { name: /Item Name/ }), { target: { value: "New Item" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Category/ }), { target: { value: "New Category" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Location/ }), { target: { value: "Warehouse A" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Unit/ }), { target: { value: "units" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Reorder Level/ }), { target: { value: "10" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Initial Quantity/ }), { target: { value: "20" } });
+
+    // Submit form
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // Verify form submission
+    await waitFor(() => {
+      expect(props.onCreateItem).toHaveBeenCalledWith({
+        sku: "",
+        name: "New Item",
+        category: "New Category",
+        location: "Warehouse A",
+        unit: "units",
+        supplier: "",
+        reorderQuantity: 10,
+        initialQuantity: 20,
+      });
+    });
+  });
+
+  it("allows creating second item with existing category and unit", async () => {
+    // Create first item
+    const firstItem: InventoryItem = {
+      ...item,
+      id: "item-1",
+      category: "New Category",
+      unit: "units",
+    };
+
+    const props = renderPanel({
+      items: [firstItem],
+    });
+
+    // Fill form
+    fireEvent.change(screen.getByRole("textbox", { name: /Item Name/ }), { target: { value: "Second Item" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /Category/ }), { target: { value: "New Category" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Location/ }), { target: { value: "Warehouse A" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /Unit/ }), { target: { value: "units" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Reorder Level/ }), { target: { value: "5" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Initial Quantity/ }), { target: { value: "15" } });
+
+    // Submit form
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // Verify form submission
+    await waitFor(() => {
+      expect(props.onCreateItem).toHaveBeenCalledWith({
+        sku: "",
+        name: "Second Item",
+        category: "New Category",
+        location: "Warehouse A",
+        unit: "units",
+        supplier: "",
+        reorderQuantity: 5,
+        initialQuantity: 15,
+      });
+    });
+  });
+
+  it("shows validation error for empty required fields", async () => {
+    const props = renderPanel({
+      items: [],
+    });
+
+    // Submit form with empty fields
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // Verify error
+    await waitFor(() => {
+      expect(props.onError).toHaveBeenCalledWith("Check the required fields and quantity values.");
+    });
+    expect(props.onCreateItem).not.toHaveBeenCalled();
+  });
+
+  it("shows validation error for negative quantities", async () => {
+    const props = renderPanel({
+      items: [],
+    });
+
+    // Fill form with negative quantities
+    fireEvent.change(screen.getByRole("textbox", { name: /Item Name/ }), { target: { value: "Test Item" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Category/ }), { target: { value: "Test Category" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Location/ }), { target: { value: "Warehouse A" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Unit/ }), { target: { value: "units" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Reorder Level/ }), { target: { value: "-5" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Initial Quantity/ }), { target: { value: "-10" } });
+
+    // Submit form
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // Verify error
+    await waitFor(() => {
+      expect(props.onError).toHaveBeenCalledWith("Check the required fields and quantity values.");
+    });
+    expect(props.onCreateItem).not.toHaveBeenCalled();
+  });
+
+  it("allows adding new category when creating item", async () => {
+    const props = renderPanel({
+      items: [item],
+    });
+
+    // Select "Add New Category" option
+    const categorySelect = screen.getByRole("combobox", { name: /Category/ });
+    fireEvent.change(categorySelect, { target: { value: "__new__" } });
+
+    // Enter new category name
+    const newCategoryInput = screen.getByRole("textbox", { name: /New Category Name/ });
+    fireEvent.change(newCategoryInput, { target: { value: "Brand New Category" } });
+
+    // Fill other fields
+    fireEvent.change(screen.getByRole("textbox", { name: /Item Name/ }), { target: { value: "Test Item" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Location/ }), { target: { value: "Warehouse A" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Reorder Level/ }), { target: { value: "10" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Initial Quantity/ }), { target: { value: "20" } });
+
+    // Submit form
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // Verify form submission with new category
+    await waitFor(() => {
+      expect(props.onCreateItem).toHaveBeenCalledWith({
+        sku: "",
+        name: "Test Item",
+        category: "Brand New Category",
+        location: "Warehouse A",
+        unit: "pcs",
+        supplier: "",
+        reorderQuantity: 10,
+        initialQuantity: 20,
+      });
+    });
+  });
+
+  it("allows adding new unit when creating item", async () => {
+    const props = renderPanel({
+      items: [item],
+    });
+
+    // Select "Add New Unit" option
+    const unitSelect = screen.getByRole("combobox", { name: /Unit/ });
+    fireEvent.change(unitSelect, { target: { value: "__new_unit__" } });
+
+    // Enter new unit name
+    const newUnitInput = screen.getByRole("textbox", { name: /New Unit Name/ });
+    fireEvent.change(newUnitInput, { target: { value: "new_units" } });
+
+    // Fill other fields
+    fireEvent.change(screen.getByRole("textbox", { name: /Item Name/ }), { target: { value: "Test Item" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Location/ }), { target: { value: "Warehouse A" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Reorder Level/ }), { target: { value: "10" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Initial Quantity/ }), { target: { value: "20" } });
+
+    // Submit form
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // Verify form submission with new unit
+    await waitFor(() => {
+      expect(props.onCreateItem).toHaveBeenCalledWith({
+        sku: "",
+        name: "Test Item",
+        category: "Parts",
+        location: "Warehouse A",
+        unit: "new_units",
+        supplier: "",
+        reorderQuantity: 10,
+        initialQuantity: 20,
+      });
     });
   });
 });

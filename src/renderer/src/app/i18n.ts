@@ -112,6 +112,11 @@ export function translateErrorMessage(
     });
   }
 
+  // For generic Error objects, use the fallback
+  if (error instanceof Error) {
+    return fallback;
+  }
+
   const rawMessage = typeof error === "string" ? error : error.debugMessage?.trim() || error.message?.trim() || "";
   if (!rawMessage) {
     return fallback;

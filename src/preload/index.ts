@@ -26,6 +26,7 @@ const ALLOWED_CHANNELS = new Set([
   "remove-inventory-item",
   "add-personnel",
   "remove-personnel",
+  "delete-movement",
   "load-lan-access-state",
   "update-lan-access",
   "regenerate-lan-access-key",

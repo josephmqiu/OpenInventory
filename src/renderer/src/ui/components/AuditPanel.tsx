@@ -7,6 +7,7 @@ import { AuditLogTable } from "./AuditLogTable";
 import { AuditSummaryView } from "./AuditSummaryView";
 import { AuditDrillDown } from "./AuditDrillDown";
 import { useTranslation } from "react-i18next";
+import { useInventoryState } from "../../app/useInventoryState";
 
 interface AuditPanelProps {
   language: Language;
@@ -33,6 +34,7 @@ function initialFilters(): AuditMovementFilters {
 export function AuditPanel({ language, personnel }: AuditPanelProps) {
   const { i18n } = useTranslation(["common", "audit"]);
   const t = i18n.getFixedT(language, ["common", "audit"]);
+  const { handleDeleteMovement: deleteMovement, actionError, clearFeedback } = useInventoryState();
   const [tab, setTab] = useState<AuditTab>("log");
   const [filters, setFilters] = useState<AuditMovementFilters>(initialFilters);
   const [data, setData] = useState<AuditPageResult | null>(null);
@@ -105,6 +107,14 @@ export function AuditPanel({ language, personnel }: AuditPanelProps) {
     setError(null);
     setRetryKey((k) => k + 1);
   }, []);
+
+  const handleDeleteMovement = useCallback(async (movementId: string) => {
+    const success = await deleteMovement(movementId);
+    if (success) {
+      // Reload data after successful deletion
+      setRetryKey((k) => k + 1);
+    }
+  }, [deleteMovement]);
 
   // Drill-down replaces content
   if (drillDown) {
@@ -180,11 +190,11 @@ export function AuditPanel({ language, personnel }: AuditPanelProps) {
       </div>
 
       {/* Content */}
-      {error ? (
+      {(error || actionError) ? (
         <div className="feedback-banner feedback-banner--error">
-          {error}
-          <button type="button" className="button-secondary button-inline" onClick={handleRetry} style={{ marginLeft: 8 }}>
-            {t("retryLoad", { ns: "audit" })}
+          {error || actionError}
+          <button type="button" className="button-secondary button-inline" onClick={error ? handleRetry : clearFeedback} style={{ marginLeft: 8 }}>
+            {error ? t("retryLoad", { ns: "audit" }) : t("dismiss", { ns: "common" })}
           </button>
         </div>
       ) : tab === "log" ? (
@@ -200,6 +210,7 @@ export function AuditPanel({ language, personnel }: AuditPanelProps) {
             onPageChange={handlePageChange}
             onItemClick={handleItemClick}
             onQuickFilter={handleQuickFilter}
+            onDeleteMovement={handleDeleteMovement}
             onError={setError}
           />
         ) : data && data.total === 0 && !filters.movementType && !filters.itemSearch && !filters.performedBy && !filters.textSearch ? (
