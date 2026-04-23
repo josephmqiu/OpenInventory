@@ -247,6 +247,9 @@ export interface DatabaseServiceApi {
   readonly getAuditAnalytics: (
     filters: Omit<AuditMovementFilters, "page" | "pageSize">,
   ) => Effect.Effect<AuditAnalyticsResult, AppError>;
+  readonly deleteMovement: (
+    movementId: string,
+  ) => Effect.Effect<MutationResult, AppError>;
   /** Close the underlying database connection. */
   readonly close: () => void;
 }
@@ -1402,6 +1405,137 @@ export function makeDatabaseService(
           };
         },
         catch: () => localizedDatabaseError(db),
+      }),
+
+    deleteMovement: (movementId) =>
+      Effect.try({
+        try: () => {
+          const messages = backendMessages(currentLanguage(db));
+
+          const deleteFn = db.transaction(() => {
+            // Find the movement to delete
+            const movement = db
+              .prepare(
+                `SELECT id, item_id, movement_type, quantity, previous_quantity, new_quantity, performed_at
+                 FROM inventory_movements WHERE id = ?`
+              )
+              .get(movementId) as
+              | {
+                  id: string;
+                  item_id: string;
+                  movement_type: string;
+                  quantity: number;
+                  previous_quantity: number;
+                  new_quantity: number;
+                  performed_at: string;
+                }
+              | undefined;
+
+            if (!movement) {
+              throw notFoundError(messages.movementNotFound);
+            }
+
+            // Get the item record
+            const item = getItemRecord(db, movement.item_id, messages);
+
+            // Recalculate inventory quantity
+            // Use the movement's previous_quantity as the new baseline
+            // This ensures subsequent movements have correct previous_quantity values
+            const newQuantity = movement.previous_quantity;
+
+            // Get all subsequent movements for this item (ordered by date and id)
+            // Must query before deleting the movement
+            // Use id as tiebreaker for same timestamp
+            const subsequentMovements = db
+              .prepare(
+                `SELECT id, movement_type, quantity, previous_quantity, new_quantity
+                 FROM inventory_movements 
+                 WHERE item_id = ? AND (performed_at > ? OR (performed_at = ? AND id > ?))
+                 ORDER BY performed_at ASC, id ASC`
+              )
+              .all(movement.item_id, movement.performed_at, movement.performed_at, movement.id) as Array<{
+                id: string;
+                movement_type: string;
+                quantity: number;
+                previous_quantity: number;
+                new_quantity: number;
+              }>;
+
+            // Validate that deleting this movement won't cause negative inventory
+            // or set inventory below the reorder threshold when current inventory is above it
+            if (newQuantity < 0 || (newQuantity < item.reorderQuantity && item.currentQuantity > item.reorderQuantity)) {
+              throw validationError(messages.insufficientStockWhenDeletingMovement);
+            }
+
+            // Update inventory item
+            const status = stockStatusKey(newQuantity, item.reorderQuantity);
+            db.prepare(
+              "UPDATE inventory_items SET current_quantity = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?",
+            ).run(newQuantity, status, movement.item_id);
+
+            // Delete the movement
+            db.prepare("DELETE FROM inventory_movements WHERE id = ?").run(movementId);
+
+            // Recalculate and update subsequent movements
+            let runningQuantity = newQuantity;
+            for (const subMovement of subsequentMovements) {
+              const prevQuantity = runningQuantity;
+              
+              if (subMovement.movement_type === "receive") {
+                runningQuantity += subMovement.quantity;
+              } else if (subMovement.movement_type === "issue") {
+                // Check if issue would cause negative inventory
+                if (runningQuantity < subMovement.quantity) {
+                  throw validationError(messages.insufficientStockWhenDeletingMovement);
+                }
+                runningQuantity -= subMovement.quantity;
+              }
+
+              // Update the movement record with new previous and new quantities
+              db.prepare(
+                "UPDATE inventory_movements SET previous_quantity = ?, new_quantity = ? WHERE id = ?"
+              ).run(prevQuantity, runningQuantity, subMovement.id);
+            }
+
+            // Update inventory item with final calculated quantity
+            const finalStatus = stockStatusKey(runningQuantity, item.reorderQuantity);
+            db.prepare(
+              "UPDATE inventory_items SET current_quantity = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?",
+            ).run(runningQuantity, finalStatus, movement.item_id);
+
+            // Sync low stock alert with final quantity
+            const alertCreated = syncLowStockAlert(
+              db, movement.item_id, item.reorderQuantity, runningQuantity,
+            );
+
+            return {
+              alertCreated,
+              itemName: item.name,
+              sku: item.sku,
+              currentQuantity: runningQuantity,
+              reorderQuantity: item.reorderQuantity,
+            };
+          });
+
+          const result = deleteFn();
+          const snapshot = loadSnapshotSync();
+
+          return {
+            snapshot,
+            lowStockNotification: result.alertCreated
+              ? {
+                  itemName: result.itemName,
+                  sku: result.sku,
+                  currentQuantity: result.currentQuantity,
+                  thresholdQuantity: result.reorderQuantity,
+                }
+              : null,
+          };
+        },
+        catch: (e) => {
+          if (e instanceof ValidationError || e instanceof NotFoundError) return e;
+          return localizedDatabaseError(db);
+        },
       }),
 
     getAuditAnalytics: (filters) =>

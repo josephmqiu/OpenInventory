@@ -54,7 +54,7 @@ describe("QuickIssueMobile", () => {
       <QuickIssueMobile busy={false} item={makeItem()} language="en" personnel={personnel} onIssue={vi.fn()} />,
     );
     fireEvent.click(screen.getByText("+1"));
-    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    const input = screen.getByRole("textbox") as HTMLInputElement;
     expect(input.value).toBe("1");
   });
 
@@ -64,7 +64,7 @@ describe("QuickIssueMobile", () => {
     );
     fireEvent.click(screen.getByText("+5"));
     fireEvent.click(screen.getByText("+10"));
-    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    const input = screen.getByRole("textbox") as HTMLInputElement;
     expect(input.value).toBe("15");
   });
 
@@ -73,7 +73,7 @@ describe("QuickIssueMobile", () => {
       <QuickIssueMobile busy={false} item={makeItem({ currentQuantity: 3 })} language="en" personnel={personnel} onIssue={vi.fn()} />,
     );
     fireEvent.click(screen.getByText("+5"));
-    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    const input = screen.getByRole("textbox") as HTMLInputElement;
     expect(input.value).toBe("3");
   });
 
@@ -83,7 +83,7 @@ describe("QuickIssueMobile", () => {
     );
     fireEvent.click(screen.getByText("+5"));
     fireEvent.click(screen.getByText("Clear"));
-    const input = screen.getByRole("spinbutton") as HTMLInputElement;
+    const input = screen.getByRole("textbox") as HTMLInputElement;
     expect(input.value).toBe("");
   });
 

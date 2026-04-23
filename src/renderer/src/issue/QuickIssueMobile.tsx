@@ -162,13 +162,17 @@ export function QuickIssueMobile({ busy, item, language, notice, personnel, clea
               <input
                 autoFocus
                 inputMode="numeric"
-                min="1"
-                max={item.currentQuantity}
                 pattern="[0-9]*"
-                type="number"
+                type="text"
                 value={quantityInput}
                 disabled={isOutOfStock}
-                onChange={(e) => setQuantityInput(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  // 只允许输入数字
+                  if (/^$|^\d+$/.test(value)) {
+                    setQuantityInput(value);
+                  }
+                }}
               />
               <span className="qi-unit-chip">{localizeUnit(item.unit, language)}</span>
             </div>

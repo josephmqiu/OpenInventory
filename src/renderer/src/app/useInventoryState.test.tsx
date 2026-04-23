@@ -33,6 +33,7 @@ const gatewayMocks = vi.hoisted(() => ({
   regenerateLanAccessKey: vi.fn(),
   removeInventoryItem: vi.fn(),
   removePersonnel: vi.fn(),
+  deleteMovement: vi.fn(),
   restoreFromBackup: vi.fn(),
   selectBackupDirectory: vi.fn(),
   selectRestoreSource: vi.fn(),
@@ -171,6 +172,7 @@ beforeEach(() => {
   });
   gatewayMocks.removeInventoryItem.mockResolvedValue(createSnapshot({ items: [] }));
   gatewayMocks.removePersonnel.mockResolvedValue(createSnapshot({ personnel: [] }));
+  gatewayMocks.deleteMovement.mockResolvedValue(createSnapshot());
   gatewayMocks.restoreFromBackup.mockResolvedValue(undefined);
   gatewayMocks.selectBackupDirectory.mockResolvedValue("/tmp/openinventory-backups");
   gatewayMocks.selectRestoreSource.mockResolvedValue(null);
@@ -317,7 +319,7 @@ describe("useInventoryState", () => {
 
   it("surfaces localized backup errors when backup-now fails", async () => {
     gatewayMocks.backupNow.mockRejectedValueOnce(
-      new Error("Backup target path is required before running a backup."),
+      new GatewayError({ messageId: "backupTargetPathRequired", debugMessage: "Backup target path is required before running a backup." }),
     );
 
     const { result } = renderHook(() => useInventoryState());
@@ -514,5 +516,73 @@ describe("useInventoryState", () => {
     expect(result.current.loadError).toBeNull();
     expect(result.current.actionError).toBeNull();
     expect(result.current.notice).toBeNull();
+  });
+
+  it("handles delete movement rejection with error message", async () => {
+    const initialSnapshot = createSnapshot();
+    gatewayMocks.loadAppSnapshot.mockResolvedValueOnce(initialSnapshot);
+    
+    // Mock delete movement to throw error
+    const deleteError = new Error("Insufficient stock to delete this movement");
+    (deleteError as any).messageId = "insufficientStockWhenDeletingMovement";
+    gatewayMocks.deleteMovement.mockRejectedValueOnce(deleteError);
+
+    const { result } = renderHook(() => useInventoryState());
+
+    await waitFor(() => {
+      expect(result.current.snapshot).toEqual(initialSnapshot);
+    });
+
+    let success = true;
+    await act(async () => {
+      success = await result.current.handleDeleteMovement("movement-1");
+    });
+
+    expect(success).toBe(false);
+    expect(result.current.snapshot).toEqual(initialSnapshot);
+    expect(result.current.notice).toBeNull();
+    expect(result.current.actionError).toBeDefined();
+  });
+
+  it("handles delete movement rejection with generic error", async () => {
+    const initialSnapshot = createSnapshot();
+    gatewayMocks.loadAppSnapshot.mockResolvedValueOnce(initialSnapshot);
+    
+    const deleteError = new Error("Unexpected error during delete");
+    gatewayMocks.deleteMovement.mockRejectedValueOnce(deleteError);
+
+    const { result } = renderHook(() => useInventoryState());
+
+    await waitFor(() => {
+      expect(result.current.snapshot).toEqual(initialSnapshot);
+    });
+
+    let success = true;
+    await act(async () => {
+      success = await result.current.handleDeleteMovement("movement-1");
+    });
+
+    expect(success).toBe(false);
+    expect(result.current.snapshot).toEqual(initialSnapshot);
+    expect(result.current.notice).toBeNull();
+    expect(result.current.actionError).toBe(tCommon("genericActionError"));
+  });
+
+  it("returns false when snapshot is null during delete movement", async () => {
+    gatewayMocks.loadAppSnapshot.mockResolvedValueOnce(null as any);
+
+    const { result } = renderHook(() => useInventoryState());
+
+    await waitFor(() => {
+      expect(result.current.snapshot).toBeNull();
+    });
+
+    let success = true;
+    await act(async () => {
+      success = await result.current.handleDeleteMovement("movement-1");
+    });
+
+    expect(success).toBe(false);
+    expect(gatewayMocks.deleteMovement).not.toHaveBeenCalled();
   });
 });

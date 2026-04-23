@@ -136,6 +136,9 @@ function createWindow(): void {
     },
   });
 
+  // Remove default menu
+  mainWindow.setMenu(null);
+
   mainWindow.on("ready-to-show", () => {
     mainWindow?.show();
   });

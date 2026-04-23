@@ -28,6 +28,12 @@ vi.mock("../../services/inventoryGateway", () => ({
   }),
 }));
 
+vi.mock("../../app/useInventoryState", () => ({
+  useInventoryState: vi.fn().mockReturnValue({
+    handleDeleteMovement: vi.fn().mockResolvedValue(true),
+  }),
+}));
+
 import { AuditPanel } from "./AuditPanel";
 
 afterEach(cleanup);

@@ -39,6 +39,7 @@ import {
   updateBackupPlan,
   updateInventoryItem,
   updateLanAccess,
+  deleteMovement,
 } from "../services/inventoryGateway";
 
 type NoticeTone = "success" | "warning";
@@ -80,6 +81,7 @@ export interface InventoryState {
   cancelRestoreFromBackup: () => void;
   handleAddPersonnel: (name: string) => Promise<boolean>;
   handleRemovePersonnel: (personnelId: string) => Promise<boolean>;
+  handleDeleteMovement: (movementId: string) => Promise<boolean>;
   handleLanguageChange: (nextLanguage: Language) => void;
   handleLanAccessSave: (input: UpdateLanAccessInput) => Promise<boolean>;
   handleLanAccessKeyRegenerate: () => Promise<void>;
@@ -374,9 +376,17 @@ export function useInventoryState(): InventoryState {
       setActionError(null);
       const previousSnapshot = snapshot;
       const nextSnapshot = await work();
-      setSnapshot(nextSnapshot);
-      setNotice(buildMutationNotice(previousSnapshot, nextSnapshot, language, successMessage));
-      return true;
+      
+      // Ensure snapshot is properly updated
+      if (nextSnapshot) {
+        setSnapshot(nextSnapshot);
+        setNotice(buildMutationNotice(previousSnapshot, nextSnapshot, language, successMessage));
+        return true;
+      } else {
+        // Handle case where work() returns null or undefined
+        handleGatewayError(new Error("Failed to get updated snapshot"));
+        return false;
+      }
     } catch (error) {
       handleGatewayError(error);
       return false;
@@ -486,6 +496,9 @@ export function useInventoryState(): InventoryState {
 
   const handleRemovePersonnel = async (personnelId: string) =>
     executeMutation(() => removePersonnel(personnelId), tInventory("successRemovePersonnel"));
+
+  const handleDeleteMovement = async (movementId: string) =>
+    executeMutation(() => deleteMovement(movementId), tInventory("successDeleteMovement"));
 
   const handleLanguageChange = (nextLanguage: Language) => {
     setLanguage(nextLanguage);
@@ -608,6 +621,7 @@ export function useInventoryState(): InventoryState {
     cancelRestoreFromBackup,
     handleAddPersonnel,
     handleRemovePersonnel,
+    handleDeleteMovement,
     handleLanguageChange,
     handleLanAccessSave,
     handleLanAccessKeyRegenerate,

@@ -2,6 +2,9 @@ import { formatDate } from "../../app/formatDate";
 import type { AuditMovementRow, AuditPageResult, AuditMovementFilters, Language } from "../../domain/models";
 import { useTranslation } from "react-i18next";
 import { DataTable, type ColumnDef, type SortState } from "./DataTable";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { useState } from "react";
+import { Trash2 } from "lucide-react";
 
 interface AuditLogTableProps {
   language: Language;
@@ -10,6 +13,7 @@ interface AuditLogTableProps {
   onPageChange: (page: number) => void;
   onItemClick: (itemId: string, itemName: string) => void;
   onQuickFilter: (update: Partial<AuditMovementFilters>) => void;
+  onDeleteMovement: (movementId: string) => Promise<void>;
   onError?: (msg: string) => void;
 }
 
@@ -79,12 +83,15 @@ export function AuditLogTable({
   onPageChange,
   onItemClick,
   onQuickFilter,
+  onDeleteMovement,
   onError,
 }: AuditLogTableProps) {
   const { i18n } = useTranslation(["common", "audit"]);
   const t = i18n.getFixedT(language, ["common", "audit"]);
   const totalPages = Math.max(1, Math.ceil(data.total / filters.pageSize));
   const currentPage = filters.page;
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [selectedMovementId, setSelectedMovementId] = useState<string | null>(null);
   const labels: AuditCsvLabels = {
     date: t("date", { ns: "audit" }),
     itemName: t("itemName", { ns: "audit" }),
@@ -124,6 +131,29 @@ export function AuditLogTable({
     } catch (err) {
       onError?.(err instanceof Error ? err.message : String(err));
     }
+  };
+
+  const handleDeleteClick = (movementId: string) => {
+    setSelectedMovementId(movementId);
+    setConfirmDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (selectedMovementId) {
+      try {
+        await onDeleteMovement(selectedMovementId);
+      } catch (err) {
+        onError?.(err instanceof Error ? err.message : String(err));
+      } finally {
+        setConfirmDialogOpen(false);
+        setSelectedMovementId(null);
+      }
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setConfirmDialogOpen(false);
+    setSelectedMovementId(null);
   };
 
   const clickDate = (dateStr: string) => {
@@ -189,6 +219,22 @@ export function AuditLogTable({
     { key: "reason", header: labels.reason, sortable: true, sortKey: "reason", render: (row) => row.reason || "" },
     { key: "referenceNo", header: labels.referenceNo, sortable: true, sortKey: "referenceNo", render: (row) => row.referenceNo || "" },
     { key: "notes", header: labels.notes, sortable: true, sortKey: "notes", render: (row) => row.notes || "" },
+    {
+      key: "actions",
+      header: "",
+      sortable: false,
+      className: "cell-actions",
+      render: (row) => (
+        <button
+            type="button"
+            className="button-danger button-inline button-icon"
+            onClick={() => handleDeleteClick(row.id)}
+            title={t("deleteMovement", { ns: "audit" })}
+          >
+          <Trash2 size={16} />
+        </button>
+      ),
+    },
   ];
 
   return (
@@ -228,6 +274,15 @@ export function AuditLogTable({
           </button>
         </div>
       </div>
+      <ConfirmDialog
+        isOpen={confirmDialogOpen}
+        title={t("deleteMovement", { ns: "audit" })}
+        message={t("deleteMovementConfirm", { ns: "audit" })}
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+        confirmText={t("delete", { ns: "common" })}
+        cancelText={t("cancel", { ns: "common" })}
+      />
     </>
   );
 }

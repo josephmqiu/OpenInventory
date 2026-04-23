@@ -16,8 +16,8 @@
     "rebuild:native:electron": "npx tsx scripts/rebuild-electron-native-deps.ts",
     "lint": "eslint src/",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --config vitest.workspace.ts",
+    "test:watch": "vitest --config vitest.workspace.ts",
     "test:backend": "npx tsx scripts/run-with-node-native-restore.ts \"vitest run --config vitest.config.node.ts\"",
     "test:backend:watch": "npx tsx scripts/run-with-node-native-restore.ts \"vitest --config vitest.config.node.ts\"",
     "test:coverage": "npx tsx scripts/run-with-node-native-restore.ts \"vitest run --config vitest.coverage.config.ts\"",
@@ -34,8 +34,14 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "^12.9.0",
     "electron-updater": "^6.8.3"
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "OpenInventory",
+    "repo": "OpenInventory",
+    "releaseType": "release"
   },
   "devDependencies": {
     "@effect/platform": "^0.96.0",
@@ -73,6 +79,6 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.0",
     "vite": "^7.1.12",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.5"
   }
 }

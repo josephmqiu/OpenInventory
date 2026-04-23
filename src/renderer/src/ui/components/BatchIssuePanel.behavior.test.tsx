@@ -64,7 +64,9 @@ afterEach(() => {
 describe("BatchIssuePanel", () => {
   it("submits only positive quantities and defaults performedBy to the first personnel member", async () => {
     const props = renderPanel();
-    const quantityInputs = screen.getAllByRole("spinbutton");
+    // Get all textboxes and filter out the Reason input
+    const allTextboxes = screen.getAllByRole("textbox");
+    const quantityInputs = allTextboxes.filter(input => input.name !== "Reason");
 
     fireEvent.change(quantityInputs[0], { target: { value: "5" } });
     fireEvent.change(quantityInputs[1], { target: { value: "0" } });
@@ -95,13 +97,15 @@ describe("BatchIssuePanel", () => {
 
   it("shows success feedback and clears quantities after a successful submit", async () => {
     const props = renderPanel();
-    const quantityInput = screen.getAllByRole("spinbutton")[0] as HTMLInputElement;
+    // Get all textboxes and filter out the Reason input
+    const allTextboxes = screen.getAllByRole("textbox");
+    const quantityInput = allTextboxes.filter(input => input.name !== "Reason")[0] as HTMLInputElement;
 
     fireEvent.change(quantityInput, { target: { value: "3" } });
     fireEvent.click(screen.getByTestId("batch-submit"));
 
     await waitFor(() => {
-      expect(screen.getByText("Batch material issue recorded.")).toBeTruthy();
+      expect(screen.getByText("Batch material issue recorded."));
     });
     expect(quantityInput.value).toBe("");
     expect(props.onSubmit).toHaveBeenCalledOnce();

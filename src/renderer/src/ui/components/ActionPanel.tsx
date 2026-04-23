@@ -165,13 +165,13 @@ export function ActionPanel({
             name: "",
             category: firstCategory,
             location: "",
-            unit: "",
+            unit: firstUnit,
             supplier: "",
             reorderQuantity: 0,
             initialQuantity: 0,
           },
     );
-  }, [action, activeItemId]);
+  }, [action, activeItemId, items, personnel]);
 
   if (!action) {
     return null;
@@ -375,12 +375,24 @@ export function ActionPanel({
               </label>
               <label>
                 <FieldLabel label={tt("reorderLevel", "Reorder Level")} required />
-                <input disabled={busy} required type="number" min="0" value={itemForm.reorderQuantity} onChange={(event) => setItemForm({ ...itemForm, reorderQuantity: Number(event.target.value) })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
+                <input disabled={busy} required inputMode="numeric" pattern="[0-9]*" type="text" value={itemForm.reorderQuantity} onChange={(event) => {
+                  const value = event.target.value;
+                  const numValue = value === "" ? 0 : Number(value);
+                  if (!isNaN(numValue)) {
+                    setItemForm({ ...itemForm, reorderQuantity: numValue });
+                  }
+                }} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
               </label>
               {action === "createItem" ? (
                 <label>
                   <FieldLabel label={tt("initialQuantity", "Initial Quantity")} required />
-                  <input disabled={busy} required type="number" min="0" value={itemForm.initialQuantity} onChange={(event) => setItemForm({ ...itemForm, initialQuantity: Number(event.target.value) })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
+                  <input disabled={busy} required inputMode="numeric" pattern="[0-9]*" type="text" value={itemForm.initialQuantity} onChange={(event) => {
+                    const value = event.target.value;
+                    const numValue = value === "" ? 0 : Number(value);
+                    if (!isNaN(numValue)) {
+                      setItemForm({ ...itemForm, initialQuantity: numValue });
+                    }
+                  }} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
                 </label>
               ) : selectedManagedItem ? (
                 <div className="form-summary">
@@ -419,7 +431,13 @@ export function ActionPanel({
               </label>
               <label>
                 <FieldLabel label={tt("quantity", "Quantity")} required />
-                <input disabled={busy} type="number" min="0" value={stockForm.quantity} onChange={(event) => setStockForm({ ...stockForm, quantity: Number(event.target.value) })} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
+                <input disabled={busy} inputMode="numeric" pattern="[0-9]*" type="text" value={stockForm.quantity} onChange={(event) => {
+                  const value = event.target.value;
+                  const numValue = value === "" ? 0 : Number(value);
+                  if (!isNaN(numValue)) {
+                    setStockForm({ ...stockForm, quantity: numValue });
+                  }
+                }} onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }} />
               </label>
               <label>
                 <FieldLabel label={tt("reason", "Reason")} />

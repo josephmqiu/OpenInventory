@@ -3,6 +3,7 @@ const { autoUpdater } = electronUpdater;
 type UpdateInfo = electronUpdater.UpdateInfo;
 type ProgressInfo = electronUpdater.ProgressInfo;
 import { is } from "@electron-toolkit/utils";
+import { app } from "electron";
 
 export type UpdateStatus =
   | { stage: "idle" }
@@ -33,11 +34,21 @@ export function makeAutoUpdateService(
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  // 检查更新服务器配置
+  try {
+    const appVersion = app.getVersion();
+    console.log(`[AutoUpdateService] App version: ${appVersion}`);
+  } catch (error) {
+    console.error("[AutoUpdateService] Error getting app version:", error);
+  }
+
   autoUpdater.on("checking-for-update", () => {
+    console.log("[AutoUpdateService] Checking for updates...");
     setStatus({ stage: "checking" });
   });
 
   autoUpdater.on("update-available", (info: UpdateInfo) => {
+    console.log(`[AutoUpdateService] Update available: ${info.version}`);
     setStatus({
       stage: "available",
       version: info.version,
@@ -46,10 +57,12 @@ export function makeAutoUpdateService(
   });
 
   autoUpdater.on("update-not-available", (info: UpdateInfo) => {
+    console.log(`[AutoUpdateService] No update available. Current version: ${info.version}`);
     setStatus({ stage: "not-available", version: info.version });
   });
 
   autoUpdater.on("download-progress", (progress: ProgressInfo) => {
+    console.log(`[AutoUpdateService] Download progress: ${Math.round(progress.percent)}%`);
     setStatus({
       stage: "downloading",
       percent: progress.percent,
@@ -59,31 +72,63 @@ export function makeAutoUpdateService(
   });
 
   autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
+    console.log(`[AutoUpdateService] Update downloaded: ${info.version}`);
     setStatus({ stage: "downloaded", version: info.version });
   });
 
   autoUpdater.on("error", (err: Error) => {
-    setStatus({ stage: "error", message: err.message });
+    console.error("[AutoUpdateService] Update error:", err);
+    let errorMessage = err.message;
+    
+    // 提供更清晰的错误信息
+    if (errorMessage.includes("net::ERR_NAME_NOT_RESOLVED")) {
+      errorMessage = "Cannot connect to update server. Please check your internet connection.";
+    } else if (errorMessage.includes("404")) {
+      errorMessage = "Update server not found. Please contact support.";
+    } else if (errorMessage.includes("ENOENT")) {
+      errorMessage = "Update configuration not found. Please check the app settings.";
+    }
+    
+    setStatus({ stage: "error", message: errorMessage });
   });
 
   return {
     checkForUpdates: () => {
       if (is.dev) {
+        console.log("[AutoUpdateService] Development mode: skipping update check");
         setStatus({ stage: "not-available", version: "dev" });
         return;
       }
+      
+      console.log("[AutoUpdateService] Starting update check...");
       autoUpdater.checkForUpdates().catch((err: Error) => {
-        setStatus({ stage: "error", message: err.message });
+        console.error("[AutoUpdateService] Check for updates failed:", err);
+        let errorMessage = err.message;
+        
+        if (errorMessage.includes("net::ERR_NAME_NOT_RESOLVED")) {
+          errorMessage = "Cannot connect to update server. Please check your internet connection.";
+        } else if (errorMessage.includes("404")) {
+          errorMessage = "Update server not found. Please contact support.";
+        } else if (errorMessage.includes("ENOENT")) {
+          errorMessage = "Update configuration not found. Please check the app settings.";
+        }
+        
+        setStatus({ stage: "error", message: errorMessage });
       });
     },
     downloadUpdate: () => {
       if (is.dev || currentStatus.stage !== "available") return;
+      
+      console.log("[AutoUpdateService] Starting update download...");
       autoUpdater.downloadUpdate().catch((err: Error) => {
+        console.error("[AutoUpdateService] Download update failed:", err);
         setStatus({ stage: "error", message: err.message });
       });
     },
     installUpdate: () => {
       if (currentStatus.stage !== "downloaded") return;
+      
+      console.log("[AutoUpdateService] Installing update...");
       autoUpdater.quitAndInstall(false, true);
     },
     getStatus: () => currentStatus,

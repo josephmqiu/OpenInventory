@@ -1072,3 +1072,445 @@ describe("backup plan service validation", () => {
     service.close();
   });
 });
+
+// ─── Delete Movement ──────────────────────────────────────────────────────────
+
+describe("delete_movement", () => {
+  it("deletes receive movement and updates inventory quantity", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    
+    // Create item with initial quantity
+    const itemId = seedItem(t.db, { currentQuantity: 100, reorderQuantity: 20 });
+    
+    // Create a receive movement
+    const movementId = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 50,
+      previousQty: 50,
+      newQty: 100,
+    });
+    
+    // Delete the movement
+    const result = await Effect.runPromise(service.deleteMovement(movementId));
+    
+    // Verify inventory quantity is updated
+    const item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+    
+    expect(item.current_quantity).toBe(50); // 100 - 50
+    
+    // Verify movement is deleted
+    const movement = t.db
+      .prepare("SELECT * FROM inventory_movements WHERE id = ?")
+      .get(movementId);
+    
+    expect(movement).toBeUndefined();
+    
+    service.close();
+  });
+  
+  it("deletes issue movement and updates inventory quantity", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    
+    // Create item with initial quantity
+    const itemId = seedItem(t.db, { currentQuantity: 50, reorderQuantity: 20 });
+    
+    // Create an issue movement
+    const movementId = seedMovement(t.db, itemId, {
+      type: "issue",
+      quantity: 30,
+      previousQty: 80,
+      newQty: 50,
+    });
+    
+    // Delete the movement
+    const result = await Effect.runPromise(service.deleteMovement(movementId));
+    
+    // Verify inventory quantity is updated
+    const item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+    
+    expect(item.current_quantity).toBe(80); // 50 + 30
+    
+    // Verify movement is deleted
+    const movement = t.db
+      .prepare("SELECT * FROM inventory_movements WHERE id = ?")
+      .get(movementId);
+    
+    expect(movement).toBeUndefined();
+    
+    service.close();
+  });
+  
+  it("rejects deletion of receive movement when it would cause negative inventory", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    
+    // Create item with initial quantity
+    const itemId = seedItem(t.db, { currentQuantity: 30, reorderQuantity: 20 });
+    
+    // Create a receive movement (this movement is responsible for 30 units)
+    const movementId = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 30,
+      previousQty: 0,
+      newQty: 30,
+    });
+    
+    // Try to delete the movement - this should fail because it would result in 0 - 30 = -30
+    await expect(
+      Effect.runPromise(service.deleteMovement(movementId))
+    ).rejects.toThrow(backendMessages("en").insufficientStockWhenDeletingMovement);
+    
+    // Verify inventory quantity is unchanged
+    const item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+    
+    expect(item.current_quantity).toBe(30);
+    
+    // Verify movement is not deleted
+    const movement = t.db
+      .prepare("SELECT * FROM inventory_movements WHERE id = ?")
+      .get(movementId);
+    
+    expect(movement).toBeDefined();
+    
+    service.close();
+  });
+  
+  it("updates subsequent movements' quantity values", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    
+    // Create item with initial quantity
+    const itemId = seedItem(t.db, { currentQuantity: 150, reorderQuantity: 20 });
+    
+    // Create multiple movements in sequence
+    const movement1Id = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 50,
+      previousQty: 50,
+      newQty: 100,
+      performedAt: "2026-04-20 10:00:00",
+    });
+    
+    const movement2Id = seedMovement(t.db, itemId, {
+      type: "issue",
+      quantity: 20,
+      previousQty: 100,
+      newQty: 80,
+      performedAt: "2026-04-20 11:00:00",
+    });
+    
+    const movement3Id = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 70,
+      previousQty: 80,
+      newQty: 150,
+      performedAt: "2026-04-20 12:00:00",
+    });
+    
+    // Delete the first movement
+    const result = await Effect.runPromise(service.deleteMovement(movement1Id));
+    
+    // Verify inventory quantity is updated
+    const item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+    
+    expect(item.current_quantity).toBe(100); // 150 - 50
+    
+    // Verify subsequent movements' quantity values are updated
+    const movement2 = t.db
+      .prepare("SELECT previous_quantity, new_quantity FROM inventory_movements WHERE id = ?")
+      .get(movement2Id) as { previous_quantity: number; new_quantity: number };
+    
+    expect(movement2.previous_quantity).toBe(50); // Should be 0 + 50 (initial) - 50 (deleted) = 0? Wait, let's recalculate:
+    // After deleting movement1 (receive 50), the initial quantity is 50 (since movement1 was from 50 to 100)
+    // So movement2 should now be from 50 to 30
+    expect(movement2.previous_quantity).toBe(50);
+    expect(movement2.new_quantity).toBe(30); // 50 - 20
+    
+    const movement3 = t.db
+      .prepare("SELECT previous_quantity, new_quantity FROM inventory_movements WHERE id = ?")
+      .get(movement3Id) as { previous_quantity: number; new_quantity: number };
+    
+    expect(movement3.previous_quantity).toBe(30); // Should be 30 (after movement2)
+    expect(movement3.new_quantity).toBe(100); // 30 + 70
+    
+    service.close();
+  });
+  
+  it("returns not found error for nonexistent movement", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    
+    // Try to delete a nonexistent movement
+    await expect(
+      Effect.runPromise(service.deleteMovement("nonexistent-movement-id"))
+    ).rejects.toThrow(backendMessages("en").movementNotFound);
+    
+    service.close();
+  });
+  
+  it("rejects deletion of the last movement record if it would set inventory below reorder threshold", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    
+    // Create item with initial quantity
+    const itemId = seedItem(t.db, { currentQuantity: 50, reorderQuantity: 20 });
+    
+    // Create a single movement (this is the only one)
+    const movementId = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 50,
+      previousQty: 0,
+      newQty: 50,
+    });
+    
+    // Try to delete the only movement - this should fail because it would set inventory below reorder threshold
+    await expect(
+      Effect.runPromise(service.deleteMovement(movementId))
+    ).rejects.toThrow(backendMessages("en").insufficientStockWhenDeletingMovement);
+    
+    // Verify inventory quantity is unchanged
+    const item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+    
+    expect(item.current_quantity).toBe(50);
+    
+    // Verify movement is not deleted
+    const movement = t.db
+      .prepare("SELECT * FROM inventory_movements WHERE id = ?")
+      .get(movementId);
+    
+    expect(movement).toBeDefined();
+    
+    service.close();
+  });
+  
+  it("deletes multiple movements in sequence", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    
+    // Create item with initial quantity
+    const itemId = seedItem(t.db, { currentQuantity: 150, reorderQuantity: 20 });
+    
+    // Create multiple movements
+    const movement1Id = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 50,
+      previousQty: 50,
+      newQty: 100,
+      performedAt: "2026-04-20 10:00:00",
+    });
+    
+    const movement2Id = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 30,
+      previousQty: 100,
+      newQty: 130,
+      performedAt: "2026-04-20 11:00:00",
+    });
+    
+    const movement3Id = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 20,
+      previousQty: 130,
+      newQty: 150,
+      performedAt: "2026-04-20 12:00:00",
+    });
+    
+    // Delete the second movement
+    const result = await Effect.runPromise(service.deleteMovement(movement2Id));
+    
+    // Verify inventory quantity is updated to 130 (previous_quantity of movement3)
+    const item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+    
+    expect(item.current_quantity).toBe(120);
+    
+    // Verify movement2 is deleted
+    const movement2 = t.db
+      .prepare("SELECT * FROM inventory_movements WHERE id = ?")
+      .get(movement2Id);
+    
+    expect(movement2).toBeUndefined();
+    
+    // Verify movement3's previous_quantity is updated
+    const movement3 = t.db
+      .prepare("SELECT previous_quantity, new_quantity FROM inventory_movements WHERE id = ?")
+      .get(movement3Id) as { previous_quantity: number; new_quantity: number };
+    
+    expect(movement3.previous_quantity).toBe(100); // Should be previous_quantity of movement2
+    expect(movement3.new_quantity).toBe(120); // 100 + 20
+    
+    service.close();
+  });
+  
+  it("deletes movement with specific type", async () => {
+    const service = makeDatabaseService(t.dbPath);
+
+    // Create item with initial quantity
+    const itemId = seedItem(t.db, { currentQuantity: 70, reorderQuantity: 20 });
+
+    // Create movements of different types
+    const receiveMovementId = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 50,
+      previousQty: 20,
+      newQty: 70,
+      performedAt: "2026-04-20 10:00:00",
+    });
+
+    const issueMovementId = seedMovement(t.db, itemId, {
+      type: "issue",
+      quantity: 30,
+      previousQty: 70,
+      newQty: 40,
+      performedAt: "2026-04-20 11:00:00",
+    });
+
+    // Try to delete the receive movement - this should fail because it would leave 20, then issue 30 would cause negative
+    await expect(
+      Effect.runPromise(service.deleteMovement(receiveMovementId))
+    ).rejects.toThrow(backendMessages("en").insufficientStockWhenDeletingMovement);
+
+    // Verify inventory quantity is unchanged
+    const item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+
+    expect(item.current_quantity).toBe(70);
+
+    // Verify receive movement is not deleted
+    const receiveMovement = t.db
+      .prepare("SELECT * FROM inventory_movements WHERE id = ?")
+      .get(receiveMovementId);
+
+    expect(receiveMovement).toBeDefined();
+
+    service.close();
+  });
+  
+  it("rejects deletion when subsequent issue would cause negative inventory", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    
+    // Create item with initial quantity
+    const itemId = seedItem(t.db, { currentQuantity: 40, reorderQuantity: 20 });
+    
+    // Create movements: receive 50, then issue 30
+    const receiveMovementId = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 50,
+      previousQty: 20,
+      newQty: 70,
+      performedAt: "2026-04-20 10:00:00",
+    });
+    
+    const issueMovementId = seedMovement(t.db, itemId, {
+      type: "issue",
+      quantity: 30,
+      previousQty: 70,
+      newQty: 40,
+      performedAt: "2026-04-20 11:00:00",
+    });
+    
+    // Try to delete the receive movement - this should fail because it would leave only 20, and the issue is 30
+    await expect(
+      Effect.runPromise(service.deleteMovement(receiveMovementId))
+    ).rejects.toThrow(backendMessages("en").insufficientStockWhenDeletingMovement);
+    
+    // Verify inventory quantity is unchanged
+    const item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+    
+    expect(item.current_quantity).toBe(40);
+    
+    // Verify both movements still exist
+    const receiveMovement = t.db
+      .prepare("SELECT * FROM inventory_movements WHERE id = ?")
+      .get(receiveMovementId);
+    
+    const issueMovement = t.db
+      .prepare("SELECT * FROM inventory_movements WHERE id = ?")
+      .get(issueMovementId);
+    
+    expect(receiveMovement).toBeDefined();
+    expect(issueMovement).toBeDefined();
+    
+    service.close();
+  });
+  
+  it("handles multiple deletions correctly", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    
+    // Create item with initial quantity
+    const itemId = seedItem(t.db, { currentQuantity: 100, reorderQuantity: 20 });
+    
+    // Create multiple movements
+    const movement1Id = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 20,
+      previousQty: 30,
+      newQty: 50,
+      performedAt: "2026-04-20 10:00:00",
+    });
+    
+    const movement2Id = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 30,
+      previousQty: 50,
+      newQty: 80,
+      performedAt: "2026-04-20 11:00:00",
+    });
+    
+    const movement3Id = seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 20,
+      previousQty: 80,
+      newQty: 100,
+      performedAt: "2026-04-20 12:00:00",
+    });
+    
+    // Delete movement2 first
+    await Effect.runPromise(service.deleteMovement(movement2Id));
+    
+    // Verify inventory quantity is 70 (previous_quantity of movement2 + movement3 quantity)
+    let item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+
+    expect(item.current_quantity).toBe(70);
+    
+    // Delete movement3
+    await Effect.runPromise(service.deleteMovement(movement3Id));
+    
+    // Verify inventory quantity is 50 (previous_quantity of movement2)
+    item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+    
+    expect(item.current_quantity).toBe(50);
+    
+    // Delete movement1
+    await Effect.runPromise(service.deleteMovement(movement1Id));
+    
+    // Verify inventory quantity is 30 (previous_quantity of movement1)
+    item = t.db
+      .prepare("SELECT current_quantity FROM inventory_items WHERE id = ?")
+      .get(itemId) as { current_quantity: number };
+    
+    expect(item.current_quantity).toBe(30);
+    
+    // Verify no movements exist
+    const movements = t.db
+      .prepare("SELECT * FROM inventory_movements WHERE item_id = ?")
+      .all(itemId);
+    
+    expect(movements).toHaveLength(0);
+    
+    service.close();
+  });
+});

@@ -356,6 +356,28 @@ export function registerIpcHandlers(
     }
   });
 
+  // ─── Movement deletion ───────────────────────────────────────────────────────
+
+  ipcMain.handle("delete-movement", async (_event, rawArgs: unknown) => {
+    try {
+      const { movementId } = decodeOrFail(Schema.Struct({ movementId: Schema.String }))(rawArgs);
+      return await run(
+        Effect.gen(function* () {
+          const ns = yield* NotificationService;
+          const result = yield* DatabaseService.pipe(
+            Effect.flatMap((s) => s.deleteMovement(movementId)),
+          );
+          if (result.lowStockNotification) {
+            yield* ns.sendLowStockAlert(result.lowStockNotification);
+          }
+          return result.snapshot;
+        }),
+      );
+    } catch (error) {
+      return fail(serializeAppError(error));
+    }
+  });
+
   // ─── LAN access: delegate to LanServerService ────────────────────────────
 
   ipcMain.handle("load-lan-access-state", async () => {
