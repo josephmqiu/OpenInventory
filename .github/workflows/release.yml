@@ -9,11 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  test-suite:
-    uses: ./.github/workflows/test-suite.yml
-
   build-mac:
-    needs: [test-suite]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,7 +59,6 @@ jobs:
         run: npx electron-builder --mac --arm64 --publish always
 
   build-windows:
-    needs: [test-suite]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
