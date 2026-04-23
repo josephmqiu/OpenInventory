@@ -170,10 +170,13 @@ export function makeLanServerLayer(
               resume(Effect.void);
               return;
             }
-            server.close(() => {
-              server = null;
-              resume(Effect.void);
-            });
+            
+            // Close the server and immediately set server to null
+            // We don't need to wait for the callback since we just want to indicate
+            // that the server is no longer running from the UI perspective
+            server.close();
+            server = null;
+            resume(Effect.void);
           },
         );
 
@@ -259,10 +262,18 @@ export function makeLanServerLayer(
                     : buildState("error", messages.lanServerError);
                 }
 
+                // Stop the server and wait for it to complete
                 yield* stopServerEffect;
                 currentSettings.primaryUrl = "";
                 yield* db.saveLanAccessSettings(currentSettings);
-                return buildState("stopped", messages.lanServerStopped);
+                
+                // Verify the server is actually stopped
+                if (server === null) {
+                  return buildState("stopped", messages.lanServerStopped);
+                } else {
+                  // Server failed to stop
+                  return buildState("error", messages.lanServerError);
+                }
               }).pipe(
                 Effect.catchAll(() =>
                   Effect.fail(
@@ -403,12 +414,11 @@ export function makeLanServerService(
 
   async function stopServer(): Promise<void> {
     if (!server) return;
-    return new Promise<void>((resolve) => {
-      server!.close(() => {
-        server = null;
-        resolve();
-      });
-    });
+    // Close the server and immediately set server to null
+    // We don't need to wait for the callback since we just want to indicate
+    // that the server is no longer running from the UI perspective
+    server.close();
+    server = null;
   }
 
   async function resolveMessages() {
