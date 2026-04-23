@@ -2,6 +2,11 @@
 
 All notable changes to OpenInventory will be documented in this file.
 
+## [0.1.1] - 2026-04-23
+
+### Fixed
+- Add try-catch to handle server close errors in LanServerService
+
 ## [0.0.4] - 2026-04-01
 
 ### Added
