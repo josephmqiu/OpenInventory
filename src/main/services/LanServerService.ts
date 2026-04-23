@@ -171,12 +171,18 @@ export function makeLanServerLayer(
               return;
             }
             
-            // Close the server and immediately set server to null
-            // We don't need to wait for the callback since we just want to indicate
-            // that the server is no longer running from the UI perspective
-            server.close();
-            server = null;
-            resume(Effect.void);
+            try {
+              // Close the server and immediately set server to null
+              // We don't need to wait for the callback since we just want to indicate
+              // that the server is no longer running from the UI perspective
+              server.close();
+              server = null;
+              resume(Effect.void);
+            } catch (error) {
+              // If closing fails, still set server to null and resolve
+              server = null;
+              resume(Effect.void);
+            }
           },
         );
 
