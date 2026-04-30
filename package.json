@@ -1,10 +1,17 @@
 {
   "name": "inventory-monitor",
-  "private": true,
   "version": "0.1.1",
   "description": "Desktop inventory monitoring and material issue tracking",
-  "author": "OpenInventory",
-  "license": "UNLICENSED",
+  "author": "josephmqiu <39745128+josephmqiu@users.noreply.github.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/josephmqiu/OpenInventory",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/josephmqiu/OpenInventory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/josephmqiu/OpenInventory/issues"
+  },
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
@@ -39,7 +46,7 @@
   },
   "publish": {
     "provider": "github",
-    "owner": "OpenInventory",
+    "owner": "josephmqiu",
     "repo": "OpenInventory",
     "releaseType": "release"
   },

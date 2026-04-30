@@ -100,4 +100,4 @@ The app follows an industrial/utilitarian design system documented in `DESIGN.md
 
 ## License
 
-Private project.
+[MIT](LICENSE) © josephmqiu

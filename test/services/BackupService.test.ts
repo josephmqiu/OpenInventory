@@ -198,9 +198,9 @@ describe("detectCloudProvider", () => {
   it("detects known cloud sync folder patterns", () => {
     // This tests the conceptual patterns — actual detection is in DatabaseService
     const patterns = [
-      { path: "/Users/joe/Library/CloudStorage/Dropbox/backup", expected: "Dropbox" },
-      { path: "/Users/joe/Library/CloudStorage/OneDrive-Personal/backup", expected: "OneDrive" },
-      { path: "/Users/joe/Library/CloudStorage/GoogleDrive-me/backup", expected: "Google Drive" },
+      { path: "/Users/test/Library/CloudStorage/Dropbox/backup", expected: "Dropbox" },
+      { path: "/Users/test/Library/CloudStorage/OneDrive-Personal/backup", expected: "OneDrive" },
+      { path: "/Users/test/Library/CloudStorage/GoogleDrive-me/backup", expected: "Google Drive" },
       { path: "/tmp/local-backup", expected: "" },
     ];
 

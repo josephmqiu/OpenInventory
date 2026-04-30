@@ -39,7 +39,7 @@ asarUnpack:
   - "out/renderer/**/*"
 publish:
   provider: github
-  owner: danrepo
+  owner: josephmqiu
   repo: OpenInventory
 mac:
   category: public.app-category.business

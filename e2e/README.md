@@ -2,8 +2,8 @@
 
 ## Fixture modes
 
-- Use `test` from [fixtures/electron-app.ts](/Users/joe/Developer/OpenInventory/e2e/fixtures/electron-app.ts) for intentional narrative flows that share one Electron app/page inside a project.
-- Use `isolatedTest` from [fixtures/electron-app.ts](/Users/joe/Developer/OpenInventory/e2e/fixtures/electron-app.ts) when a spec can start from a seed and recreate its own preconditions. This is the default choice for new independent specs.
+- Use `test` from [fixtures/electron-app.ts](./fixtures/electron-app.ts) for intentional narrative flows that share one Electron app/page inside a project.
+- Use `isolatedTest` from [fixtures/electron-app.ts](./fixtures/electron-app.ts) when a spec can start from a seed and recreate its own preconditions. This is the default choice for new independent specs.
 
 ## Lanes
 
@@ -26,5 +26,5 @@ The parallel-safe lane focuses on the isolated subset that gives fast confidence
 
 ## Reporting
 
-- Every lane writes [test-results/e2e-report.json](/Users/joe/Developer/OpenInventory/test-results/e2e-report.json).
+- Every lane writes [test-results/e2e-report.json](../test-results/e2e-report.json).
 - Use `npm run test:e2e:report` to print the slowest tests from the latest report.
