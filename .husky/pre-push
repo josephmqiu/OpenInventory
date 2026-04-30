@@ -1,1 +1,1 @@
-npm run test && npm run test:backend
+npm run verify:push

@@ -74,6 +74,7 @@ async function main(): Promise<void> {
   const env = {
     ...process.env,
     PW_WORKERS: process.env.PW_WORKERS ?? String(config.workers),
+    PW_FAIL_ON_FLAKY: process.env.PW_FAIL_ON_FLAKY ?? "1",
   };
 
   const exitCode = await runCommand(wrappedCommand, env);

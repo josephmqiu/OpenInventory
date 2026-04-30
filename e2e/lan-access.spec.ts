@@ -214,6 +214,9 @@ test.describe.serial("LAN access and QR codes", () => {
 
     await portInput.fill("70000");
     await expect(page.getByTestId("lan-save")).toBeDisabled();
+
+    await portInput.fill(String(LAN_PORT));
+    await expect(page.getByTestId("lan-save")).toBeDisabled();
   });
 
   test("copy access key shows success and failure feedback", async ({ page }) => {
@@ -250,10 +253,11 @@ test.describe.serial("LAN access and QR codes", () => {
     await navigateTo(page, "settings");
     await page.getByRole("tab", { name: "LAN Access" }).click();
 
-    // Toggle switch OFF — input is visually hidden, dispatch click via JS to trigger React onChange
-    // LAN panel uses inline feedback, not the top-level banner
-    await page.locator("input[role='switch']").dispatchEvent("click");
+    const lanToggle = page.getByRole("switch", { name: "Enabled" });
+    await expect(lanToggle).toBeChecked();
+    await page.locator(".lan-toggle-row .toggle-switch__track").click();
 
-    await expect(page.getByTestId("lan-status")).toContainText("Stopped", { timeout: 10_000 });
+    await expect(lanToggle).not.toBeChecked({ timeout: 20_000 });
+    await expect(page.getByTestId("lan-status")).toContainText("Stopped", { timeout: 20_000 });
   });
 });

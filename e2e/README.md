@@ -10,10 +10,13 @@
 - Full hardening: `npm run test:e2e:run`
 - Smoke lane: `npm run test:e2e:smoke:run`
 - Parallel-safe lane: `npm run test:e2e:parallel-safe:run`
+- Local pre-push gate: `npm run verify:push`
+- Release gate: `npm run verify:release`
 
 The seed matrix uses distinct LAN ports for browser-facing projects, so both the full lane and the parallel-safe lane can run with more than one Playwright worker.
 The smoke lane stays intentionally small for quick PR feedback on launch, CRUD, discovery, localization, and shutdown.
 The parallel-safe lane focuses on the isolated subset that gives fast confidence without waiting on the longer narrative projects.
+The lane runner sets `PW_FAIL_ON_FLAKY=1` by default. A test that passes only after a retry fails the run and should be fixed, not accepted as green.
 
 ## Authoring rules
 
