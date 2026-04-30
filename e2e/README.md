@@ -2,18 +2,33 @@
 
 ## Fixture modes
 
-- Use `test` from [fixtures/electron-app.ts](/Users/joe/Developer/OpenInventory/e2e/fixtures/electron-app.ts) for intentional narrative flows that share one Electron app/page inside a project.
-- Use `isolatedTest` from [fixtures/electron-app.ts](/Users/joe/Developer/OpenInventory/e2e/fixtures/electron-app.ts) when a spec can start from a seed and recreate its own preconditions. This is the default choice for new independent specs.
+- Use `test` from [fixtures/electron-app.ts](./fixtures/electron-app.ts) for intentional narrative flows that share one Electron app/page inside a project.
+- Use `isolatedTest` from [fixtures/electron-app.ts](./fixtures/electron-app.ts) when a spec can start from a seed and recreate its own preconditions. This is the default choice for new independent specs.
 
 ## Lanes
 
 - Full hardening: `npm run test:e2e:run`
 - Smoke lane: `npm run test:e2e:smoke:run`
 - Parallel-safe lane: `npm run test:e2e:parallel-safe:run`
+- Local pre-push gate: `npm run verify:push`
+- Release gate: `npm run verify:release`
 
 The seed matrix uses distinct LAN ports for browser-facing projects, so both the full lane and the parallel-safe lane can run with more than one Playwright worker.
-The smoke lane stays intentionally small for quick PR feedback on launch, CRUD, discovery, localization, and shutdown.
-The parallel-safe lane focuses on the isolated subset that gives fast confidence without waiting on the longer narrative projects.
+The smoke lane stays intentionally small for quick local confidence on launch, CRUD, inventory discovery, and stock mutation. Localization, shutdown, backup, LAN, QR export, and restore checks stay in the full/release lane because they are slower or more environment-sensitive.
+The parallel-safe lane focuses on the broad state-safe subset that gives faster confidence without waiting on the longer mutation-heavy narrative projects.
+The lane runner sets `PW_FAIL_ON_FLAKY=1` by default. A test that passes only after a retry fails the run and should be fixed, not accepted as green.
+
+## Coverage Map
+
+- Inventory: empty state, create/update/delete, search, filters, sorting, item details, QR actions.
+- Stock: receive, issue, insufficient-stock guard, batch issue, low-stock alerts, movement history.
+- Dashboard: metric drill-through, alerts tab navigation, recent alert item drill-down.
+- Activity/audit: log table, filters, pagination, CSV export, summary tabs, item balance drill-down, empty state, movement deletion.
+- Personnel/settings: add/remove personnel, backup tab layout, stock-action blocking without personnel.
+- Backup/restore: configuration, backup creation, overwrite behavior, validation failures, pending restore handoff, stale/error status states.
+- LAN/mobile: access-key auth, disconnect/reconnect, key regeneration, public issue route, invalid ports, clipboard feedback, stopped status, occupied-port resilience.
+- QR export: single-label save and selected-label folder export.
+- Shell: theme persistence, language switching, graceful shutdown, startup smoke.
 
 ## Authoring rules
 
@@ -26,5 +41,5 @@ The parallel-safe lane focuses on the isolated subset that gives fast confidence
 
 ## Reporting
 
-- Every lane writes [test-results/e2e-report.json](/Users/joe/Developer/OpenInventory/test-results/e2e-report.json).
+- Every lane writes [test-results/e2e-report.json](../test-results/e2e-report.json).
 - Use `npm run test:e2e:report` to print the slowest tests from the latest report.

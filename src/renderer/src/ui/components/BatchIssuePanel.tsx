@@ -55,22 +55,27 @@ export function BatchIssuePanel({
   const [sortState, setSortState] = useState<SortState | null>(null);
   const previousItemIdsKeyRef = useRef<string | null>(null);
   const itemIdsKey = useMemo(() => JSON.stringify(items.map((item) => item.id).sort()), [items]);
+  const initialQuantities = useMemo(
+    () => Object.fromEntries(items.map((item) => [item.id, ""])),
+    [items],
+  );
+  const firstPersonnelName = personnel[0]?.name || "";
 
   useEffect(() => {
     const itemIdsChanged = previousItemIdsKeyRef.current !== itemIdsKey;
     previousItemIdsKeyRef.current = itemIdsKey;
 
     if (!itemIdsChanged) {
-      setPerformedBy((current) => current || personnel[0]?.name || "");
+      setPerformedBy((current) => current || firstPersonnelName);
       return;
     }
 
-    setQuantities(Object.fromEntries(items.map((item) => [item.id, ""])));
-    setPerformedBy((current) => current || personnel[0]?.name || "");
+    setQuantities(initialQuantities);
+    setPerformedBy((current) => current || firstPersonnelName);
     setReason("");
     setLocalError(null);
     setLocalSuccess(null);
-  }, [itemIdsKey]);
+  }, [itemIdsKey, initialQuantities, firstPersonnelName]);
 
   const issueItems = useMemo(
     () => buildIssueItems(items, quantities),

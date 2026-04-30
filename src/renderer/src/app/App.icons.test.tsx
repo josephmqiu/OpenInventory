@@ -1,5 +1,5 @@
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "./i18n";
 
 // Mock runtime to return "http" so the disconnect button shows

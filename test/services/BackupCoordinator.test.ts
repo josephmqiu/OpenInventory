@@ -214,7 +214,7 @@ describe("BackupCoordinator", () => {
   describe("restoreFromBackup() settings preservation", () => {
     it("writes .restore-pending.json with all critical settings", async () => {
       // Seed settings that must survive the restore
-      writeSetting(t.db, "backup.target_path", "/Users/joe/Backups");
+      writeSetting(t.db, "backup.target_path", "/tmp/oi-test/Backups");
       writeSetting(t.db, "lan.enabled", "true");
       writeSetting(t.db, "lan.port", "8080");
       writeSetting(t.db, "lan.access_key", "secret-key-123");
@@ -243,7 +243,7 @@ describe("BackupCoordinator", () => {
 
       const pending = JSON.parse(fs.readFileSync(pendingPath, "utf-8"));
       expect(pending.preserveSettings).toEqual({
-        "backup.target_path": "/Users/joe/Backups",
+        "backup.target_path": "/tmp/oi-test/Backups",
         "backup.interval_value": "0",
         "backup.interval_unit": "hours",
         "backup.on_startup": "false",

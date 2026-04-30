@@ -34,6 +34,11 @@ export function useQuickIssueState(itemId: string): QuickIssueState {
   const [busy, setBusy] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const inFlightIssueRef = useRef<Promise<string> | null>(null);
+  const languageRef = useRef(language);
+
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,12 +54,13 @@ export function useQuickIssueState(itemId: string): QuickIssueState {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
+          const currentLanguage = languageRef.current;
           const msg = err instanceof IssueGatewayError && err.status === 404
-            ? i18nResources[language].quickIssue.qrItemNotFound
+            ? i18nResources[currentLanguage].quickIssue.qrItemNotFound
             : localizeBackendMessage(
                 err as Error & { messageId?: string; messageValues?: Record<string, string | number> },
-                language,
-                i18nResources[language].common.genericActionError,
+                currentLanguage,
+                i18nResources[currentLanguage].common.genericActionError,
               );
           setLoadError(msg);
         }

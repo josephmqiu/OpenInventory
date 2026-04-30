@@ -2,6 +2,7 @@ name: Test Suite
 
 on:
   workflow_call:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -17,7 +18,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Run tests
-        run: npm run test && npm run test:backend
+        run: npm run test
 
   coverage:
     runs-on: macos-latest

@@ -5,6 +5,7 @@ import { connectLanBrowser, navigateTo, expectSuccess, dismissBanner } from "./f
 const LAN_PORT = 19877;
 const BASE_URL = `http://127.0.0.1:${LAN_PORT}`;
 const SEEDED_KEY = "e2e-lan-access-key-2026";
+const LAN_GOTO_OPTIONS = { waitUntil: "domcontentloaded" as const, timeout: 20_000 };
 
 async function fetchSnapshot(key: string) {
   const response = await fetch(`${BASE_URL}/api/snapshot`, {
@@ -26,7 +27,8 @@ test.describe.serial("LAN access and QR codes", () => {
   });
 
   test("workspace browser access requires valid access key", async ({ browserPage }) => {
-    await browserPage.goto(BASE_URL);
+    await expect.poll(() => fetchSnapshot(SEEDED_KEY).then((result) => result.ok).catch(() => false)).toBe(true);
+    await browserPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
     await expect(browserPage.locator(".sidebar")).toHaveCount(0);
     await connectLanBrowser(browserPage, SEEDED_KEY);
     await expect(browserPage.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
@@ -34,7 +36,7 @@ test.describe.serial("LAN access and QR codes", () => {
   });
 
   test("browser disconnect returns to auth and can reconnect with the same key", async ({ browserPage }) => {
-    await browserPage.goto(BASE_URL);
+    await browserPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
     await connectLanBrowser(browserPage, SEEDED_KEY);
     await expect(browserPage.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
 
@@ -51,7 +53,7 @@ test.describe.serial("LAN access and QR codes", () => {
     const invalidPage = await context.newPage();
 
     try {
-      await invalidPage.goto(BASE_URL);
+      await invalidPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
       await expect(invalidPage.locator(".auth-card")).toBeVisible({ timeout: 10_000 });
 
       await invalidPage.locator(".auth-card__field input").fill("wrong-key-12345");
@@ -87,7 +89,7 @@ test.describe.serial("LAN access and QR codes", () => {
     });
 
     try {
-      await activityPage.goto(BASE_URL);
+      await activityPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
       await connectLanBrowser(activityPage, SEEDED_KEY);
       await activityPage.getByTestId("nav-activity").click();
       await expect(activityPage.locator(".feedback-banner--error")).toContainText("Audit unavailable.");
@@ -133,7 +135,7 @@ test.describe.serial("LAN access and QR codes", () => {
       const lanPanel = page.locator(".panel:has-text('LAN Access')");
       const currentKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
 
-      await connectedPage.goto(BASE_URL);
+      await connectedPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
       await connectLanBrowser(connectedPage, currentKey);
       await expect(connectedPage.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
 
@@ -162,7 +164,7 @@ test.describe.serial("LAN access and QR codes", () => {
     const stalePage = await context.newPage();
 
     try {
-      await stalePage.goto(BASE_URL);
+      await stalePage.goto(BASE_URL, LAN_GOTO_OPTIONS);
       await expect(stalePage.locator(".auth-card")).toBeVisible({ timeout: 10_000 });
       await expect(stalePage.locator(".sidebar")).toHaveCount(0);
       const persistedKey = await stalePage.evaluate(() =>
@@ -191,7 +193,7 @@ test.describe.serial("LAN access and QR codes", () => {
     const publicPage = await context.newPage();
 
     try {
-      await publicPage.goto(`${BASE_URL}/issue/${bolts!.id}`);
+      await publicPage.goto(`${BASE_URL}/issue/${bolts!.id}`, LAN_GOTO_OPTIONS);
       await expect(publicPage.locator(".qi-card")).toBeVisible({ timeout: 10_000 });
       await publicPage.locator(".qi-input-row input").fill("3");
       await publicPage.locator(".qi-form select").selectOption("Alice");
@@ -213,6 +215,9 @@ test.describe.serial("LAN access and QR codes", () => {
     await expect(page.getByTestId("lan-save")).toBeDisabled();
 
     await portInput.fill("70000");
+    await expect(page.getByTestId("lan-save")).toBeDisabled();
+
+    await portInput.fill(String(LAN_PORT));
     await expect(page.getByTestId("lan-save")).toBeDisabled();
   });
 
@@ -250,10 +255,11 @@ test.describe.serial("LAN access and QR codes", () => {
     await navigateTo(page, "settings");
     await page.getByRole("tab", { name: "LAN Access" }).click();
 
-    // Toggle switch OFF — input is visually hidden, dispatch click via JS to trigger React onChange
-    // LAN panel uses inline feedback, not the top-level banner
-    await page.locator("input[role='switch']").dispatchEvent("click");
+    const lanToggle = page.getByRole("switch", { name: "Enabled" });
+    await expect(lanToggle).toBeChecked();
+    await page.locator(".lan-toggle-row .toggle-switch__track").click();
 
-    await expect(page.getByTestId("lan-status")).toContainText("Stopped", { timeout: 10_000 });
+    await expect(lanToggle).not.toBeChecked({ timeout: 20_000 });
+    await expect(page.getByTestId("lan-status")).toContainText("Stopped", { timeout: 20_000 });
   });
 });

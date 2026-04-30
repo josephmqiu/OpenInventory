@@ -14,6 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const SEED_CACHE = path.join(__dirname, "../.seed-cache");
+const APP_READY_TIMEOUT_MS = 60_000;
 
 function createUserDataDir(seedScenario: string): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-e2e-"));
@@ -71,9 +72,8 @@ async function getDesktopPage(electronApp: ElectronApplication): Promise<Page> {
   const windows = electronApp.windows();
   const page = windows.length > 0
     ? windows[0]
-    : await electronApp.firstWindow({ timeout: 30_000 });
-  await page.waitForLoadState("domcontentloaded");
-  await page.waitForSelector(".sidebar", { timeout: 30_000 });
+    : await electronApp.firstWindow({ timeout: APP_READY_TIMEOUT_MS });
+  await page.waitForSelector(".sidebar", { timeout: APP_READY_TIMEOUT_MS });
   return page;
 }
 

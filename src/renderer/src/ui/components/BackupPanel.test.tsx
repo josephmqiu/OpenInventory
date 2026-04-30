@@ -109,7 +109,7 @@ describe("BackupPanel", () => {
       <BackupPanel
         busy={false}
         backupPlan={makePlan({
-          targetPath: "/Users/joe/Dropbox/backups",
+          targetPath: "/Users/test/Dropbox/backups",
           status: "healthy",
           cloudProvider: "Dropbox",
         })}

@@ -205,7 +205,7 @@ describe("UnifiedInventoryTable", () => {
   });
 
   it("shows selection bar with batch actions when items are selected", () => {
-    const { container } = renderTable();
+    renderTable();
 
     // Click a checkbox to select an item
     const checkboxes = screen.getAllByRole("checkbox");

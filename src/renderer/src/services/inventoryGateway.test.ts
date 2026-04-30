@@ -417,7 +417,7 @@ describe("desktop command routing", () => {
 describe("HTTP API routing", () => {
   it("routes browser-hosted mutations through fetch and forwards the persisted access key", async () => {
     persistLanAccessKey("persisted-key");
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input, init) => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (input) => {
       const url = String(input);
       if (url.startsWith("/api/audit/movements?")) {
         return new Response(JSON.stringify(auditPage), {

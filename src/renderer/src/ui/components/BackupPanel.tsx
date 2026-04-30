@@ -40,7 +40,6 @@ export function BackupPanel({
     setForm(createFormState(backupPlan));
   }, [backupPlan]);
 
-  const hasTargetPath = form.targetPath.trim().length > 0;
   const hasChanges = useMemo(
     () => JSON.stringify(form) !== JSON.stringify(createFormState(backupPlan)),
     [backupPlan, form],

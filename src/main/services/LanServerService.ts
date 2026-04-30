@@ -178,7 +178,7 @@ export function makeLanServerLayer(
               server.close();
               server = null;
               resume(Effect.void);
-            } catch (error) {
+            } catch {
               // If closing fails, still set server to null and resolve
               server = null;
               resume(Effect.void);

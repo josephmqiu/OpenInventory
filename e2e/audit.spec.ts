@@ -90,6 +90,26 @@ test.describe("audit features", () => {
     expect(capture?.text).toContain('"Bolts M6"');
   });
 
+  test("delete movement removes an audit row and updates movement totals", async ({ page }) => {
+    const totalMovements = page.locator(".metric-card", {
+      has: page.locator(".metric-card__label", { hasText: "Total Movements" }),
+    });
+    const totalValue = totalMovements.locator(".metric-card__value");
+    const initialTotal = Number(await totalValue.textContent());
+    expect(initialTotal).toBeGreaterThan(0);
+
+    const firstRow = page.locator("table.audit-table tbody tr").first();
+    const firstRowText = await firstRow.textContent();
+    await firstRow.getByRole("button", { name: "Delete Movement" }).click();
+
+    const confirmDialog = page.locator(".confirm-dialog");
+    await expect(confirmDialog).toBeVisible();
+    await confirmDialog.getByRole("button", { name: "Delete" }).click();
+
+    await expect(totalValue).toHaveText(String(initialTotal - 1));
+    await expect(firstRow).not.toHaveText(firstRowText ?? "");
+  });
+
   test("filters by movement type", async ({ page }) => {
     const table = page.locator("table.audit-table");
     await page.getByTestId("audit-filter-clear").click();

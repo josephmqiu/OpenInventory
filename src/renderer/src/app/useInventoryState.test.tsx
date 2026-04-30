@@ -6,7 +6,6 @@ import type {
   InventoryItem,
   LanAccessState,
   PersonnelMember,
-  StockMutationInput,
 } from "../domain/models";
 
 const runtimeMocks = vi.hoisted(() => ({
@@ -523,8 +522,10 @@ describe("useInventoryState", () => {
     gatewayMocks.loadAppSnapshot.mockResolvedValueOnce(initialSnapshot);
     
     // Mock delete movement to throw error
-    const deleteError = new Error("Insufficient stock to delete this movement");
-    (deleteError as any).messageId = "insufficientStockWhenDeletingMovement";
+    const deleteError = Object.assign(
+      new Error("Insufficient stock to delete this movement"),
+      { messageId: "insufficientStockWhenDeletingMovement" },
+    );
     gatewayMocks.deleteMovement.mockRejectedValueOnce(deleteError);
 
     const { result } = renderHook(() => useInventoryState());
@@ -569,7 +570,7 @@ describe("useInventoryState", () => {
   });
 
   it("returns false when snapshot is null during delete movement", async () => {
-    gatewayMocks.loadAppSnapshot.mockResolvedValueOnce(null as any);
+    gatewayMocks.loadAppSnapshot.mockResolvedValueOnce(null);
 
     const { result } = renderHook(() => useInventoryState());
 

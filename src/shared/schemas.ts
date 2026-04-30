@@ -17,7 +17,6 @@ export const BackupIntervalUnitSchema = Schema.Literal(
 export const AuditMovementTypeSchema = Schema.Literal("receive", "issue");
 
 // Safe number types: reject NaN, Infinity, and out-of-range values.
-const FiniteNumber = Schema.Number.pipe(Schema.finite());
 const NonNegativeInt = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.greaterThanOrEqualTo(0));
 const PositiveInt = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.greaterThan(0));
 const PortNumber = Schema.Number.pipe(Schema.int(), Schema.between(0, 65535));

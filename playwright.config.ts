@@ -3,6 +3,8 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
+  forbidOnly: !!process.env.CI,
+  failOnFlakyTests: process.env.PW_FAIL_ON_FLAKY === "1" || !!process.env.CI,
   expect: {
     // Match the IPC round-trip timeout used in banner assertions.
     // Default 5s is too short on cold Electron processes (Windows CI).

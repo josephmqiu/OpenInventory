@@ -36,10 +36,13 @@ handles this with wrapper scripts — use them, never bypass them.
 **Always use the npm scripts — never run vitest or playwright directly:**
 
 ```bash
-npm run test           # Frontend unit tests (Vitest, jsdom) — no native deps needed
+npm run verify         # Lint + renderer/backend Vitest suite
+npm run test           # Renderer/backend Vitest suite
 npm run test:backend   # Backend tests — wrapper handles Node ABI swap + restore
 npm run test:coverage  # Combined coverage — wrapper handles ABI swap
 npm run test:e2e       # E2E — seeds with Node ABI, rebuilds Electron, runs Playwright
+npm run verify:push    # Local pre-push gate: lint, Vitest, full E2E
+npm run verify:release # Release gate: lint, Vitest, coverage, full E2E
 npm run dev            # Desktop dev — rebuilds Electron ABI first
 ```
 
@@ -59,16 +62,18 @@ builds → smoke tests → publishes (artifacts are validated before upload).
 
 ## Testing
 
-Run all three test suites before every commit:
+Run the local verification gate before pushing changes:
 
 ```bash
-npm run test           # Frontend unit tests (Vitest, jsdom)
-npm run test:backend   # Backend service tests (Vitest, node)
+npm run verify         # Lint + renderer/backend Vitest suite
 npm run test:coverage  # Combined Vitest coverage report under coverage/
 npm run test:e2e       # Electron E2E workflow (Playwright, builds app first)
+npm run verify:push    # Same gate enforced by the Git pre-push hook
 ```
 
 - E2E tests launch a real Electron instance with an isolated temp database.
+- Playwright retries are treated as failures by default (`PW_FAIL_ON_FLAKY=1`) so flaky tests do not silently pass.
+- Pull request and `master` CI intentionally run only the fast gate to conserve GitHub minutes. The full reusable suite runs on release tags before packaging, and can be triggered manually from GitHub Actions.
 
 **Shell environment caveat (Claude Code desktop app):** Node.js and npm are installed
 via Homebrew (`/opt/homebrew/bin/`). The Claude Code desktop app may not source

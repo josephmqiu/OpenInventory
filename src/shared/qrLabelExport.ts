@@ -1,5 +1,6 @@
 import type { InventoryItem } from "./types";
 
+// eslint-disable-next-line no-control-regex -- Windows filenames cannot contain ASCII control characters.
 const INVALID_FILENAME_CHARS = /[<>:"/\\|?*\u0000-\u001F]/g;
 const TRAILING_DOTS_AND_SPACES = /[. ]+$/g;
 const MULTIPLE_SPACES = /\s+/g;

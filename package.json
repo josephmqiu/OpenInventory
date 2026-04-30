@@ -1,10 +1,17 @@
 {
   "name": "inventory-monitor",
-  "private": true,
   "version": "0.1.1",
   "description": "Desktop inventory monitoring and material issue tracking",
-  "author": "OpenInventory",
-  "license": "UNLICENSED",
+  "author": "josephmqiu <39745128+josephmqiu@users.noreply.github.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/josephmqiu/OpenInventory",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/josephmqiu/OpenInventory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/josephmqiu/OpenInventory/issues"
+  },
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
@@ -16,8 +23,8 @@
     "rebuild:native:electron": "npx tsx scripts/rebuild-electron-native-deps.ts",
     "lint": "eslint src/",
     "preview": "vite preview",
-    "test": "vitest run --config vitest.workspace.ts",
-    "test:watch": "vitest --config vitest.workspace.ts",
+    "test": "npx tsx scripts/run-with-node-native-restore.ts \"vitest run --config vitest.workspace.ts\"",
+    "test:watch": "npx tsx scripts/run-with-node-native-restore.ts \"vitest --config vitest.workspace.ts\"",
     "test:backend": "npx tsx scripts/run-with-node-native-restore.ts \"vitest run --config vitest.config.node.ts\"",
     "test:backend:watch": "npx tsx scripts/run-with-node-native-restore.ts \"vitest --config vitest.config.node.ts\"",
     "test:coverage": "npx tsx scripts/run-with-node-native-restore.ts \"vitest run --config vitest.coverage.config.ts\"",
@@ -29,6 +36,10 @@
     "test:e2e:parallel-safe:run": "npx tsx scripts/run-e2e-lane.ts parallel-safe",
     "test:e2e:report": "npx tsx scripts/report-e2e-results.ts",
     "test:e2e:cleanup": "npm run rebuild:native:electron",
+    "verify": "npm run lint && npm run test",
+    "verify:ci": "npm run verify",
+    "verify:push": "npm run verify && npm run test:e2e",
+    "verify:release": "npm run verify && npm run test:coverage && npm run test:e2e",
     "pack": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && npm run rebuild:native:electron && electron-builder --dir",
     "dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && npm run rebuild:native:electron && electron-builder",
     "prepare": "husky"
@@ -39,7 +50,7 @@
   },
   "publish": {
     "provider": "github",
-    "owner": "OpenInventory",
+    "owner": "josephmqiu",
     "repo": "OpenInventory",
     "releaseType": "release"
   },

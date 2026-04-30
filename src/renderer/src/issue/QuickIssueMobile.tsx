@@ -29,24 +29,25 @@ export function QuickIssueMobile({ busy, item, language, notice, personnel, clea
   // Structural comparison guard: personnel gets a new array reference after every
   // issue (fresh API response), but the form should only reset when the actual
   // item or personnel list changes, not on every reference swap.
-  const personnelKey = JSON.stringify(personnel.map((p) => p.id).sort());
+  const personnelKey = JSON.stringify(personnel.map((p) => `${p.id}:${p.name}`).sort());
+  const firstPersonnelName = personnel[0]?.name ?? "";
   const prevPersonnelKey = useRef(personnelKey);
 
   useEffect(() => {
     if (personnelKey === prevPersonnelKey.current) return;
     prevPersonnelKey.current = personnelKey;
     setQuantityInput("");
-    setPerformedBy(personnel[0]?.name ?? "");
+    setPerformedBy(firstPersonnelName);
     setFeedback("");
     setFeedbackType("success");
-  }, [personnelKey, personnel]);
+  }, [personnelKey, firstPersonnelName]);
 
   useEffect(() => {
     setQuantityInput("");
-    setPerformedBy(personnel[0]?.name ?? "");
+    setPerformedBy(firstPersonnelName);
     setFeedback("");
     setFeedbackType("success");
-  }, [item.id]);
+  }, [item.id, firstPersonnelName]);
 
   useEffect(() => {
     if (notice?.tone === "error") {
