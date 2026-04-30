@@ -53,9 +53,9 @@ for Electron (cached on subsequent runs). Data is stored in
 | `npm run test:backend` | Backend service + integration tests only |
 | `npm run test:coverage` | Full Vitest coverage report (frontend + backend) |
 | `npm run test:e2e` | Electron E2E workflow (builds app, runs Playwright) |
-| `npm run verify` | Full Vitest suite |
-| `npm run verify:push` | Local pre-push gate: Vitest + full E2E |
-| `npm run verify:release` | Full release gate: Vitest, coverage, full E2E |
+| `npm run verify` | Lint + full Vitest suite |
+| `npm run verify:push` | Local pre-push gate: lint, Vitest, full E2E |
+| `npm run verify:release` | Full release gate: lint, Vitest, coverage, full E2E |
 | `npm run lint` | ESLint |
 | `npm run pack` | Package app (unpacked, cleans dist/ first) |
 | `npm run dist` | Package app for distribution (cleans dist/ first) |
@@ -84,7 +84,7 @@ e2e/                   # Playwright E2E tests
 ## Testing
 
 ```bash
-npm run verify         # Renderer/backend Vitest suite
+npm run verify         # Lint + renderer/backend Vitest suite
 npm run test:coverage  # Combined Vitest coverage report under coverage/
 npm run test:e2e       # E2E workflow against a real Electron instance
 npm run verify:push    # Same gate enforced by the Git pre-push hook
@@ -95,7 +95,7 @@ Retries are treated as failures by default so flaky tests have to be fixed inste
 
 ## CI Policy
 
-GitHub CI on pull requests and pushes to `master` runs only the fast Vitest gate (`npm run verify`) to conserve build minutes. The full test suite, coverage, E2E matrix, packaging smoke tests, and release publishing run from the release workflow on version tags. The full test suite can also be run manually from GitHub Actions with the `Test Suite` workflow.
+GitHub CI on pull requests and pushes to `master` runs only the fast lint + Vitest gate (`npm run verify`) to conserve build minutes. The full test suite, coverage, E2E matrix, packaging smoke tests, and release publishing run from the release workflow on version tags. The full test suite can also be run manually from GitHub Actions with the `Test Suite` workflow.
 
 ## Design
 

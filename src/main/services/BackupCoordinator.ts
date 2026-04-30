@@ -21,8 +21,11 @@ async function renameWithRetry(
     try {
       fs.renameSync(src, dest);
       return;
-    } catch (err: any) {
-      if (err.code === "EBUSY" && i < retries - 1) {
+    } catch (err: unknown) {
+      const code = err && typeof err === "object" && "code" in err
+        ? (err as { code?: unknown }).code
+        : undefined;
+      if (code === "EBUSY" && i < retries - 1) {
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }

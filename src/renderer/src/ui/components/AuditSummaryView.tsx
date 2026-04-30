@@ -22,10 +22,17 @@ export function AuditSummaryView({ language, filters, view, onItemClick }: Audit
 
   const { data, loading, error } = useAsyncData(
     () => {
-      const { page: _p, pageSize: _ps, sortBy: _sb, sortDir: _sd, ...analyticsFilters } = filters;
-      return getAuditAnalytics(analyticsFilters);
+      return getAuditAnalytics({
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
+        movementType: filters.movementType,
+        itemId: filters.itemId,
+        itemSearch: filters.itemSearch,
+        performedBy: filters.performedBy,
+        textSearch: filters.textSearch,
+      });
     },
-    [filters.dateFrom, filters.dateTo, filters.movementType, filters.itemSearch, filters.performedBy, filters.textSearch],
+    [filters.dateFrom, filters.dateTo, filters.movementType, filters.itemId, filters.itemSearch, filters.performedBy, filters.textSearch],
   );
 
   const [sortStates, setSortStates] = useState<Record<SummaryView, SortState | null>>({
@@ -45,15 +52,15 @@ export function AuditSummaryView({ language, filters, view, onItemClick }: Audit
 
   const sortedPersonnel = useMemo(
     () => data ? sortDataByKey(data.byPersonnel, currentSort) : [],
-    [data?.byPersonnel, currentSort],
+    [data, currentSort],
   );
   const sortedItems = useMemo(
     () => data ? sortDataByKey(data.byItem, currentSort) : [],
-    [data?.byItem, currentSort],
+    [data, currentSort],
   );
   const sortedAlerts = useMemo(
     () => data ? sortDataByKey(data.alertFrequency, currentSort) : [],
-    [data?.alertFrequency, currentSort],
+    [data, currentSort],
   );
 
   if (loading) {

@@ -36,13 +36,13 @@ handles this with wrapper scripts — use them, never bypass them.
 **Always use the npm scripts — never run vitest or playwright directly:**
 
 ```bash
-npm run verify         # Renderer/backend Vitest suite
+npm run verify         # Lint + renderer/backend Vitest suite
 npm run test           # Renderer/backend Vitest suite
 npm run test:backend   # Backend tests — wrapper handles Node ABI swap + restore
 npm run test:coverage  # Combined coverage — wrapper handles ABI swap
 npm run test:e2e       # E2E — seeds with Node ABI, rebuilds Electron, runs Playwright
-npm run verify:push    # Local pre-push gate: Vitest + full E2E
-npm run verify:release # Release gate: Vitest, coverage, full E2E
+npm run verify:push    # Local pre-push gate: lint, Vitest, full E2E
+npm run verify:release # Release gate: lint, Vitest, coverage, full E2E
 npm run dev            # Desktop dev — rebuilds Electron ABI first
 ```
 
@@ -65,7 +65,7 @@ builds → smoke tests → publishes (artifacts are validated before upload).
 Run the local verification gate before pushing changes:
 
 ```bash
-npm run verify         # Renderer/backend Vitest suite
+npm run verify         # Lint + renderer/backend Vitest suite
 npm run test:coverage  # Combined Vitest coverage report under coverage/
 npm run test:e2e       # Electron E2E workflow (Playwright, builds app first)
 npm run verify:push    # Same gate enforced by the Git pre-push hook

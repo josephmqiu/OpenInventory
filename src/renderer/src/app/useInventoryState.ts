@@ -193,8 +193,15 @@ export function useInventoryState(): InventoryState {
   const tCommon = i18n.getFixedT(language, "common");
   const tInventory = i18n.getFixedT(language, "inventory");
   const tBackup = i18n.getFixedT(language, "backup");
+  const languageRef = useRef(language);
+  const genericActionErrorRef = useRef(tCommon("genericActionError"));
+  const devPreviewLanStatusRef = useRef(tCommon("devPreviewLanStatus"));
 
   useEffect(() => {
+    const nextTCommon = i18n.getFixedT(language, "common");
+    languageRef.current = language;
+    genericActionErrorRef.current = nextTCommon("genericActionError");
+    devPreviewLanStatusRef.current = nextTCommon("devPreviewLanStatus");
     if (typeof document !== "undefined") {
       document.documentElement.lang = language;
     }
@@ -233,7 +240,7 @@ export function useInventoryState(): InventoryState {
           return;
         }
 
-        setLoadError(toErrorMessage(loadErrorValue, language, tCommon("genericActionError")));
+        setLoadError(toErrorMessage(loadErrorValue, languageRef.current, genericActionErrorRef.current));
       });
 
     if (desktopRuntime) {
@@ -245,7 +252,7 @@ export function useInventoryState(): InventoryState {
         })
         .catch((error: unknown) => {
           if (!cancelled) {
-            setActionError(toErrorMessage(error, language, tCommon("genericActionError")));
+            setActionError(toErrorMessage(error, languageRef.current, genericActionErrorRef.current));
           }
         });
     } else if (isDev) {
@@ -256,7 +263,7 @@ export function useInventoryState(): InventoryState {
         accessKey: "dev-preview-stub-key-0000",
         urls: [],
         status: "stopped",
-        statusMessage: tCommon("devPreviewLanStatus"),
+        statusMessage: devPreviewLanStatusRef.current,
       });
     } else {
       setLanAccess(null);

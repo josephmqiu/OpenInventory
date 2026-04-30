@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ActionKind } from "../domain/models";
 import { BackupPanel } from "../ui/components/BackupPanel";
@@ -108,7 +108,7 @@ export function App() {
     pollError,
   } = useInventoryState();
   const { updateStatus, downloadUpdate, installUpdate, dismissUpdate } = useAutoUpdate();
-  const { theme, resolvedTheme, cycleTheme } = useTheme();
+  const { theme, cycleTheme } = useTheme();
 
   const browserRuntime = runtime !== "desktop";
   const themeLabel = theme === "auto" ? t("autoMode") : theme === "light" ? t("lightMode") : t("darkMode");

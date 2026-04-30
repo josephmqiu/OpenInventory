@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderWithI18n } from "../../test/renderWithI18n";
-import { DataTable, type ColumnDef, type SortState } from "./DataTable";
+import { DataTable, type ColumnDef } from "./DataTable";
 
 interface TestRow {
   id: string;

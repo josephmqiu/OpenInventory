@@ -36,7 +36,7 @@
     "test:e2e:parallel-safe:run": "npx tsx scripts/run-e2e-lane.ts parallel-safe",
     "test:e2e:report": "npx tsx scripts/report-e2e-results.ts",
     "test:e2e:cleanup": "npm run rebuild:native:electron",
-    "verify": "npm run test",
+    "verify": "npm run lint && npm run test",
     "verify:ci": "npm run verify",
     "verify:push": "npm run verify && npm run test:e2e",
     "verify:release": "npm run verify && npm run test:coverage && npm run test:e2e",

@@ -110,7 +110,7 @@ const MIGRATIONS: Migration[] = [
       // Parse old freeform schedule into structured values.
       let intervalValue = 0;
       let intervalUnit = "hours";
-      let onStartup = false;
+      const onStartup = false;
 
       if (lower === "daily" || lower === "1d" || lower === "24h") {
         intervalValue = 1;

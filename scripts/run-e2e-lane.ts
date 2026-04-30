@@ -17,8 +17,7 @@ const laneProjects: Record<LaneName, { projects: string[] | null; workers: numbe
       "smoke",
       "crud",
       "inventory-view",
-      "i18n",
-      "shutdown",
+      "stock",
     ],
     workers: 2,
   },
@@ -63,6 +62,9 @@ function runCommand(command: string, env: NodeJS.ProcessEnv): Promise<number> {
 async function main(): Promise<void> {
   const config = laneProjects[lane];
   const projectArgs = config.projects?.map((project) => `--project=${project}`).join(" ") ?? "";
+  const reportPath = path.resolve(process.cwd(), "test-results/e2e-report.json");
+  fs.rmSync(reportPath, { force: true });
+
   const innerCommand = [
     build ? "electron-vite build" : null,
     "npx tsx e2e/scripts/generate-seeds.ts",
@@ -79,7 +81,6 @@ async function main(): Promise<void> {
 
   const exitCode = await runCommand(wrappedCommand, env);
 
-  const reportPath = path.resolve(process.cwd(), "test-results/e2e-report.json");
   if (fs.existsSync(reportPath)) {
     await runCommand(`npx tsx scripts/report-e2e-results.ts "${reportPath}"`, process.env);
   }

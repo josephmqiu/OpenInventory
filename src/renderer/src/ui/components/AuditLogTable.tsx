@@ -65,7 +65,7 @@ export function buildAuditCsvContent(rows: AuditMovementRow[], labels: AuditCsvL
     .join("\n");
 }
 
-function exportAuditCsv(rows: AuditMovementRow[], labels: AuditCsvLabels, total: number): void {
+function exportAuditCsv(rows: AuditMovementRow[], labels: AuditCsvLabels): void {
   const csvContent = buildAuditCsvContent(rows, labels);
   const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -121,13 +121,13 @@ export function AuditLogTable({
 
   const handleExport = async () => {
     if (data.total <= data.rows.length) {
-      exportAuditCsv(data.rows, labels, data.total);
+      exportAuditCsv(data.rows, labels);
       return;
     }
     const { getAuditMovements } = await import("../../services/inventoryGateway");
     try {
       const allData = await getAuditMovements({ ...filters, page: 1, pageSize: 10000 });
-      exportAuditCsv(allData.rows, labels, allData.total);
+      exportAuditCsv(allData.rows, labels);
     } catch (err) {
       onError?.(err instanceof Error ? err.message : String(err));
     }
@@ -228,6 +228,8 @@ export function AuditLogTable({
         <button
             type="button"
             className="button-danger button-inline button-icon"
+            aria-label={t("deleteMovement", { ns: "audit" })}
+            data-testid={`delete-movement-${row.id}`}
             onClick={() => handleDeleteClick(row.id)}
             title={t("deleteMovement", { ns: "audit" })}
           >

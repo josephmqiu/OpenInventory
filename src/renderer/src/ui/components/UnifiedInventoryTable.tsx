@@ -46,17 +46,17 @@ export function UnifiedInventoryTable({
   // Structural comparison guard: only reset selection when item IDs actually change
   // (items array gets new references every poll tick via useInventoryState)
   const itemIdsKey = useMemo(() => JSON.stringify(items.map((i) => i.id).sort()), [items]);
+  const validItemIds = useMemo(() => new Set(items.map((i) => i.id)), [items]);
   const prevIdsRef = useRef(itemIdsKey);
 
   useEffect(() => {
     if (prevIdsRef.current === itemIdsKey) return;
     prevIdsRef.current = itemIdsKey;
-    const validIds = new Set(items.map((i) => i.id));
-    setSelectedIds((current) => current.filter((id) => validIds.has(id)));
-    if (detailItemId && !validIds.has(detailItemId)) {
+    setSelectedIds((current) => current.filter((id) => validItemIds.has(id)));
+    if (detailItemId && !validItemIds.has(detailItemId)) {
       onDetailItemIdChange("");
     }
-  }, [itemIdsKey, detailItemId, onDetailItemIdChange]);
+  }, [itemIdsKey, validItemIds, detailItemId, onDetailItemIdChange]);
 
   // --- Derived state ---
 

@@ -73,7 +73,6 @@ async function getDesktopPage(electronApp: ElectronApplication): Promise<Page> {
   const page = windows.length > 0
     ? windows[0]
     : await electronApp.firstWindow({ timeout: APP_READY_TIMEOUT_MS });
-  await page.waitForLoadState("domcontentloaded");
   await page.waitForSelector(".sidebar", { timeout: APP_READY_TIMEOUT_MS });
   return page;
 }

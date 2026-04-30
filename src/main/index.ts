@@ -55,9 +55,9 @@ process.on("unhandledRejection", (reason) => {
 });
 
 import { DatabaseService, makeDatabaseLayer } from "./services/DatabaseService";
-import { NotificationService, NotificationServiceLive } from "./services/NotificationService";
+import { NotificationServiceLive } from "./services/NotificationService";
 import { LanServerService, makeLanServerLayer } from "./services/LanServerService";
-import { BackupService, BackupServiceLive } from "./services/BackupService";
+import { BackupServiceLive } from "./services/BackupService";
 import { BackupCoordinator } from "./services/BackupCoordinator";
 import { BackupScheduler } from "./services/BackupScheduler";
 import { applyRestorePending } from "./services/restorePending";
@@ -181,7 +181,7 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     const dbPath = resolveDbPath();
-    const { restored } = initializeDatabase(dbPath);
+    initializeDatabase(dbPath);
 
     // ─── Smoke test mode ───────────────────────────────────────────────
     // Launched by CI to verify the packaged app starts and initializes.
@@ -195,7 +195,7 @@ if (!gotLock) {
     // reasons but now contains a plain URL (rendered to a QR image on the frontend).
     // QR codes link to the SPA issue route, not the API endpoint.
     // The frontend reads /issue/:itemId from the URL and renders QuickIssuePage.
-    const qrCodeGenerator = (itemId: string, _sku: string): string =>
+    const qrCodeGenerator = (itemId: string): string =>
       lanState.primaryUrl
         ? `${lanState.primaryUrl}/issue/${itemId}`
         : "";
