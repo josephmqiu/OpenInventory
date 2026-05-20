@@ -27,7 +27,7 @@
     "test:watch": "npx tsx scripts/run-with-node-native-restore.ts \"vitest --config vitest.workspace.ts\"",
     "test:backend": "npx tsx scripts/run-with-node-native-restore.ts \"vitest run --config vitest.config.node.ts\"",
     "test:backend:watch": "npx tsx scripts/run-with-node-native-restore.ts \"vitest --config vitest.config.node.ts\"",
-    "test:coverage": "npx tsx scripts/run-with-node-native-restore.ts \"vitest run --config vitest.coverage.config.ts\"",
+    "test:coverage": "npx tsx scripts/run-with-node-native-restore.ts \"vitest run --config vitest.coverage.config.ts && npx tsx scripts/check-focused-coverage.ts\"",
     "test:e2e": "npx tsx scripts/run-e2e-lane.ts full --build",
     "test:e2e:run": "npx tsx scripts/run-e2e-lane.ts full",
     "test:e2e:smoke": "npx tsx scripts/run-e2e-lane.ts smoke --build",

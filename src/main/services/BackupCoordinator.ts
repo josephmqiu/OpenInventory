@@ -79,6 +79,93 @@ export class BackupCoordinator {
     }
   }
 
+  /**
+   * Create a verified local safety backup before applying an app update.
+   *
+   * This does not depend on the user-configured backup target. It writes under
+   * the app data directory so update install can be aborted if we cannot create
+   * a local rollback point.
+   */
+  async createPreUpdateSafetyBackup(updateVersion: string): Promise<{
+    backupDir: string;
+    databasePath: string;
+    fileSize: number;
+  }> {
+    const safeVersion = updateVersion.replace(/[^a-zA-Z0-9._-]/g, "_") || "unknown";
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .replace("T", "_")
+      .slice(0, 19);
+    const targetDir = path.join(
+      path.dirname(this.dbPath),
+      "pre-update-backups",
+      `${safeVersion}-${timestamp}`,
+    );
+
+    const result = await this.runtime.runPromise(
+      Effect.gen(function* () {
+        const backup = yield* BackupService;
+        return yield* backup.backupToDirectory(this.dbPath, targetDir);
+      }.bind(this)),
+    );
+
+    return {
+      backupDir: path.dirname(result.filePath),
+      databasePath: result.filePath,
+      fileSize: result.fileSize,
+    };
+  }
+
+  /**
+   * Prepare for an update install by first creating a verified local safety
+   * backup. If the user has configured an external backup target, attempt that
+   * too, but do not block the update once the local rollback point is safe.
+   */
+  async prepareForUpdateInstall(updateVersion: string): Promise<{
+    safetyBackupDir: string;
+    configuredBackupAttempted: boolean;
+    configuredBackupSucceeded: boolean;
+    configuredBackupError?: string;
+  }> {
+    await this.awaitPendingBackup();
+    const safety = await this.createPreUpdateSafetyBackup(updateVersion);
+
+    const snapshot = await this.runtime.runPromise(
+      Effect.gen(function* () {
+        const db = yield* DatabaseService;
+        return yield* db.loadSnapshot();
+      }),
+    );
+
+    const hasConfiguredTarget = snapshot.backupPlan.targetPath.trim() !== "";
+    if (!hasConfiguredTarget) {
+      return {
+        safetyBackupDir: safety.backupDir,
+        configuredBackupAttempted: false,
+        configuredBackupSucceeded: false,
+      };
+    }
+
+    try {
+      await this.backupNow();
+      return {
+        safetyBackupDir: safety.backupDir,
+        configuredBackupAttempted: true,
+        configuredBackupSucceeded: true,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[Backup] Configured backup failed before update; local safety backup exists.", error);
+      return {
+        safetyBackupDir: safety.backupDir,
+        configuredBackupAttempted: true,
+        configuredBackupSucceeded: false,
+        configuredBackupError: message,
+      };
+    }
+  }
+
   /** Update backup settings. */
   async updateBackupPlan(input: {
     targetPath: string;

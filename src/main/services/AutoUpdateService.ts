@@ -21,10 +21,16 @@ export interface AutoUpdateServiceApi {
   readonly getStatus: () => UpdateStatus;
 }
 
+export interface AutoUpdateServiceOptions {
+  readonly prepareInstall?: (version: string) => Promise<unknown>;
+}
+
 export function makeAutoUpdateService(
   onStatusChange: (status: UpdateStatus) => void,
+  options: AutoUpdateServiceOptions = {},
 ): AutoUpdateServiceApi {
   let currentStatus: UpdateStatus = { stage: "idle" };
+  let installInProgress = false;
 
   function setStatus(status: UpdateStatus): void {
     currentStatus = status;
@@ -126,10 +132,23 @@ export function makeAutoUpdateService(
       });
     },
     installUpdate: () => {
-      if (currentStatus.stage !== "downloaded") return;
+      if (currentStatus.stage !== "downloaded" || installInProgress) return;
       
       console.log("[AutoUpdateService] Installing update...");
-      autoUpdater.quitAndInstall(false, true);
+      installInProgress = true;
+      const version = currentStatus.version;
+      Promise.resolve(options.prepareInstall?.(version))
+        .then(() => {
+          autoUpdater.quitAndInstall(false, true);
+        })
+        .catch((err: Error) => {
+          installInProgress = false;
+          console.error("[AutoUpdateService] Update install preparation failed:", err);
+          setStatus({
+            stage: "error",
+            message: `Update install blocked: ${err instanceof Error ? err.message : err}`,
+          });
+        });
     },
     getStatus: () => currentStatus,
   };

@@ -9,7 +9,7 @@ on:
 jobs:
   fast-checks:
     name: Fast checks
-    runs-on: macos-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

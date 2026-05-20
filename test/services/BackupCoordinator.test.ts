@@ -143,6 +143,51 @@ describe("BackupCoordinator", () => {
     });
   });
 
+  describe("prepareForUpdateInstall()", () => {
+    it("creates a verified local safety backup without a configured backup target", async () => {
+      seedItem(t.db, { name: "Pre Update Item", sku: "SKU-PRE-UPDATE" });
+
+      const runtime = makeTestRuntime(t.dbPath);
+      const BackupCoordinator = await loadCoordinator();
+      const coordinator = new BackupCoordinator(runtime, t.dbPath);
+
+      try {
+        const result = await coordinator.prepareForUpdateInstall("1.2.3");
+
+        tempDirs.push(path.join(path.dirname(t.dbPath), "pre-update-backups"));
+        expect(result.configuredBackupAttempted).toBe(false);
+        expect(result.configuredBackupSucceeded).toBe(false);
+        expect(fs.existsSync(path.join(result.safetyBackupDir, "database.db"))).toBe(true);
+        expect(fs.existsSync(path.join(result.safetyBackupDir, "manifest.json"))).toBe(true);
+      } finally {
+        await runtime.dispose();
+      }
+    });
+
+    it("also runs the configured backup target when one is configured", async () => {
+      seedItem(t.db, { name: "Configured Backup Item", sku: "SKU-CONFIG-BACKUP" });
+      const configuredTarget = fs.mkdtempSync(path.join(os.tmpdir(), "oi-configured-pre-update-"));
+      tempDirs.push(configuredTarget);
+      writeSetting(t.db, "backup.target_path", configuredTarget);
+
+      const runtime = makeTestRuntime(t.dbPath);
+      const BackupCoordinator = await loadCoordinator();
+      const coordinator = new BackupCoordinator(runtime, t.dbPath);
+
+      try {
+        const result = await coordinator.prepareForUpdateInstall("1.2.4");
+
+        tempDirs.push(path.join(path.dirname(t.dbPath), "pre-update-backups"));
+        expect(result.configuredBackupAttempted).toBe(true);
+        expect(result.configuredBackupSucceeded).toBe(true);
+        expect(fs.existsSync(path.join(result.safetyBackupDir, "database.db"))).toBe(true);
+        expect(fs.existsSync(path.join(configuredTarget, "OpenInventory-Backup", "database.db"))).toBe(true);
+      } finally {
+        await runtime.dispose();
+      }
+    });
+  });
+
   // ── validateBackup() ──────────────────────────────────────────────────
 
   describe("validateBackup()", () => {

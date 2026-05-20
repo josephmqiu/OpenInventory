@@ -62,6 +62,10 @@ import { BackupCoordinator } from "./services/BackupCoordinator";
 import { BackupScheduler } from "./services/BackupScheduler";
 import { applyRestorePending } from "./services/restorePending";
 import { makeAutoUpdateService, type AutoUpdateServiceApi } from "./services/AutoUpdateService";
+import {
+  checkPostUpdateDatabase,
+  markPostUpdateValidationSucceeded,
+} from "./services/postUpdateValidation";
 import { runPendingMigrations } from "./infrastructure/migrations";
 import { configureSqlitePragmas } from "./infrastructure/sqlite-pragmas";
 import { registerIpcHandlers } from "./ipc";
@@ -182,6 +186,18 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     const dbPath = resolveDbPath();
     initializeDatabase(dbPath);
+    const appVersion = app.getVersion();
+    const postUpdateCheck = checkPostUpdateDatabase(dbPath, appVersion);
+    if (postUpdateCheck.errors.length > 0) {
+      dialog.showErrorBox(
+        "OpenInventory — Update Validation Failed",
+        "OpenInventory stopped before opening the app because the database did not pass post-update validation.\n\n" +
+        "Restore from a verified backup before continuing.\n\n" +
+        postUpdateCheck.errors.join("\n"),
+      );
+      app.exit(1);
+      return;
+    }
 
     // ─── Smoke test mode ───────────────────────────────────────────────
     // Launched by CI to verify the packaged app starts and initializes.
@@ -221,6 +237,25 @@ if (!gotLock) {
     const runtime = ManagedRuntime.make(AppLayer);
     managedRuntime = runtime;
 
+    if (postUpdateCheck.required) {
+      try {
+        await runtime.runPromise(
+          Effect.flatMap(DatabaseService, (s) => s.loadSnapshot()),
+        );
+        markPostUpdateValidationSucceeded(dbPath, appVersion);
+      } catch (error) {
+        dialog.showErrorBox(
+          "OpenInventory — Update Validation Failed",
+          "OpenInventory stopped before opening the app because the core inventory snapshot could not be loaded after update.\n\n" +
+          "Restore from a verified backup before continuing.\n\n" +
+          `${error instanceof Error ? error.message : error}`,
+        );
+        await runtime.dispose().catch(() => {});
+        app.exit(1);
+        return;
+      }
+    }
+
     // Auto-start LAN server if previously enabled; populate lanState.
     if (!isSmokeTest) {
       try {
@@ -235,16 +270,22 @@ if (!gotLock) {
       }
     }
 
-    const autoUpdateService: AutoUpdateServiceApi = makeAutoUpdateService((status) => {
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.isDestroyed()) {
-          win.webContents.send("auto-update-status", status);
-        }
-      }
-    });
-
     // ─── Backup coordinator + scheduler ─────────────────────────────────
     backupCoordinator = new BackupCoordinator(runtime, dbPath);
+
+    const autoUpdateService: AutoUpdateServiceApi = makeAutoUpdateService(
+      (status) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) {
+            win.webContents.send("auto-update-status", status);
+          }
+        }
+      },
+      {
+        prepareInstall: (version) =>
+          backupCoordinator!.prepareForUpdateInstall(version),
+      },
+    );
 
     backupScheduler = new BackupScheduler(
       backupCoordinator,
