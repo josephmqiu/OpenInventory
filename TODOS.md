@@ -136,3 +136,26 @@ route-level permission checks in the LAN router.
 **Files:** `src/main/infrastructure/lan/auth.ts`, `src/main/infrastructure/lan/router.ts`,
 `src/main/services/LanServerService.ts`, `src/main/services/DatabaseService.ts`
 
+---
+
+## Backup: Prune pre-update safety backups
+
+`BackupCoordinator.createPreUpdateSafetyBackup()` writes a verified local backup
+to `pre-update-backups/<version>-<timestamp>/` before every app update, but
+nothing ever deletes them. They accumulate on disk indefinitely — one full
+database copy per update.
+
+**Why:** Over many updates this is unbounded disk growth in the app data
+directory. The configured backup target already has retention; these safety
+backups don't. A long-lived install could end up with dozens of stale copies.
+
+**Scope:** Small. After post-update validation succeeds (the update is known
+good), sweep `pre-update-backups/` keeping the last N (e.g. 3). Do the prune
+only after the success mark so a failed/rolled-back update keeps its rollback
+point.
+
+**Depends on:** Nothing. Hooks into the existing post-update validation success
+path in `src/main/index.ts`.
+
+**Files:** `src/main/services/BackupCoordinator.ts`, `src/main/index.ts`
+
