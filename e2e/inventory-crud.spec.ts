@@ -16,7 +16,7 @@ test.describe.serial("inventory CRUD (empty seed)", () => {
     await form.locator("label:has-text('Item Name') input").fill("E2E Widget");
     await form.locator("label:has-text('Category') input").fill("Raw Material");
     await form.locator("label:has-text('Location') input").fill("Rack A");
-    await form.locator("label:has-text('Unit') input").fill("pcs");
+    await form.locator(".unit-group input").fill("pcs");
     await form.locator("label:has-text('Reorder Level') input").fill("10");
     await form.locator("label:has-text('Initial Quantity') input").fill("50");
 
@@ -100,7 +100,7 @@ test.describe.serial("inventory CRUD (empty seed)", () => {
     await form.locator("label:has-text('Item Name') input").fill("First Item");
     await form.locator("label:has-text('Category') input").fill("Raw Material");
     await form.locator("label:has-text('Location') input").fill("Rack A");
-    await form.locator("label:has-text('Unit') input").fill("pcs");
+    await form.locator(".unit-group input").fill("pcs");
     await form.locator("label:has-text('Reorder Level') input").fill("5");
     await form.locator("label:has-text('Initial Quantity') input").fill("20");
     await page.getByTestId("action-submit").click();
@@ -113,7 +113,12 @@ test.describe.serial("inventory CRUD (empty seed)", () => {
     await form2.locator("label:has-text('Item Name') input").fill("Second Item");
     await form2.locator("label:has-text('Category') select").selectOption("Raw Material");
     await form2.locator("label:has-text('Location') input").fill("Rack B");
-    await form2.locator("label:has-text('Unit') select").selectOption("pcs");
+    const unitSelect = form2.locator(".unit-group select");
+    if (await unitSelect.count()) {
+      await unitSelect.selectOption("pcs");
+    } else {
+      await form2.locator(".unit-group input").fill("pcs");
+    }
     await form2.locator("label:has-text('Reorder Level') input").fill("5");
     await form2.locator("label:has-text('Initial Quantity') input").fill("10");
     await page.getByTestId("action-submit").click();

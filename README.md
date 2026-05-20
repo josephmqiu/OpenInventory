@@ -76,7 +76,7 @@ src/
     app/               #   App shell, state hook, i18n, routing
     domain/            #   Business logic, TypeScript models
     services/          #   Gateway abstraction (IPC or HTTP)
-    ui/components/     #   React components (11 total)
+    ui/components/     #   React components (panels, tables, modals)
 test/                  # Backend test suite
 e2e/                   # Playwright E2E tests
 ```
@@ -96,6 +96,15 @@ Retries are treated as failures by default so flaky tests have to be fixed inste
 ## CI Policy
 
 GitHub CI on pull requests and pushes to `master` runs only the fast lint + Vitest gate (`npm run verify`) to conserve build minutes. The full test suite, coverage, E2E matrix, packaging smoke tests, and release publishing run from the release workflow on version tags. The full test suite can also be run manually from GitHub Actions with the `Test Suite` workflow.
+
+## Documentation
+
+- [`docs/inventory-app-architecture.md`](docs/inventory-app-architecture.md) — system architecture (processes, services, IPC, schema, LAN server)
+- [`docs/production-operations.md`](docs/production-operations.md) — release rule, Windows signing risk acceptance, restore-drill checklist
+- [`docs/production-hardening-todo.md`](docs/production-hardening-todo.md) — production hardening tracker
+- [`CHANGELOG.md`](CHANGELOG.md) — release history
+- [`TODOS.md`](TODOS.md) — deferred work
+- [`DESIGN.md`](DESIGN.md) — design system
 
 ## Design
 

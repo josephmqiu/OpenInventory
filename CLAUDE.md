@@ -47,7 +47,7 @@ npm run dev            # Desktop dev — rebuilds Electron ABI first
 ```
 
 **When touching build scripts, package.json, CI workflows, or native module code:**
-think about all environments — local dev (Mac), CI (Mac + Windows), packaged app,
+think about all environments — local dev (Mac), CI (Windows only), packaged app,
 and E2E tests. A change that works in one environment may break another. The E2E
 pipeline has a strict order: rebuild Node → build Vite → generate seed DBs → rebuild
 Electron → run Playwright. Do not reorder these steps.
@@ -57,8 +57,11 @@ Config files: `vitest.config.ts` (frontend), `vitest.config.node.ts` (backend),
 main process), `electron-builder.yml` (unpacks `.node` files and renderer assets from
 ASAR — renderer must stay unpacked for LAN server static file serving).
 
-**Build targets:** Mac arm64 only (no x64). Windows x64 only. CI release workflow
-builds → smoke tests → publishes (artifacts are validated before upload).
+**Build targets:** Windows x64 is the production/release target. The CI release
+workflow builds → smoke tests → publishes Windows only (artifacts are validated
+before upload). Mac arm64 builds locally (`npm run dist`) for dev, but CI no
+longer builds or publishes Mac — Windows is the production customer platform,
+Mac is dev-only.
 
 ## Testing
 

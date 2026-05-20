@@ -178,12 +178,49 @@ describe("AutoUpdateService", () => {
     expect(updaterMocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
   });
 
-  it("installs only from the downloaded state", () => {
+  it("runs install preparation before installing from the downloaded state", async () => {
+    const prepareInstall = vi.fn().mockResolvedValue(undefined);
+    const service = makeAutoUpdateService(
+      (status) => statuses.push(status),
+      { prepareInstall },
+    );
+    updaterMocks.autoUpdater.emit("update-downloaded", { version: "1.0.0" });
+
+    service.installUpdate();
+
+    await vi.waitFor(() => {
+      expect(prepareInstall).toHaveBeenCalledWith("1.0.0");
+      expect(updaterMocks.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    });
+  });
+
+  it("blocks install and reports an error when install preparation fails", async () => {
+    const prepareInstall = vi.fn().mockRejectedValue(new Error("backup failed"));
+    const service = makeAutoUpdateService(
+      (status) => statuses.push(status),
+      { prepareInstall },
+    );
+    updaterMocks.autoUpdater.emit("update-downloaded", { version: "1.0.0" });
+
+    service.installUpdate();
+
+    await vi.waitFor(() => {
+      expect(updaterMocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
+      expect(service.getStatus()).toEqual({
+        stage: "error",
+        message: "Update install blocked: backup failed",
+      });
+    });
+  });
+
+  it("installs directly when no install preparation hook is configured", async () => {
     const service = createService();
     updaterMocks.autoUpdater.emit("update-downloaded", { version: "1.0.0" });
 
     service.installUpdate();
 
-    expect(updaterMocks.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    await vi.waitFor(() => {
+      expect(updaterMocks.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    });
   });
 });

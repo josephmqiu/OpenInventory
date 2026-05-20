@@ -12,56 +12,6 @@ jobs:
   test-suite:
     uses: ./.github/workflows/test-suite.yml
 
-  build-mac:
-    needs: test-suite
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Rebuild native modules for Electron
-        run: npx tsx scripts/rebuild-electron-native-deps.ts
-      - name: Build app
-        env:
-          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-        run: npm run build && npx electron-builder --mac --arm64 --publish never
-      - name: Smoke test packaged app
-        run: |
-          APP=$(find dist/mac-arm64 -maxdepth 1 -name "*.app" | head -1)
-          if [ -z "$APP" ]; then echo "No .app found in dist/mac-arm64/"; exit 1; fi
-          TEMP_DIR=$(mktemp -d)
-          EXECUTABLE=$(defaults read "$APP/Contents/Info" CFBundleExecutable)
-          "$APP/Contents/MacOS/$EXECUTABLE" --smoke-test --user-data-dir="$TEMP_DIR" &
-          PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $PID 2>/dev/null; then break; fi
-            sleep 1
-          done
-          if kill -0 $PID 2>/dev/null; then
-            kill $PID
-            rm -rf "$TEMP_DIR"
-            echo "Smoke test timed out after 60s"
-            exit 1
-          fi
-          wait $PID
-          EXIT=$?
-          rm -rf "$TEMP_DIR"
-          if [ "$EXIT" -ne 0 ]; then
-            echo "Smoke test failed with exit code $EXIT"
-            exit 1
-          fi
-          echo "Smoke test passed (exit code 0)"
-      - name: Publish release artifacts
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-        run: npx electron-builder --mac --arm64 --publish always
-
   build-windows:
     needs: test-suite
     runs-on: windows-latest

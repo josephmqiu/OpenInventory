@@ -2,6 +2,20 @@
 
 All notable changes to OpenInventory will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Your data is protected across app updates: before an update installs, OpenInventory creates a verified local backup you can roll back to. If that safety backup can't be created, the update is blocked rather than risking your database.
+- If you've set a backup destination, OpenInventory also tries to back up there before updating — but a failure on that target won't block the update once the local safety backup exists.
+- After updating, OpenInventory validates your database on first launch (integrity, foreign keys, required tables, schema version, and a real inventory load). If anything looks wrong, it stops and tells you to restore from a backup instead of opening with a broken database.
+
+### For contributors
+- Golden upgrade-path tests assert that databases from prior versions migrate without corrupting inventory balances, movement totals, alerts, or settings.
+- Focused production-risk coverage gate (`scripts/check-focused-coverage.ts`, wired into `npm run test:coverage`) enforces per-file coverage minimums on database, migration, backup, and update code.
+- CI moved from macOS to Windows — Windows is the production customer platform, Mac is dev-only. Fast checks, the test-suite matrix, coverage, and E2E now run on Windows; the Mac release build lane was removed.
+- Hardened E2E inventory CRUD selectors so the Unit field no longer also matches "Unit Price".
+- New ops docs: production release rule, Windows signing risk acceptance, and restore-drill checklist (`docs/production-operations.md`).
+
 ## [0.1.1] - 2026-04-23
 
 ### Fixed
