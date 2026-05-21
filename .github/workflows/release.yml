@@ -44,8 +44,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          $artifacts = Get-ChildItem -Path dist -File | Where-Object { $_.Extension -in '.exe', '.blockmap', '.yml' }
-          if (-not $artifacts) { throw "No release artifacts (.exe/.blockmap/.yml) found in dist/" }
+          $artifacts = Get-ChildItem -Path dist -File | Where-Object { $_.Name -eq 'latest.yml' -or $_.Extension -eq '.exe' -or $_.Name -like '*.exe.blockmap' }
+          if (-not $artifacts) { throw "No release artifacts (latest.yml/.exe/.exe.blockmap) found in dist/" }
           foreach ($a in $artifacts) {
             Write-Host "Uploading $($a.Name) to R2"
             npx --yes wrangler r2 object put "openinventory-releases/$($a.Name)" --file="$($a.FullName)" --remote
