@@ -4,10 +4,13 @@ All notable changes to OpenInventory will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-21
+
 ### Added
 - Your data is protected across app updates: before an update installs, OpenInventory creates a verified local backup you can roll back to. If that safety backup can't be created, the update is blocked rather than risking your database.
 - If you've set a backup destination, OpenInventory also tries to back up there before updating — but a failure on that target won't block the update once the local safety backup exists.
 - After updating, OpenInventory validates your database on first launch (integrity, foreign keys, required tables, schema version, and a real inventory load). If anything looks wrong, it stops and tells you to restore from a backup instead of opening with a broken database.
+- Automatic updates now reach you: the app checks a hosted update server and downloads new versions in the background, so you no longer need to reinstall manually to stay current.
 
 ### For contributors
 - Golden upgrade-path tests assert that databases from prior versions migrate without corrupting inventory balances, movement totals, alerts, or settings.
@@ -15,6 +18,8 @@ All notable changes to OpenInventory will be documented in this file.
 - CI moved from macOS to Windows — Windows is the production customer platform, Mac is dev-only. Fast checks, the test-suite matrix, coverage, and E2E now run on Windows; the Mac release build lane was removed.
 - Hardened E2E inventory CRUD selectors so the Unit field no longer also matches "Unit Price".
 - New ops docs: production release rule, Windows signing risk acceptance, and restore-drill checklist (`docs/production-operations.md`).
+- Update delivery moved off the private GitHub repo (unreachable to clients) to Cloudflare R2 via electron-updater's `generic` provider. The release workflow now builds with `--publish never` and uploads installer, blockmap, and `latest.yml` to the `openinventory-releases` bucket with `wrangler` (auth via `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets).
+- Raised backend Vitest `hookTimeout`/`testTimeout` so the migration-heavy DB setup in `beforeEach` no longer flakes against the 10s default on slow Windows CI runners.
 
 ## [0.1.1] - 2026-04-23
 

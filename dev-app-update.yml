@@ -1,3 +1,2 @@
-provider: github
-owner: danrepo
-repo: OpenInventory
+provider: generic
+url: https://pub-ecaf9dac2f994b1eb42181e6e551d3c3.r2.dev
