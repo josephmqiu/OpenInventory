@@ -19,6 +19,7 @@ All notable changes to OpenInventory will be documented in this file.
 - Hardened E2E inventory CRUD selectors so the Unit field no longer also matches "Unit Price".
 - New ops docs: production release rule, Windows signing risk acceptance, and restore-drill checklist (`docs/production-operations.md`).
 - Update delivery moved off the private GitHub repo (unreachable to clients) to Cloudflare R2 via electron-updater's `generic` provider. The release workflow now builds with `--publish never` and uploads installer, blockmap, and `latest.yml` to the `openinventory-releases` bucket with `wrangler` (auth via `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` secrets).
+- Raised backend Vitest `hookTimeout`/`testTimeout` so the migration-heavy DB setup in `beforeEach` no longer flakes against the 10s default on slow Windows CI runners.
 
 ## [0.1.1] - 2026-04-23
 
