@@ -49,10 +49,8 @@
     "electron-updater": "^6.8.3"
   },
   "publish": {
-    "provider": "github",
-    "owner": "josephmqiu",
-    "repo": "OpenInventory",
-    "releaseType": "release"
+    "provider": "generic",
+    "url": "https://pub-ecaf9dac2f994b1eb42181e6e551d3c3.r2.dev"
   },
   "devDependencies": {
     "@effect/platform": "^0.96.0",

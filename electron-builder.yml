@@ -38,9 +38,8 @@ asarUnpack:
   - "**/*.node"
   - "out/renderer/**/*"
 publish:
-  provider: github
-  owner: josephmqiu
-  repo: OpenInventory
+  provider: generic
+  url: https://pub-ecaf9dac2f994b1eb42181e6e551d3c3.r2.dev
 mac:
   category: public.app-category.business
   artifactName: "${productName}-${version}-${arch}.${ext}"
