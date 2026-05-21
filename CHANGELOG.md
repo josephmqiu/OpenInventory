@@ -4,6 +4,8 @@ All notable changes to OpenInventory will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-21
+
 ### Added
 - Your data is protected across app updates: before an update installs, OpenInventory creates a verified local backup you can roll back to. If that safety backup can't be created, the update is blocked rather than risking your database.
 - If you've set a backup destination, OpenInventory also tries to back up there before updating — but a failure on that target won't block the update once the local safety backup exists.
