@@ -1,0 +1,23 @@
+name: R2 Diag
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect wrangler account + buckets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "ACCOUNT_ID length (expect 32): ${#CLOUDFLARE_ACCOUNT_ID}"
+          echo "API_TOKEN length: ${#CLOUDFLARE_API_TOKEN}"
+          echo "=== wrangler whoami ==="
+          npx --yes wrangler whoami || true
+          echo "=== r2 bucket list (remote) ==="
+          npx --yes wrangler r2 bucket list --remote || true
