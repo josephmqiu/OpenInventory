@@ -555,6 +555,16 @@ export async function installUpdate(): Promise<void> {
   await invokeCommand<void>("install_update");
 }
 
+export async function getAppVersion(): Promise<string | null> {
+  if (detectRuntime() !== "desktop") return null;
+  return invokeCommand<string>("get_app_version");
+}
+
+export async function getUpdateStatus(): Promise<UpdateStatus | null> {
+  if (detectRuntime() !== "desktop") return null;
+  return invokeCommand<UpdateStatus>("get_update_status");
+}
+
 export function onAutoUpdateStatus(
   callback: (status: UpdateStatus) => void,
 ): () => void {

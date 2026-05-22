@@ -37,8 +37,15 @@ export function makeAutoUpdateService(
     onStatusChange(status);
   }
 
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  // Silent background download (Claude/ChatGPT-style): the user is never asked to
+  // download — electron-updater fetches automatically once an update is available,
+  // and the only user-facing moment is "ready → restart".
+  autoUpdater.autoDownload = true;
+  // Install ONLY via the explicit Restart path (installUpdate → prepareInstall →
+  // quitAndInstall). autoInstallOnAppQuit would silently install a downloaded
+  // update on ordinary quit, bypassing the verified pre-update backup that
+  // prepareInstall performs — leaving no rollback point if the update is bad.
+  autoUpdater.autoInstallOnAppQuit = false;
 
   // 检查更新服务器配置
   try {

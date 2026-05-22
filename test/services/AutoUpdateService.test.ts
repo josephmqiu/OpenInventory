@@ -53,8 +53,9 @@ describe("AutoUpdateService", () => {
     statuses = [];
     toolkitMocks.is.dev = false;
     updaterMocks.autoUpdater.removeAllListeners();
-    updaterMocks.autoUpdater.autoDownload = true;
-    updaterMocks.autoUpdater.autoInstallOnAppQuit = false;
+    // Pre-state opposite of what the service should set, so the test proves the flip.
+    updaterMocks.autoUpdater.autoDownload = false;
+    updaterMocks.autoUpdater.autoInstallOnAppQuit = true;
     updaterMocks.autoUpdater.checkForUpdates.mockReset();
     updaterMocks.autoUpdater.checkForUpdates.mockResolvedValue(undefined);
     updaterMocks.autoUpdater.downloadUpdate.mockReset();
@@ -66,11 +67,11 @@ describe("AutoUpdateService", () => {
     return makeAutoUpdateService((status) => statuses.push(status));
   }
 
-  it("configures the updater to require explicit downloads and install on quit", () => {
+  it("downloads automatically but does NOT auto-install on quit (install runs prepareInstall)", () => {
     createService();
 
-    expect(updaterMocks.autoUpdater.autoDownload).toBe(false);
-    expect(updaterMocks.autoUpdater.autoInstallOnAppQuit).toBe(true);
+    expect(updaterMocks.autoUpdater.autoDownload).toBe(true);
+    expect(updaterMocks.autoUpdater.autoInstallOnAppQuit).toBe(false);
   });
 
   it("maps updater lifecycle events onto UpdateStatus values", () => {

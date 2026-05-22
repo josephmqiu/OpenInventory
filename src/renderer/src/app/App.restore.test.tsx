@@ -19,9 +19,11 @@ vi.mock("../services/inventoryGateway", async (importOriginal) => {
 vi.mock("./useAutoUpdate", () => ({
   useAutoUpdate: () => ({
     updateStatus: { stage: "idle" as const },
-    downloadUpdate: vi.fn(),
+    appVersion: "0.0.0-test",
+    checkForUpdates: vi.fn(),
     installUpdate: vi.fn(),
-    dismissUpdate: vi.fn(),
+    chipDismissed: false,
+    dismissChip: vi.fn(),
   }),
 }));
 

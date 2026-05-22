@@ -34,6 +34,7 @@ export default defineConfig({
     { name: "mobile", testMatch: /quick-issue-mobile\.spec/, use: { seedScenario: "lan-mobile" } },
     { name: "quick-issue-edges", testMatch: /quick-issue-no-personnel\.spec/, use: { seedScenario: "no-personnel-lan" } },
     { name: "settings", testMatch: /settings\.spec/, use: { seedScenario: "inventory-basics" } },
+    { name: "update", testMatch: /update\.spec/, use: { seedScenario: "empty" } },
     { name: "backup", testMatch: /backup\.spec/, use: { seedScenario: "inventory-basics" } },
     {
       name: "backup-restore-handoff",

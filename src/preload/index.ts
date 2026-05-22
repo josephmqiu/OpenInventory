@@ -35,6 +35,8 @@ const ALLOWED_CHANNELS = new Set([
   "check-for-updates",
   "download-update",
   "install-update",
+  "get-app-version",
+  "get-update-status",
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([

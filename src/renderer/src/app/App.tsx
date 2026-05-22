@@ -13,7 +13,8 @@ import { RestoreDialog } from "../ui/components/RestoreDialog";
 import { useInventoryState } from "./useInventoryState";
 import { useAutoUpdate } from "./useAutoUpdate";
 import { useTheme } from "./useTheme";
-import { UpdateBanner } from "../ui/components/UpdateBanner";
+import { UpdateChip } from "../ui/components/UpdateChip";
+import { UpdateSettingsPanel } from "../ui/components/UpdateSettingsPanel";
 import {
   ClipboardList,
   LayoutDashboard,
@@ -28,7 +29,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 type Section = "dashboard" | "inventory" | "activity" | "settings";
-type SettingsTab = "personnel" | "backup" | "lan";
+type SettingsTab = "personnel" | "backup" | "lan" | "update";
 
 const navOrder: Section[] = ["dashboard", "inventory", "activity", "settings"];
 
@@ -107,10 +108,16 @@ export function App() {
     handleLanAccessKeyRegenerate,
     pollError,
   } = useInventoryState();
-  const { updateStatus, downloadUpdate, installUpdate, dismissUpdate } = useAutoUpdate();
+  const { updateStatus, appVersion, checkForUpdates, installUpdate, chipDismissed, dismissChip } = useAutoUpdate();
   const { theme, cycleTheme } = useTheme();
 
   const browserRuntime = runtime !== "desktop";
+  const updateReady = updateStatus.stage === "downloaded";
+  const showUpdateChip = updateReady && !chipDismissed;
+  // Updates only exist in Electron. Show the tab there, plus the dev browser
+  // preview (for dogfooding), but never to a production LAN browser client where
+  // the panel would render an empty version and a dead "Check" button.
+  const showUpdateTab = runtime === "desktop" || import.meta.env.DEV;
   const themeLabel = theme === "auto" ? t("autoMode") : theme === "light" ? t("lightMode") : t("darkMode");
 
   const openAction = (nextAction: ActionKind, itemId?: string) => {
@@ -234,6 +241,9 @@ export function App() {
               >
                 <Icon size={16} strokeWidth={1.5} />
                 {!sidebarCollapsed && <span>{sectionTitle(item, t)}</span>}
+                {item === "settings" && updateReady && (
+                  <span className="nav-dot" data-testid="nav-update-dot" aria-hidden="true" />
+                )}
               </button>
             );
           })}
@@ -257,6 +267,9 @@ export function App() {
             <p>{headerSubtitle}</p>
           </div>
           <div className="topbar__controls">
+            {showUpdateChip && (
+              <UpdateChip onRestart={installUpdate} onDismiss={dismissChip} />
+            )}
             {browserRuntime && (
               <button
                 className="button-secondary button-icon-only"
@@ -294,15 +307,6 @@ export function App() {
             </button>
           </div>
         </header>
-
-        {runtime === "desktop" && (
-          <UpdateBanner
-            status={updateStatus}
-            onDownload={downloadUpdate}
-            onInstall={installUpdate}
-            onDismiss={dismissUpdate}
-          />
-        )}
 
         {notice && (
           <div data-testid="feedback-banner" className={`feedback-banner feedback-banner--${notice.tone}`}>
@@ -429,6 +433,17 @@ export function App() {
                       {t("lanSettings")}
                     </button>
                   )}
+                  {showUpdateTab && (
+                    <button
+                      className={`filter-tab${settingsTab === "update" ? " filter-tab--active" : ""}`}
+                      onClick={() => setSettingsTab("update")}
+                      type="button"
+                      role="tab"
+                      aria-selected={settingsTab === "update"}
+                    >
+                      {t("updateTab")}
+                    </button>
+                  )}
                 </div>
                 {settingsTab === "personnel" && (
                   <PersonnelPanel
@@ -455,6 +470,14 @@ export function App() {
                     lanAccess={lanAccess}
                     onRegenerateKey={handleLanAccessKeyRegenerate}
                     onSave={handleLanAccessSave}
+                  />
+                )}
+                {settingsTab === "update" && showUpdateTab && (
+                  <UpdateSettingsPanel
+                    status={updateStatus}
+                    appVersion={appVersion}
+                    onCheck={checkForUpdates}
+                    onRestart={installUpdate}
                   />
                 )}
               </>

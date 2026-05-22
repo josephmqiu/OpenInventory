@@ -59,13 +59,22 @@ const gatewayMocks = vi.hoisted(() => ({
   checkForUpdates: vi.fn(),
   downloadUpdate: vi.fn(),
   installUpdate: vi.fn(),
+  getAppVersion: vi.fn().mockResolvedValue("0.0.0-test"),
+  getUpdateStatus: vi.fn().mockResolvedValue({ stage: "idle" }),
   onAutoUpdateStatus: vi.fn().mockReturnValue(() => {}),
 }));
 
 vi.mock("./runtime", () => runtimeMocks);
 vi.mock("../services/inventoryGateway", () => gatewayMocks);
 vi.mock("./useAutoUpdate", () => ({
-  useAutoUpdate: () => ({ stage: "idle" as const }),
+  useAutoUpdate: () => ({
+    updateStatus: { stage: "idle" as const },
+    appVersion: "0.0.0-test",
+    checkForUpdates: vi.fn(),
+    installUpdate: vi.fn(),
+    chipDismissed: false,
+    dismissChip: vi.fn(),
+  }),
 }));
 
 import { App } from "./App";

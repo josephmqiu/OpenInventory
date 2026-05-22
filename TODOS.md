@@ -159,3 +159,24 @@ path in `src/main/index.ts`.
 
 **Files:** `src/main/services/BackupCoordinator.ts`, `src/main/index.ts`
 
+
+---
+
+## Update UI: collapse the ambient restart chip at narrow widths
+
+**What:** Below a topbar width threshold (DESIGN.md tightens the topbar at
+<1200px; min window is 900px), collapse the "Update ready · Restart · ×" chip to
+just the amber dot + Restart button, dropping the "Update ready" label.
+
+**Why:** At narrow widths the full chip plus the page title and the theme +
+language icon buttons can crowd the topbar. The label is the most expendable
+part — the amber dot still signals state and the Restart button keeps the action.
+
+**Scope:** Small. CSS-only — hide `.update-chip__label` under a media/container
+width condition once the real chip component lands. Threshold TBD during
+implementation (test at 900px with a long page title).
+
+**Depends on:** The Update UI chip being implemented (see the locked design in
+`src/renderer/update-ui-mockup.html`).
+
+**Files:** the new update chip component + `src/renderer/src/app/app.css`.
