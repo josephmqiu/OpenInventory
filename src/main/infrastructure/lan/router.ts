@@ -243,8 +243,20 @@ function serveStaticFile(
     return;
   }
 
-  if (!fs.existsSync(filePath)) {
+  // Must resolve to a regular file. statSync throws for missing paths; a
+  // directory (e.g. GET /assets/) would otherwise reach readFileSync below and
+  // throw EISDIR — an unhandled rejection that the main process treats as
+  // fatal (index.ts), turning any unauthenticated LAN request into an app crash.
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
     console.error(`[LAN] Static file not found: rendererDir=${rendererDir}, pathname=${pathname}`);
+    res.writeHead(404);
+    res.end(messages.notFound);
+    return;
+  }
+  if (!stat.isFile()) {
     res.writeHead(404);
     res.end(messages.notFound);
     return;

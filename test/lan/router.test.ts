@@ -427,6 +427,14 @@ describe("LAN Router — static file security", () => {
     expect(res.body).toContain("__issueAssetLoaded");
   });
 
+  it("returns 404 (not EISDIR crash) for a directory under the assets allowlist", async () => {
+    // Regression: GET /assets/ resolves to the assets directory, which exists.
+    // Without an isFile() guard, readFileSync throws EISDIR — an unhandled
+    // rejection the main process treats as fatal (unauthenticated remote DoS).
+    const res = await secRequest("/assets/");
+    expect(res.status).toBe(404);
+  });
+
   it("path traversal attempt is blocked", async () => {
     const res = await secRequest("/../../../etc/passwd");
     // URL constructor normalizes /../ so this may resolve within the dir,
