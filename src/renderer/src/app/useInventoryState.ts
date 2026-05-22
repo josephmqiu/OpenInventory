@@ -523,9 +523,20 @@ export function useInventoryState(): InventoryState {
 
   // Optimistically reflect the new currency in the snapshot for instant
   // re-format; the next poll confirms it (snapshotEquals compares currency).
+  // If persistence fails — e.g. an HTTP/LAN session where currency updates are
+  // unsupported and there is no polling loop to reconcile — roll the optimistic
+  // change back so the UI never shows a currency that was never saved.
   const handleCurrencyChange = (nextCurrency: CurrencyCode) => {
-    setSnapshot((prev) => (prev ? { ...prev, currency: nextCurrency } : prev));
+    let previousCurrency: CurrencyCode | undefined;
+    setSnapshot((prev) => {
+      if (!prev) return prev;
+      previousCurrency = prev.currency;
+      return { ...prev, currency: nextCurrency };
+    });
     void updateAppCurrency(nextCurrency).catch((error: unknown) => {
+      setSnapshot((prev) =>
+        prev && previousCurrency ? { ...prev, currency: previousCurrency } : prev,
+      );
       handleGatewayError(error);
     });
   };
