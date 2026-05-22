@@ -68,7 +68,15 @@ import {
 } from "./services/postUpdateValidation";
 import { runPendingMigrations, LATEST_MIGRATION_VERSION } from "./infrastructure/migrations";
 import { configureSqlitePragmas } from "./infrastructure/sqlite-pragmas";
-import { readSchemaVersionSafe, backupBeforeMigrate } from "./services/migrationSafety";
+import {
+  readSchemaVersionSafe,
+  backupBeforeMigrate,
+  findLatestPreUpdateBackup,
+  restorePreUpdateBackup,
+  writeRollbackMarker,
+  clearRollbackMarker,
+  isBlockedByRollback,
+} from "./services/migrationSafety";
 import { registerIpcHandlers } from "./ipc";
 import Database from "better-sqlite3";
 import fs from "fs";
@@ -85,6 +93,82 @@ function fatalStartup(title: string, message: string): never {
   dialog.showErrorBox(title, message);
   app.exit(1);
   throw new Error(message); // app.exit ends the process; throw satisfies `never`.
+}
+
+/**
+ * A database upgrade failed. Offer to restore the verified pre-update backup and
+ * restart (user-confirmed, never silent), then halt. Disposes the runtime first
+ * (if any) to release file locks. Writes a rollback marker so the next boot does
+ * not retry the same failed upgrade. Under smoke-test, never blocks on a dialog.
+ */
+async function offerRollback(
+  dbPath: string,
+  reason: string,
+  opts: { isSmokeTest: boolean; disposeRuntime?: () => Promise<void> },
+): Promise<void> {
+  const backupDir = findLatestPreUpdateBackup(dbPath);
+
+  if (opts.isSmokeTest) {
+    await opts.disposeRuntime?.().catch(() => {});
+    app.exit(1);
+    return;
+  }
+
+  if (!backupDir) {
+    await opts.disposeRuntime?.().catch(() => {});
+    fatalStartup(
+      "OpenInventory — Update Validation Failed",
+      `${reason}\n\nNo automatic backup was found. Please restore from a backup before continuing.`,
+    );
+    return;
+  }
+
+  const choice = await dialog.showMessageBox({
+    type: "error",
+    buttons: ["Restore and Restart", "Quit"],
+    defaultId: 0,
+    cancelId: 1,
+    title: "OpenInventory — Update Failed",
+    message: "The update could not be completed safely.",
+    detail:
+      `${reason}\n\n` +
+      "A verified backup from just before the update is available. Restore it and " +
+      "restart to return to your previous working state?",
+  });
+
+  // Release DB/file locks before swapping files on disk.
+  await opts.disposeRuntime?.().catch(() => {});
+
+  if (choice.response !== 0) {
+    app.exit(1);
+    return;
+  }
+
+  try {
+    restorePreUpdateBackup(dbPath, backupDir);
+    // Record the version we rolled back to, so the next boot halts instead of
+    // re-attempting (and re-failing) the same upgrade.
+    const restored = new Database(dbPath, { readonly: true });
+    let restoredVersion = 0;
+    try {
+      restoredVersion = readSchemaVersionSafe(restored);
+    } finally {
+      restored.close();
+    }
+    writeRollbackMarker(dbPath, {
+      rolledBackFrom: LATEST_MIGRATION_VERSION,
+      rolledBackTo: restoredVersion,
+      at: new Date().toISOString(),
+    });
+    app.relaunch();
+    app.exit(0);
+  } catch (error) {
+    fatalStartup(
+      "OpenInventory — Restore Failed",
+      `Could not restore the backup automatically: ${error instanceof Error ? error.message : String(error)}\n\n` +
+        "Please restore from a backup manually.",
+    );
+  }
 }
 
 function resolveDbPath(): string {
@@ -124,6 +208,19 @@ async function initializeDatabase(
     );
   }
 
+  // Rollback loop guard: if a previous boot rolled back THIS exact upgrade, do not
+  // retry it — that would migrate, fail, and offer the same backup again forever.
+  if (isBlockedByRollback(dbPath, schemaVersion, LATEST_MIGRATION_VERSION)) {
+    db.close();
+    fatalStartup(
+      "OpenInventory — Previous Update Failed",
+      "A recent update could not be completed and your data was restored to its " +
+        "earlier version. To protect that data, OpenInventory will not retry the " +
+        "same upgrade automatically.\n\n" +
+        "Please contact support, or install an update that resolves the issue.",
+    );
+  }
+
   // Pre-migration safety backup: take a verified rollback point before ANY schema
   // change, but only for a pre-existing database that is behind. Fail closed if it
   // cannot be created — never migrate without a rollback point. Fresh installs have
@@ -153,7 +250,15 @@ async function initializeDatabase(
     db.exec(fs.readFileSync(schemaPath, "utf-8"));
   }
 
-  runPendingMigrations(db);
+  try {
+    runPendingMigrations(db);
+  } catch (error) {
+    // Release the file lock before the caller offers a rollback that renames the DB.
+    db.close();
+    throw error;
+  }
+  // Migrations completed (or there were none) — any prior rollback marker is resolved.
+  clearRollbackMarker(dbPath);
 
   // Apply .restore-pending.json if present (post-restore startup)
   const result = applyRestorePending(
@@ -233,27 +338,35 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    // Detected up front: the rollback offer must never block on a dialog under
+    // smoke-test (CI), and the first failure point precedes normal smoke handling.
+    const isSmokeTest = process.argv.includes("--smoke-test");
+
     const dbPath = resolveDbPath();
     // Capture existence BEFORE opening — `new Database()` creates the file, so this
     // is the only point that can distinguish a fresh install from an upgrade.
     const dbPreExisted = fs.existsSync(dbPath);
-    await initializeDatabase(dbPath, { dbPreExisted });
+    try {
+      await initializeDatabase(dbPath, { dbPreExisted });
+    } catch (error) {
+      // A migration threw mid-upgrade; a verified pre-migration backup exists.
+      await offerRollback(
+        dbPath,
+        `The database upgrade did not complete: ${error instanceof Error ? error.message : String(error)}`,
+        { isSmokeTest },
+      );
+      return;
+    }
     const appVersion = app.getVersion();
     const postUpdateCheck = checkPostUpdateDatabase(dbPath, appVersion);
     if (postUpdateCheck.errors.length > 0) {
-      dialog.showErrorBox(
-        "OpenInventory — Update Validation Failed",
-        "OpenInventory stopped before opening the app because the database did not pass post-update validation.\n\n" +
-        "Restore from a verified backup before continuing.\n\n" +
-        postUpdateCheck.errors.join("\n"),
+      await offerRollback(
+        dbPath,
+        `Post-update validation failed:\n${postUpdateCheck.errors.join("\n")}`,
+        { isSmokeTest },
       );
-      app.exit(1);
       return;
     }
-
-    // ─── Smoke test mode ───────────────────────────────────────────────
-    // Launched by CI to verify the packaged app starts and initializes.
-    const isSmokeTest = process.argv.includes("--smoke-test");
 
     // Mutable ref — the QR generator closure reads this on every snapshot load.
     const lanState: LanState = { primaryUrl: "" };
@@ -296,14 +409,13 @@ if (!gotLock) {
         );
         markPostUpdateValidationSucceeded(dbPath, appVersion);
       } catch (error) {
-        dialog.showErrorBox(
-          "OpenInventory — Update Validation Failed",
-          "OpenInventory stopped before opening the app because the core inventory snapshot could not be loaded after update.\n\n" +
-          "Restore from a verified backup before continuing.\n\n" +
-          `${error instanceof Error ? error.message : error}`,
+        // The runtime holds the DB connection — pass its dispose so locks are
+        // released before any file swap.
+        await offerRollback(
+          dbPath,
+          `The core inventory data could not be loaded after the update: ${error instanceof Error ? error.message : String(error)}`,
+          { isSmokeTest, disposeRuntime: () => runtime.dispose() },
         );
-        await runtime.dispose().catch(() => {});
-        app.exit(1);
         return;
       }
     }

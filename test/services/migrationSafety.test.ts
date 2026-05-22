@@ -1,14 +1,38 @@
 import { describe, it, expect, afterEach } from "vitest";
 import Database from "better-sqlite3";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import {
   readSchemaVersionSafe,
   backupBeforeMigrate,
+  findLatestPreUpdateBackup,
+  restorePreUpdateBackup,
+  readRollbackMarker,
+  writeRollbackMarker,
+  clearRollbackMarker,
+  isBlockedByRollback,
 } from "../../src/main/services/migrationSafety";
 import { createTestDb, seedItem } from "../setup/test-db";
 
 const cleanups: Array<() => void | Promise<void>> = [];
+
+/** Create a one-table SQLite file carrying a known marker value (no .exec). */
+function makeDbWithMarker(file: string, value: string): void {
+  const db = new Database(file);
+  db.prepare("CREATE TABLE marker (v TEXT)").run();
+  db.prepare("INSERT INTO marker VALUES (?)").run(value);
+  db.close();
+}
+
+function readMarker(file: string): string {
+  const db = new Database(file, { readonly: true });
+  try {
+    return (db.prepare("SELECT v FROM marker").get() as { v: string }).v;
+  } finally {
+    db.close();
+  }
+}
 
 afterEach(async () => {
   for (const fn of cleanups.splice(0)) await fn();
@@ -69,5 +93,84 @@ describe("backupBeforeMigrate", () => {
     cleanups.push(t.cleanup);
     const dir = await backupBeforeMigrate(t.db, t.dbPath, 0, 6);
     expect(path.dirname(dir)).toBe(path.join(path.dirname(t.dbPath), "pre-update-backups"));
+  });
+});
+
+describe("findLatestPreUpdateBackup", () => {
+  it("returns null when there is no pre-update-backups directory", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-find-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    expect(findLatestPreUpdateBackup(path.join(dir, "inventory-monitor.db"))).toBeNull();
+  });
+
+  it("returns the newest backup and ignores dirs without database.db", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-find-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const dbPath = path.join(dir, "inventory-monitor.db");
+    const root = path.join(dir, "pre-update-backups");
+
+    const older = path.join(root, "migrate-v3-to-v6-2000");
+    const newer = path.join(root, "migrate-v3-to-v6-2020");
+    const empty = path.join(root, "no-db-here");
+    fs.mkdirSync(older, { recursive: true });
+    fs.mkdirSync(newer, { recursive: true });
+    fs.mkdirSync(empty, { recursive: true });
+    makeDbWithMarker(path.join(older, "database.db"), "older");
+    makeDbWithMarker(path.join(newer, "database.db"), "newer");
+
+    fs.utimesSync(path.join(older, "database.db"), new Date(2000, 0, 1), new Date(2000, 0, 1));
+    fs.utimesSync(path.join(newer, "database.db"), new Date(2020, 0, 1), new Date(2020, 0, 1));
+
+    expect(findLatestPreUpdateBackup(dbPath)).toBe(newer);
+  });
+});
+
+describe("restorePreUpdateBackup", () => {
+  it("swaps in the backup, clears stale WAL/SHM, and preserves the broken DB", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-restore-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const dbPath = path.join(dir, "inventory-monitor.db");
+
+    const backupDir = path.join(dir, "pre-update-backups", "migrate-v3-to-v6-x");
+    fs.mkdirSync(backupDir, { recursive: true });
+    makeDbWithMarker(path.join(backupDir, "database.db"), "from-backup");
+
+    makeDbWithMarker(dbPath, "broken-live");
+    fs.writeFileSync(`${dbPath}-wal`, "stale-wal");
+    fs.writeFileSync(`${dbPath}-shm`, "stale-shm");
+
+    restorePreUpdateBackup(dbPath, backupDir);
+
+    expect(readMarker(dbPath)).toBe("from-backup");
+    // Stale WAL/SHM must be gone — applying them over the restore would corrupt it.
+    expect(fs.existsSync(`${dbPath}-wal`)).toBe(false);
+    expect(fs.existsSync(`${dbPath}-shm`)).toBe(false);
+    // The broken DB is preserved for forensics.
+    const failed = fs
+      .readdirSync(dir)
+      .filter((n) => n.startsWith("database-failed-update-"));
+    expect(failed.length).toBe(1);
+    expect(readMarker(path.join(dir, failed[0], "inventory-monitor.db"))).toBe("broken-live");
+  });
+});
+
+describe("rollback marker (loop guard)", () => {
+  it("round-trips and gates only the exact failed upgrade", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-marker-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const dbPath = path.join(dir, "inventory-monitor.db");
+
+    expect(readRollbackMarker(dbPath)).toBeNull();
+    expect(isBlockedByRollback(dbPath, 5, 6)).toBe(false);
+
+    writeRollbackMarker(dbPath, { rolledBackFrom: 6, rolledBackTo: 5, at: new Date().toISOString() });
+    expect(readRollbackMarker(dbPath)?.rolledBackTo).toBe(5);
+
+    expect(isBlockedByRollback(dbPath, 5, 6)).toBe(true); // exact failed upgrade → halt
+    expect(isBlockedByRollback(dbPath, 5, 7)).toBe(false); // newer app fixes it → proceed
+    expect(isBlockedByRollback(dbPath, 6, 6)).toBe(false); // already current → proceed
+
+    clearRollbackMarker(dbPath);
+    expect(readRollbackMarker(dbPath)).toBeNull();
   });
 });
