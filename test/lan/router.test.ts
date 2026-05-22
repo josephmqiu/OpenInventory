@@ -86,15 +86,17 @@ afterEach(async () => {
 });
 
 describe("LAN Router — public routes", () => {
-  it("GET /public/items/:id/context returns item data", async () => {
+  it("GET /public/items/:id/context returns item data without personnel", async () => {
     // Seed a test item
     const itemId = seedItem(t.db, { name: "Widget A", sku: "WDG-001" });
+    seedPersonnel(t.db, "Should Not Leak");
 
     const res = await request(`/public/items/${itemId}/context`);
     expect(res.status).toBe(200);
-    const body = res.body as { item: { name: string }; personnel: unknown[] };
+    const body = res.body as { item: { name: string }; personnel?: unknown[] };
     expect(body.item.name).toBe("Widget A");
-    expect(body.personnel).toBeDefined();
+    // LAN is read-only: anonymous lookups must not expose the personnel roster.
+    expect(body.personnel).toBeUndefined();
   });
 
   it("GET /public/items/:id/context returns 404 for unknown item", async () => {
@@ -105,7 +107,7 @@ describe("LAN Router — public routes", () => {
     expect(body.messageId).toBe("itemNotFound");
   });
 
-  it("POST /public/items/:id/issue issues material without auth", async () => {
+  it("POST /public/items/:id/issue is removed (404) — LAN cannot mutate stock", async () => {
     const itemId = seedItem(t.db, {
       name: "Widget B",
       sku: "WDG-002",
@@ -117,38 +119,12 @@ describe("LAN Router — public routes", () => {
       method: "POST",
       body: { quantity: 5, reason: "QR issue", performedBy: "tester" },
     });
-    expect(res.status).toBe(200);
-  });
+    expect(res.status).toBe(404);
 
-  it("deduplicates rapid repeated public issue submissions", async () => {
-    const itemId = seedItem(t.db, {
-      name: "Widget C",
-      sku: "WDG-003",
-      currentQuantity: 100,
-      reorderQuantity: 10,
-    });
-    seedPersonnel(t.db, "Tester");
-
-    const [first, second] = await Promise.all([
-      request(`/public/items/${itemId}/issue`, {
-        method: "POST",
-        headers: { "x-idempotency-key": "duplicate-issue-key" },
-        body: { quantity: 5, reason: "QR issue", performedBy: "Tester" },
-      }),
-      request(`/public/items/${itemId}/issue`, {
-        method: "POST",
-        headers: { "x-idempotency-key": "duplicate-issue-key" },
-        body: { quantity: 5, reason: "QR issue", performedBy: "Tester" },
-      }),
-    ]);
-
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-
+    // Stock must be untouched.
     const context = await request(`/public/items/${itemId}/context`);
-    expect(context.status).toBe(200);
     const body = context.body as { item: { currentQuantity: number } };
-    expect(body.item.currentQuantity).toBe(95);
+    expect(body.item.currentQuantity).toBe(100);
   });
 });
 
@@ -220,6 +196,8 @@ describe("LAN Router — removed write routes return 404", () => {
     { method: "PUT", path: "/api/items/some-id", label: "update item" },
     { method: "DELETE", path: "/api/items/some-id", label: "delete item" },
     { method: "POST", path: "/api/items/some-id/receive", label: "receive stock" },
+    { method: "POST", path: "/api/items/some-id/issue", label: "issue material" },
+    { method: "POST", path: "/api/items/batch-issue", label: "batch issue" },
     { method: "POST", path: "/api/personnel", label: "add personnel" },
     { method: "DELETE", path: "/api/personnel/some-id", label: "remove personnel" },
     { method: "PUT", path: "/api/language", label: "change language" },
@@ -243,8 +221,6 @@ describe("LAN Router — auth boundaries", () => {
   const API_ROUTES_NEEDING_AUTH = [
     { method: "GET", path: "/api/snapshot" },
     { method: "GET", path: "/api/health" },
-    { method: "POST", path: "/api/items/batch-issue" },
-    { method: "POST", path: "/api/items/test-id/issue" },
     { method: "GET", path: "/api/items/test-id/movements" },
     { method: "GET", path: "/api/audit/movements" },
     { method: "GET", path: "/api/audit/analytics" },
@@ -301,7 +277,7 @@ describe("LAN Router — auth boundaries", () => {
 });
 
 describe("LAN Router — public endpoint data exposure", () => {
-  it("public context endpoint exposes item details and personnel", async () => {
+  it("public context endpoint exposes item details but not personnel", async () => {
     const itemId = seedItem(t.db, { name: "Sensor X", sku: "SNS-001", currentQuantity: 50 });
     seedPersonnel(t.db, "Alice");
     seedPersonnel(t.db, "Bob");
@@ -311,59 +287,16 @@ describe("LAN Router — public endpoint data exposure", () => {
 
     const body = res.body as {
       item: { name: string; currentQuantity: number };
-      personnel: Array<{ name: string }>;
+      personnel?: Array<{ name: string }>;
       language: string;
     };
 
-    // Documents what data is exposed without auth
+    // Documents what data is exposed without auth — item details only.
     expect(body.item.name).toBe("Sensor X");
     expect(body.item.currentQuantity).toBe(50);
-    expect(body.personnel).toHaveLength(2);
-    expect(body.personnel.map((p) => p.name).sort()).toEqual(["Alice", "Bob"]);
+    // The personnel roster is NOT exposed to anonymous LAN clients.
+    expect(body.personnel).toBeUndefined();
     expect(body.language).toBeDefined();
-  });
-
-  it("public issue endpoint can deduct stock without auth", async () => {
-    const itemId = seedItem(t.db, {
-      name: "Bolts",
-      sku: "BLT-001",
-      currentQuantity: 100,
-      reorderQuantity: 10,
-    });
-
-    // Issue material without any access key
-    const issueRes = await request(`/public/items/${itemId}/issue`, {
-      method: "POST",
-      body: { quantity: 25, reason: "QR scan", performedBy: "anonymous" },
-    });
-    expect(issueRes.status).toBe(200);
-
-    // Verify stock was actually deducted
-    const contextRes = await request(`/public/items/${itemId}/context`);
-    const body = contextRes.body as { item: { currentQuantity: number } };
-    expect(body.item.currentQuantity).toBe(75);
-  });
-
-  it("public issue endpoint rejects issuing more than available stock", async () => {
-    const itemId = seedItem(t.db, {
-      name: "Rare Part",
-      sku: "RARE-001",
-      currentQuantity: 5,
-      reorderQuantity: 1,
-    });
-
-    const res = await request(`/public/items/${itemId}/issue`, {
-      method: "POST",
-      body: { quantity: 10, reason: "over-issue", performedBy: "tester" },
-    });
-    // Should reject — currently returns 500 because Effect FiberFailure
-    // wraps the InsufficientStockError (ideally would be 409).
-    expect(res.status).toBeGreaterThanOrEqual(400);
-
-    // Verify stock was NOT deducted
-    const contextRes = await request(`/public/items/${itemId}/context`);
-    const body = contextRes.body as { item: { currentQuantity: number } };
-    expect(body.item.currentQuantity).toBe(5);
   });
 
   it("public context returns 404 for non-existent item, not a stack trace", async () => {

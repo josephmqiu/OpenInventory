@@ -34,11 +34,9 @@ import {
   CreateInventoryItemBody,
   UpdateInventoryItemBody,
   StockMutationBody,
-  BatchIssueMaterialBody,
   AddPersonnelBody,
   UpdateLanguageBody,
   UpdateBackupPlanBody,
-  PublicIssueBody,
 } from "../src/shared/schemas";
 
 const PORT = 4123;
@@ -168,17 +166,6 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Issue material
-    const issueMatch = pathname.match(/^\/api\/items\/([^/]+)\/issue$/);
-    if (issueMatch && method === "POST") {
-      const raw = await readBody(req);
-      const decoded = decodeBody(StockMutationBody, raw);
-      const body = { ...decoded, itemId: issueMatch[1] };
-      const result = await runEffect(dbService.issueMaterial(body));
-      sendJson(res, 200, result.snapshot);
-      return;
-    }
-
     // Movements
     const movementsMatch = pathname.match(/^\/api\/items\/([^/]+)\/movements$/);
     if (movementsMatch && method === "GET") {
@@ -186,14 +173,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Batch issue
-    if (pathname === "/api/items/batch-issue" && method === "POST") {
-      const raw = await readBody(req);
-      const body = decodeBody(BatchIssueMaterialBody, raw);
-      const result = await runEffect(dbService.batchIssueMaterial(body));
-      sendJson(res, 200, result.snapshot);
-      return;
-    }
+    // Issue and batch-issue are removed — LAN is read-only for stock (mirrors
+    // the production router). The desktop app issues material via IPC.
 
     // Personnel
     if (pathname === "/api/personnel" && method === "POST") {
@@ -229,7 +210,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Public issue context
+    // Public item context — read-only lookup for QR scans (no auth, no personnel).
     const contextMatch = pathname.match(/^\/public\/items\/([^/]+)\/context$/);
     if (contextMatch && method === "GET") {
       const snapshot = await runEffect(dbService.loadSnapshot());
@@ -238,19 +219,7 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 404, { message: "Item not found" });
         return;
       }
-      sendJson(res, 200, { item, personnel: snapshot.personnel, language: snapshot.language });
-      return;
-    }
-
-    // Public issue — return PublicIssueContext shape (not full snapshot)
-    const publicIssueMatch = pathname.match(/^\/public\/items\/([^/]+)\/issue$/);
-    if (publicIssueMatch && method === "POST") {
-      const raw = await readBody(req);
-      const body = decodeBody(PublicIssueBody, raw);
-      const input = { ...body, itemId: publicIssueMatch[1] };
-      const result = await runEffect(dbService.issueMaterial(input));
-      const item = result.snapshot.items.find((i) => i.id === publicIssueMatch[1]);
-      sendJson(res, 200, { item: item ?? null, personnel: result.snapshot.personnel, language: result.snapshot.language });
+      sendJson(res, 200, { item, language: snapshot.language });
       return;
     }
 

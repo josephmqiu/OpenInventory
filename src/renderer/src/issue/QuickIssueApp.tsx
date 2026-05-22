@@ -6,8 +6,15 @@ import { useTheme } from "../app/useTheme";
 import { Moon, Sun, SunMoon } from "lucide-react";
 
 function readItemIdFromUrl(): string | null {
-  const match = /^\/issue\/([^/]+)\/?$/i.exec(window.location.pathname);
-  return match ? decodeURIComponent(match[1]) : null;
+  const match = window.location.pathname.match(/^\/issue\/([^/]+)\/?$/i);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    // Malformed percent-encoding in the URL — treat as no item rather than
+    // throwing a URIError during render.
+    return null;
+  }
 }
 
 export function QuickIssueApp() {
@@ -34,12 +41,8 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
   const { t } = useTranslation(["common", "inventory", "quickIssue"]);
   const {
     language,
-    issueContext,
+    itemContext,
     loadError,
-    notice,
-    busy,
-    handleQuickIssueMaterial,
-    clearNotice,
     retry,
   } = useQuickIssueState(itemId);
 
@@ -60,7 +63,7 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
     );
   }
 
-  if (!issueContext) {
+  if (!itemContext) {
     return (
       <>
         <TopBar theme={theme} cycleTheme={cycleTheme} />
@@ -72,7 +75,7 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
     );
   }
 
-  if (!issueContext.item) {
+  if (!itemContext.item) {
     return (
       <>
         <TopBar theme={theme} cycleTheme={cycleTheme} />
@@ -88,13 +91,8 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
     <>
       <TopBar theme={theme} cycleTheme={cycleTheme} />
       <QuickIssueMobile
-        busy={busy}
-        item={issueContext.item}
+        item={itemContext.item}
         language={language}
-        notice={notice}
-        personnel={issueContext.personnel}
-        clearNotice={clearNotice}
-        onIssue={handleQuickIssueMaterial}
         onRefresh={retry}
       />
       <div className="qi-bottom-spacer" />

@@ -30,18 +30,9 @@ body {
   font-weight: 700;
 }
 
-:lang(zh) .qi-submit-btn,
-:lang(ja) .qi-submit-btn,
-:lang(ko) .qi-submit-btn {
-  font-weight: 700;
-}
-
 :lang(zh) .qi-data-row__label,
 :lang(ja) .qi-data-row__label,
-:lang(ko) .qi-data-row__label,
-:lang(zh) .qi-field__label,
-:lang(ja) .qi-field__label,
-:lang(ko) .qi-field__label {
+:lang(ko) .qi-data-row__label {
   font-weight: 700;
 }
 
@@ -216,175 +207,14 @@ body {
   padding: 4px 0 8px;
 }
 
-/* ---- Divider ---- */
-
-.qi-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 16px 0;
-}
-
-/* ---- Form ---- */
-
-.qi-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  flex: 1;
-}
-
-.qi-field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.qi-field__label {
-  font-size: 11px;
+.qi-low-stock {
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
+  color: var(--warning);
+  padding: 4px 0 8px;
 }
 
-.qi-form input,
-.qi-form select {
-  width: 100%;
-  min-height: 48px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0 12px;
-  background: var(--input-bg);
-  color: var(--text);
-  font-family: var(--font-sans);
-  font-size: 16px;
-  outline: none;
-  transition: border-color 100ms;
-  -webkit-appearance: none;
-}
-
-.qi-form input:focus,
-.qi-form select:focus {
-  border-color: var(--accent);
-}
-
-.qi-form input:disabled,
-.qi-form select:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* ---- Input Row (qty + unit chip) ---- */
-
-.qi-input-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.qi-input-row input {
-  flex: 1;
-}
-
-.qi-unit-chip {
-  flex-shrink: 0;
-  padding: 0 14px;
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  border-radius: var(--radius-sm);
-  background: var(--accent-muted);
-  color: var(--accent);
-  font-weight: 600;
-  font-size: 13px;
-  font-family: var(--font-mono);
-}
-
-/* ---- Preset Buttons ---- */
-
-.qi-presets {
-  display: flex;
-  gap: 8px;
-}
-
-.qi-preset-btn {
-  flex: 1;
-  min-height: 40px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--raised);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 100ms, background 100ms;
-  padding: 0;
-}
-
-.qi-preset-btn:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  background: var(--border);
-}
-
-.qi-preset-btn:active:not(:disabled) {
-  background: var(--accent-muted);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.qi-preset-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.qi-preset-btn--clear {
-  flex: 0.7;
-  color: var(--text-dim);
-  font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-/* ---- Empty State ---- */
-
-.qi-empty-state {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.qi-empty-state p {
-  font-size: 13px;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-/* ---- Feedback Banner ---- */
-
-.qi-feedback {
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 12px;
-}
-
-.qi-feedback--success {
-  background: var(--success-muted);
-  color: var(--success);
-  border: 1px solid rgba(78, 143, 99, 0.20);
-}
-
-.qi-feedback--error {
-  background: var(--danger-muted);
-  color: var(--danger);
-  border: 1px solid rgba(197, 71, 61, 0.20);
-}
-
-/* ---- Sticky Submit ---- */
+/* ---- Footer / Refresh ---- */
 
 .qi-submit-area {
   padding: 12px 16px;
@@ -395,13 +225,13 @@ body {
   bottom: 0;
 }
 
-.qi-submit-btn {
+.qi-refresh-btn {
   width: 100%;
   min-height: 52px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: var(--accent-on);
+  background: var(--raised);
+  color: var(--text);
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 600;
@@ -410,18 +240,13 @@ body {
   transition: background 100ms ease, border-color 100ms ease;
 }
 
-.qi-submit-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+.qi-refresh-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--border);
 }
 
-.qi-submit-btn:active:not(:disabled) {
+.qi-refresh-btn:active {
   opacity: 0.9;
-}
-
-.qi-submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* ---- Bottom Spacer ---- */

@@ -90,7 +90,7 @@ const baseI18nResources = {
       lanRegenerateKey: "Regenerate Access Key",
       lanSaveSettings: "Save LAN Settings",
       lanNetworkHint: "Devices must be on the same local network and use the access key shown below.",
-      lanEnableHint: "Serve the inventory app on your local network so phones and tablets can look up and manage items.",
+      lanEnableHint: "Serve the inventory app on your local network so phones and tablets can look up items. Stock changes stay on the desktop app.",
       lanUrlsUnavailable: "Enable LAN access to see device URLs.",
       lanCopy: "Copy",
       lanCopySuccess: "Access key copied to clipboard.",
@@ -396,9 +396,8 @@ const baseI18nResources = {
       goToInventory: "Go to Inventory",
     },
     quickIssue: {
-      noItemSpecified: "No item specified. Scan a QR code to issue material.",
+      noItemSpecified: "No item specified. Scan a QR code to view item details.",
       qrItemNotFound: "This QR code points to an item that is not available in the current inventory database.",
-      qrIssueReason: "QR issue",
       personnelRequiredForIssue: "No personnel configured. Add personnel in the desktop app before issuing material.",
     },
     errors: {
@@ -537,7 +536,7 @@ const baseI18nResources = {
       lanRegenerateKey: "重新生成访问密钥",
       lanSaveSettings: "保存 LAN 设置",
       lanNetworkHint: "设备必须连接到同一本地网络，并使用下方显示的访问密钥。",
-      lanEnableHint: "在本地网络上提供库存应用，让手机和平板也能查询和管理物料。",
+      lanEnableHint: "在本地网络上提供库存应用，让手机和平板可以查询物料。库存变更仅限桌面应用操作。",
       lanUrlsUnavailable: "启用 LAN 访问后即可查看设备访问链接。",
       lanCopy: "复制",
       lanCopySuccess: "访问密钥已复制到剪贴板。",
@@ -843,9 +842,8 @@ const baseI18nResources = {
       goToInventory: "前往库存",
     },
     quickIssue: {
-      noItemSpecified: "未指定物料。请扫描二维码以发放物料。",
+      noItemSpecified: "未指定物料。请扫描二维码以查看物料详情。",
       qrItemNotFound: "此二维码指向的物品在当前库存数据库中不可用。",
-      qrIssueReason: "二维码出库",
       personnelRequiredForIssue: "未配置人员。请在桌面应用中添加人员后再发放物料。",
     },
     errors: {

@@ -1,22 +1,15 @@
 import http from "http";
 import fs from "fs";
 import path from "path";
-import { Schema } from "@effect/schema";
 import { RateLimiter, getClientIp } from "./auth";
 import type { DatabaseServiceApi } from "../../services/DatabaseService";
-import type { AuditMovementFilters, PublicIssueContext } from "../../../shared/types";
+import type { AuditMovementFilters } from "../../../shared/types";
 import {
   backendMessages,
   normalizeBackendLanguage,
   notFoundError,
   serializeAppError,
-  validationError,
 } from "../../domain/errors";
-import {
-  StockMutationBody,
-  BatchIssueMaterialBody,
-  PublicIssueBody,
-} from "../../../shared/schemas";
 
 interface LanRouterDeps {
   dbService: DatabaseServiceApi;
@@ -27,9 +20,6 @@ interface LanRouterDeps {
 export function createLanRouter(deps: LanRouterDeps): http.RequestListener {
   const { dbService, getAccessKey, rendererDir } = deps;
   const rateLimiter = new RateLimiter();
-  const pendingPublicIssues = new Map<string, Promise<PublicIssueContext>>();
-  const recentPublicIssues = new Map<string, { response: PublicIssueContext; completedAt: number }>();
-  const PUBLIC_ISSUE_REPLAY_WINDOW_MS = 1500;
 
   return async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
@@ -47,7 +37,7 @@ export function createLanRouter(deps: LanRouterDeps): http.RequestListener {
 
     // ─── Public routes (no auth) ─────────────────────────────────────
     if (pathname.startsWith("/public/")) {
-      await handlePublicRoute(pathname, method, req, res, dbService, messages, pendingPublicIssues, recentPublicIssues, PUBLIC_ISSUE_REPLAY_WINDOW_MS);
+      await handlePublicRoute(pathname, method, res, dbService, messages);
       return;
     }
 
@@ -68,7 +58,7 @@ export function createLanRouter(deps: LanRouterDeps): http.RequestListener {
     }
 
     // ─── API routes ──────────────────────────────────────────────────
-    await handleApiRoute(pathname, method, url, req, res, dbService, messages);
+    await handleApiRoute(pathname, method, url, res, dbService, messages);
   };
 }
 
@@ -76,7 +66,6 @@ async function handleApiRoute(
   pathname: string,
   method: string,
   url: URL,
-  req: http.IncomingMessage,
   res: http.ServerResponse,
   db: DatabaseServiceApi,
   messages: ReturnType<typeof backendMessages>,
@@ -89,17 +78,6 @@ async function handleApiRoute(
       return;
     }
 
-    // POST /api/items/:id/issue
-    const issueMatch = pathname.match(/^\/api\/items\/([^/]+)\/issue$/);
-    if (issueMatch && method === "POST") {
-      const raw = await readBody(req, messages);
-      const decoded = decodeBody(StockMutationBody, raw);
-      const body = { ...decoded, itemId: issueMatch[1] };
-      const result = await runEffect(db.issueMaterial(body));
-      sendJson(res, 200, result.snapshot);
-      return;
-    }
-
     // GET /api/items/:id/movements
     const movementsMatch = pathname.match(/^\/api\/items\/([^/]+)\/movements$/);
     if (movementsMatch && method === "GET") {
@@ -108,17 +86,9 @@ async function handleApiRoute(
       return;
     }
 
-    // POST /api/items/batch-issue
-    if (pathname === "/api/items/batch-issue" && method === "POST") {
-      const raw = await readBody(req, messages);
-      const body = decodeBody(BatchIssueMaterialBody, raw);
-      const result = await runEffect(db.batchIssueMaterial(body));
-      sendJson(res, 200, result.snapshot);
-      return;
-    }
-
-    // Personnel, item CRUD, receive, language, and backup endpoints are
-    // desktop-only (IPC) — not exposed over LAN.
+    // LAN is read-only: all stock writes (issue, batch-issue, receive), item
+    // CRUD, personnel, language, and backup are desktop-only (IPC). The admin
+    // is the sole mutator of inventory state. LAN clients can look up and audit.
 
     // GET /api/audit/movements
     if (pathname === "/api/audit/movements" && method === "GET") {
@@ -172,16 +142,12 @@ async function handleApiRoute(
 async function handlePublicRoute(
   pathname: string,
   method: string,
-  req: http.IncomingMessage,
   res: http.ServerResponse,
   db: DatabaseServiceApi,
   messages: ReturnType<typeof backendMessages>,
-  pendingPublicIssues: Map<string, Promise<PublicIssueContext>>,
-  recentPublicIssues: Map<string, { response: PublicIssueContext; completedAt: number }>,
-  PUBLIC_ISSUE_REPLAY_WINDOW_MS: number,
 ): Promise<void> {
   try {
-    // GET /public/items/:id/context
+    // GET /public/items/:id/context — read-only item lookup for QR scans.
     const contextMatch = pathname.match(/^\/public\/items\/([^/]+)\/context$/);
     if (contextMatch && method === "GET") {
       const itemId = contextMatch[1];
@@ -193,54 +159,8 @@ async function handlePublicRoute(
       }
       sendJson(res, 200, {
         item,
-        personnel: snapshot.personnel,
         language: snapshot.language,
       });
-      return;
-    }
-
-    // POST /public/items/:id/issue
-    const issueMatch = pathname.match(/^\/public\/items\/([^/]+)\/issue$/);
-    if (issueMatch && method === "POST") {
-      const raw = await readBody(req, messages);
-      const body = decodeBody(PublicIssueBody, raw);
-      const input = { ...body, itemId: issueMatch[1] };
-      const idempotencyKey = (req.headers["x-idempotency-key"] as string | undefined)?.trim();
-      const dedupeKey = idempotencyKey || `public-issue:${issueMatch[1]}:${body.quantity}:${body.performedBy.trim()}`;
-      const recentRequest = recentPublicIssues.get(dedupeKey);
-
-      if (recentRequest && Date.now() - recentRequest.completedAt <= PUBLIC_ISSUE_REPLAY_WINDOW_MS) {
-        sendJson(res, 200, recentRequest.response);
-        return;
-      }
-
-      const existingRequest = pendingPublicIssues.get(dedupeKey);
-
-      const request = existingRequest ?? (async () => {
-        const result = await runEffect(db.issueMaterial(input));
-        // Return PublicIssueContext shape (not the full snapshot) so the
-        // frontend can update the QuickIssuePage with the refreshed item.
-        const item = result.snapshot.items.find((i) => i.id === issueMatch[1]);
-        return {
-          item: item ?? null,
-          personnel: result.snapshot.personnel,
-          language: result.snapshot.language,
-        };
-      })();
-
-      if (!existingRequest) {
-        pendingPublicIssues.set(dedupeKey, request);
-      }
-
-      try {
-        const response = await request;
-        recentPublicIssues.set(dedupeKey, { response, completedAt: Date.now() });
-        sendJson(res, 200, response);
-      } finally {
-        if (!existingRequest) {
-          pendingPublicIssues.delete(dedupeKey);
-        }
-      }
       return;
     }
 
@@ -293,43 +213,6 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
     "X-Frame-Options": "DENY",
   });
   res.end(JSON.stringify(body));
-}
-
-const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
-
-function readBody(
-  req: http.IncomingMessage,
-  messages: ReturnType<typeof backendMessages>,
-): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    let bytes = 0;
-    req.on("data", (chunk: Buffer | string) => {
-      bytes += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
-      if (bytes > MAX_BODY_BYTES) {
-        req.destroy();
-        reject(validationError(messages.requestBodyTooLarge));
-        return;
-      }
-      data += chunk;
-    });
-    req.on("end", () => {
-      try {
-        resolve(data ? JSON.parse(data) : {});
-      } catch {
-        reject(validationError(messages.invalidJsonBody));
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function decodeBody<A, I>(schema: Schema.Schema<A, I>, raw: unknown): A {
-  try {
-    return Schema.decodeUnknownSync(schema)(raw);
-  } catch (e) {
-    throw validationError("invalidRequestBody", undefined, e instanceof Error ? e.message : "Invalid request body.");
-  }
 }
 
 function serveStaticFile(

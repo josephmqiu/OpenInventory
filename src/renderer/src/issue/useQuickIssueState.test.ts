@@ -1,10 +1,9 @@
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import i18n from "i18next";
 
 const gatewayMocks = vi.hoisted(() => ({
-  loadPublicIssueContext: vi.fn(),
-  issueMaterialPublic: vi.fn(),
+  loadPublicItemContext: vi.fn(),
   IssueGatewayError: class extends Error {
     status?: number;
     constructor(message: string, status?: number) {
@@ -29,9 +28,9 @@ Object.defineProperty(globalThis, "localStorage", {
 });
 
 import { useQuickIssueState } from "./useQuickIssueState";
-import type { PublicIssueContext } from "../../../shared/types";
+import type { PublicItemContext } from "../../../shared/types";
 
-const mockContext: PublicIssueContext = {
+const mockContext: PublicItemContext = {
   item: {
     id: "item-1",
     sku: "SKU-001",
@@ -46,7 +45,6 @@ const mockContext: PublicIssueContext = {
     status: "in_stock",
     lastUpdated: "2026-03-31",
   },
-  personnel: [{ id: "p1", name: "Chen Jun" }],
   language: "en",
 };
 
@@ -59,24 +57,24 @@ beforeEach(async () => {
   await i18n.changeLanguage("en");
 });
 
-describe("useQuickIssueState", () => {
+describe("useQuickIssueState (read-only lookup)", () => {
   it("loads context on mount and sets language from response", async () => {
-    gatewayMocks.loadPublicIssueContext.mockResolvedValue(mockContext);
+    gatewayMocks.loadPublicItemContext.mockResolvedValue(mockContext);
 
     const { result } = renderHook(() => useQuickIssueState("item-1"));
 
-    expect(result.current.issueContext).toBeNull();
+    expect(result.current.itemContext).toBeNull();
 
-    await waitFor(() => expect(result.current.issueContext).not.toBeNull());
+    await waitFor(() => expect(result.current.itemContext).not.toBeNull());
 
-    expect(result.current.issueContext?.item?.name).toBe("Test Item");
+    expect(result.current.itemContext?.item?.name).toBe("Test Item");
     expect(result.current.language).toBe("en");
     expect(result.current.loadError).toBeNull();
-    expect(gatewayMocks.loadPublicIssueContext).toHaveBeenCalledWith("item-1");
+    expect(gatewayMocks.loadPublicItemContext).toHaveBeenCalledWith("item-1");
   });
 
   it("sets loadError on 404", async () => {
-    gatewayMocks.loadPublicIssueContext.mockRejectedValue(
+    gatewayMocks.loadPublicItemContext.mockRejectedValue(
       new gatewayMocks.IssueGatewayError("Not found", 404),
     );
 
@@ -84,78 +82,26 @@ describe("useQuickIssueState", () => {
 
     await waitFor(() => expect(result.current.loadError).not.toBeNull());
 
-    expect(result.current.issueContext).toBeNull();
+    expect(result.current.itemContext).toBeNull();
     expect(result.current.loadError).toBe(
       "This QR code points to an item that is not available in the current inventory database.",
     );
   });
 
   it("sets loadError on network failure", async () => {
-    gatewayMocks.loadPublicIssueContext.mockRejectedValue(new Error("Failed to fetch"));
+    gatewayMocks.loadPublicItemContext.mockRejectedValue(new Error("Failed to fetch"));
 
     const { result } = renderHook(() => useQuickIssueState("item-1"));
 
     await waitFor(() => expect(result.current.loadError).not.toBeNull());
   });
 
-  it("handleQuickIssueMaterial updates context on success", async () => {
-    gatewayMocks.loadPublicIssueContext.mockResolvedValue(mockContext);
-
-    const updatedContext: PublicIssueContext = {
-      ...mockContext,
-      item: { ...mockContext.item!, currentQuantity: 95 },
-    };
-    gatewayMocks.issueMaterialPublic.mockResolvedValue(updatedContext);
-
-    const { result } = renderHook(() => useQuickIssueState("item-1"));
-    await waitFor(() => expect(result.current.issueContext).not.toBeNull());
-
-    await act(async () => {
-      await result.current.handleQuickIssueMaterial({
-        itemId: "item-1",
-        quantity: 5,
-        performedBy: "Chen Jun",
-        reason: "QR issue",
-      });
-    });
-
-    expect(result.current.issueContext?.item?.currentQuantity).toBe(95);
-    expect(result.current.notice?.tone).toBe("success");
-  });
-
-  it("handleQuickIssueMaterial sets error notice on failure", async () => {
-    gatewayMocks.loadPublicIssueContext.mockResolvedValue(mockContext);
-    gatewayMocks.issueMaterialPublic.mockRejectedValue(new Error("Insufficient stock"));
-
-    const { result } = renderHook(() => useQuickIssueState("item-1"));
-    await waitFor(() => expect(result.current.issueContext).not.toBeNull());
-
-    // Call the handler and catch the expected re-throw
-    let threw = false;
-    await act(async () => {
-      try {
-        await result.current.handleQuickIssueMaterial({
-          itemId: "item-1",
-          quantity: 999,
-          performedBy: "Chen Jun",
-          reason: "QR issue",
-        });
-      } catch {
-        threw = true;
-      }
-    });
-
-    expect(threw).toBe(true);
-    expect(result.current.notice?.tone).toBe("error");
-    expect(result.current.busy).toBe(false);
-  });
-
   it("language is set from server response, not user-changeable", async () => {
     const zhContext = { ...mockContext, language: "zh-CN" as const };
-    gatewayMocks.loadPublicIssueContext.mockResolvedValue(zhContext);
+    gatewayMocks.loadPublicItemContext.mockResolvedValue(zhContext);
 
     const { result } = renderHook(() => useQuickIssueState("item-1"));
-    await waitFor(() => expect(result.current.issueContext).not.toBeNull());
+    await waitFor(() => expect(result.current.itemContext).not.toBeNull());
 
     expect(result.current.language).toBe("zh-CN");
   });
