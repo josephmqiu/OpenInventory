@@ -155,18 +155,24 @@ A small versioned runner applies forward migrations and records each in
 ## 7. LAN Server
 
 `src/main/infrastructure/lan/` runs a Node `http` server (no Express) that
-serves the React SPA (from the unpacked asar) and a JSON API.
+serves the QR item lookup entry point plus a JSON API. It does not serve the
+full admin React SPA in packaged production builds; the desktop app remains the
+admin surface.
 
 - **Auth:** a 24-char base64url access key sent as `x-inventory-key`, compared
   in constant time. Five failed attempts from an IP trigger a 15-minute
   lockout.
 - **Public routes (no auth):** fetch a single item's lookup context for the
-  QR-scan workflow. Anonymous clients do not receive the personnel roster.
+  QR-scan workflow, and serve `/issue/:itemId` plus required static assets.
+  Anonymous clients do not receive the personnel roster.
 - **Authenticated routes:** full snapshot, movement history, audit
   movements/analytics, health.
 - **Read-only by design:** item CRUD, personnel, receive, issue, batch issue,
   movement deletion, language, and backup are desktop-only (IPC). The LAN API
   never exposes stock mutations; the desktop admin is the sole writer.
+- **Development preview:** `scripts/dev-api-server.ts` is separate from
+  production LAN. It supports the full browser admin UI against `.dev-data` for
+  `npm run dev:preview` and does not ship as the LAN server.
 
 ## 8. Renderer
 
@@ -177,7 +183,8 @@ serves the React SPA (from the unpacked asar) and a JSON API.
   `i18nResources` (en + zh-CN), runtime detection (desktop vs LAN).
 - **domain/** — TypeScript models shared via `src/shared/types.ts`.
 - **services/** — `inventoryGateway.ts`, the abstraction that routes each call
-  to `window.electronAPI.invoke()` (desktop) or `fetch()` (LAN).
+  to `window.electronAPI.invoke()` (desktop) or `fetch()` (development browser
+  preview / read-only LAN routes).
 - **ui/components/** — the panels and tables (DashboardView,
   UnifiedInventoryTable, ActionPanel, BatchIssuePanel, ItemDetailsPanel,
   PersonnelPanel, BackupPanel, LanAccessPanel, the Audit* views, plus modals

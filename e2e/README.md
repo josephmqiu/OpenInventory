@@ -26,7 +26,7 @@ The lane runner sets `PW_FAIL_ON_FLAKY=1` by default. A test that passes only af
 - Activity/audit: log table, filters, pagination, CSV export, summary tabs, item balance drill-down, empty state, movement deletion.
 - Personnel/settings: add/remove personnel, backup tab layout, stock-action blocking without personnel.
 - Backup/restore: configuration, backup creation, overwrite behavior, validation failures, pending restore handoff, stale/error status states.
-- LAN/mobile: access-key auth, disconnect/reconnect, key regeneration, public QR lookup route, invalid ports, clipboard feedback, stopped status, occupied-port resilience.
+- LAN/mobile: production LAN admin shell blocking, access-key auth for read APIs, key regeneration, public QR lookup route, invalid ports, clipboard feedback, stopped status, occupied-port resilience.
 - QR export: single-label save and selected-label folder export.
 - Shell: theme persistence, language switching, graceful shutdown, startup smoke.
 

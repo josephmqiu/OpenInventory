@@ -8,7 +8,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Effect } from "effect";
+import fs from "fs";
 import http from "http";
+import os from "os";
+import path from "path";
 import { createTestDb, seedItem, seedPersonnel, type TestDb } from "../setup/test-db";
 import { makeDatabaseService, type DatabaseServiceApi } from "../../src/main/services/DatabaseService";
 import { createLanRouter } from "../../src/main/infrastructure/lan/router";
@@ -334,12 +337,25 @@ describe("LAN Router — static file security", () => {
   // file serving is active (the main test server uses rendererDir: "").
   let secServer: http.Server;
   let secBaseUrl: string;
+  let rendererDir: string;
 
   beforeEach(async () => {
+    rendererDir = fs.mkdtempSync(path.join(os.tmpdir(), "openinventory-lan-static-"));
+    fs.mkdirSync(path.join(rendererDir, "assets"));
+    fs.writeFileSync(
+      path.join(rendererDir, "index.html"),
+      '<html lang="en"><body><main data-testid="admin-app">ADMIN_APP</main></body></html>',
+    );
+    fs.writeFileSync(
+      path.join(rendererDir, "issue.html"),
+      '<html lang="en"><body><main data-testid="qr-lookup">ISSUE_APP</main><script src="./assets/issue.js"></script></body></html>',
+    );
+    fs.writeFileSync(path.join(rendererDir, "assets", "issue.js"), "window.__issueAssetLoaded = true;");
+
     const secRouter = createLanRouter({
       dbService,
       getAccessKey: () => ACCESS_KEY,
-      rendererDir: __dirname, // Use test dir as rendererDir
+      rendererDir,
     });
     secServer = http.createServer(secRouter);
     await new Promise<void>((resolve) => {
@@ -355,6 +371,7 @@ describe("LAN Router — static file security", () => {
     await new Promise<void>((resolve) => {
       secServer.close(() => resolve());
     });
+    fs.rmSync(rendererDir, { recursive: true, force: true });
   });
 
   function secRequest(
@@ -369,6 +386,46 @@ describe("LAN Router — static file security", () => {
       }).on("error", reject);
     });
   }
+
+  it("does not serve the admin app at the LAN root", async () => {
+    const res = await secRequest("/");
+    expect(res.status).toBe(404);
+    expect(res.body).not.toContain("ADMIN_APP");
+  });
+
+  it("does not serve the admin app through direct index.html access", async () => {
+    const res = await secRequest("/index.html");
+    expect(res.status).toBe(404);
+    expect(res.body).not.toContain("ADMIN_APP");
+  });
+
+  it("does not fall back to the admin app for arbitrary SPA routes", async () => {
+    const res = await secRequest("/inventory");
+    expect(res.status).toBe(404);
+    expect(res.body).not.toContain("ADMIN_APP");
+  });
+
+  it("serves the QR lookup page for item issue routes", async () => {
+    const res = await secRequest("/issue/item-123");
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("ISSUE_APP");
+    expect(res.body).toContain('data-platform="mobile"');
+    expect(res.body).toContain("/assets/issue.js");
+    expect(res.body).not.toContain("ADMIN_APP");
+  });
+
+  it("serves the QR lookup page for no-item issue routes", async () => {
+    const res = await secRequest("/issue/");
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("ISSUE_APP");
+    expect(res.body).not.toContain("ADMIN_APP");
+  });
+
+  it("serves static assets needed by the QR lookup page", async () => {
+    const res = await secRequest("/assets/issue.js");
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("__issueAssetLoaded");
+  });
 
   it("path traversal attempt is blocked", async () => {
     const res = await secRequest("/../../../etc/passwd");

@@ -228,20 +228,19 @@ function serveStaticFile(
   }
 
   const resolvedBase = path.resolve(rendererDir);
-  const safePath = pathname === "/" ? "/index.html" : pathname;
-  let filePath = path.resolve(rendererDir, safePath.replace(/^\//, ""));
+  const filePath = resolveLanStaticFile(pathname, resolvedBase);
 
-  // Block path traversal: resolved path must stay inside rendererDir.
-  if (!filePath.startsWith(resolvedBase)) {
-    res.writeHead(403);
-    res.end(messages.forbidden);
+  if (!filePath) {
+    res.writeHead(404);
+    res.end(messages.notFound);
     return;
   }
 
-  if (!fs.existsSync(filePath)) {
-    // SPA fallback: serve issue.html for /issue/* routes, index.html for everything else
-    const fallbackFile = pathname.startsWith("/issue/") ? "issue.html" : "index.html";
-    filePath = path.join(resolvedBase, fallbackFile);
+  // Block path traversal: resolved path must stay inside rendererDir.
+  if (!isPathInsideBase(filePath, resolvedBase)) {
+    res.writeHead(403);
+    res.end(messages.forbidden);
+    return;
   }
 
   if (!fs.existsSync(filePath)) {
@@ -287,4 +286,26 @@ function serveStaticFile(
     "X-Frame-Options": "DENY",
   });
   res.end(contentBuffer);
+}
+
+function resolveLanStaticFile(pathname: string, resolvedBase: string): string | null {
+  if (
+    pathname === "/issue.html" ||
+    pathname === "/issue" ||
+    pathname === "/issue/" ||
+    /^\/issue\/[^/]+\/?$/.test(pathname)
+  ) {
+    return path.join(resolvedBase, "issue.html");
+  }
+
+  if (pathname.startsWith("/assets/") || pathname === "/favicon.ico") {
+    return path.resolve(resolvedBase, pathname.replace(/^\//, ""));
+  }
+
+  return null;
+}
+
+function isPathInsideBase(filePath: string, resolvedBase: string): boolean {
+  const relative = path.relative(resolvedBase, filePath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }

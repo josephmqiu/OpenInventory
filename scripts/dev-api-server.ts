@@ -1,7 +1,11 @@
 /**
  * Standalone dev API server for browser preview.
- * Starts the same read-only HTTP API as the LAN server but without authentication.
+ * Starts a local development HTTP API without authentication.
  * Used during development so the renderer can be previewed in a plain browser.
+ *
+ * This intentionally supports the full admin UI against .dev-data. Production
+ * LAN serving is handled by src/main/infrastructure/lan/router.ts and remains
+ * QR/read-only.
  */
 import { execSync } from "child_process";
 import { createRequire } from "module";
@@ -28,6 +32,15 @@ import Database from "better-sqlite3";
 import { makeDatabaseService } from "../src/main/services/DatabaseService";
 import { runPendingMigrations } from "../src/main/infrastructure/migrations";
 import { configureSqlitePragmas } from "../src/main/infrastructure/sqlite-pragmas";
+import {
+  AddPersonnelBody,
+  BatchIssueMaterialBody,
+  CreateInventoryItemBody,
+  StockMutationBody,
+  UpdateBackupPlanBody,
+  UpdateInventoryItemBody,
+  UpdateLanguageBody,
+} from "../src/shared/schemas";
 
 const PORT = 4123;
 const DATA_DIR = path.join(process.cwd(), ".dev-data");
@@ -47,8 +60,9 @@ initDb.close();
 const dbService = makeDatabaseService(DB_PATH);
 
 // Import helpers inline to avoid circular dependency with the router
+import { Schema } from "@effect/schema";
 import { Effect } from "effect";
-import { errorToHttpStatus, type AppError } from "../src/main/domain/errors";
+import { errorToHttpStatus, type AppError, validationError } from "../src/main/domain/errors";
 import { BackupService, BackupServiceLive } from "../src/main/services/BackupService";
 
 type Json = Record<string, unknown>;
@@ -65,6 +79,39 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
     "Access-Control-Allow-Methods": "*",
   });
   res.end(JSON.stringify(body));
+}
+
+function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => {
+      data += chunk;
+    });
+    req.on("end", () => {
+      if (!data.trim()) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(data));
+      } catch {
+        reject(validationError("invalidInput", undefined, "Request body must be valid JSON."));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function decodeBody<A, I>(schema: Schema.Schema<A, I>, body: unknown): A {
+  try {
+    return Schema.decodeUnknownSync(schema)(body);
+  } catch (error) {
+    throw validationError(
+      "invalidInput",
+      undefined,
+      error instanceof Error ? error.message : "Invalid request body.",
+    );
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -103,8 +150,91 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // LAN/dev preview is read-only: stock writes, item CRUD, personnel,
-    // language, and backup are desktop-only (IPC).
+    // Development-only browser preview mutators. Production LAN routes stay
+    // read-only in src/main/infrastructure/lan/router.ts; this server is only
+    // started by npm run dev/npm run dev:api against .dev-data.
+    if (pathname === "/api/items" && method === "POST") {
+      const input = decodeBody(CreateInventoryItemBody, await readJsonBody(req));
+      const result = await runEffect(dbService.createInventoryItem(input));
+      sendJson(res, 200, result.snapshot);
+      return;
+    }
+
+    const itemMatch = pathname.match(/^\/api\/items\/([^/]+)$/);
+    if (itemMatch && method === "PUT") {
+      const body = decodeBody(UpdateInventoryItemBody, await readJsonBody(req));
+      const result = await runEffect(dbService.updateInventoryItem({ ...body, itemId: itemMatch[1] }));
+      sendJson(res, 200, result.snapshot);
+      return;
+    }
+
+    if (itemMatch && method === "DELETE") {
+      const snapshot = await runEffect(dbService.removeInventoryItem(itemMatch[1]));
+      sendJson(res, 200, snapshot);
+      return;
+    }
+
+    const receiveMatch = pathname.match(/^\/api\/items\/([^/]+)\/receive$/);
+    if (receiveMatch && method === "POST") {
+      const body = decodeBody(StockMutationBody, await readJsonBody(req));
+      const result = await runEffect(dbService.receiveStock({ ...body, itemId: receiveMatch[1] }));
+      sendJson(res, 200, result.snapshot);
+      return;
+    }
+
+    const issueMatch = pathname.match(/^\/api\/items\/([^/]+)\/issue$/);
+    if (issueMatch && method === "POST") {
+      const body = decodeBody(StockMutationBody, await readJsonBody(req));
+      const result = await runEffect(dbService.issueMaterial({ ...body, itemId: issueMatch[1] }));
+      sendJson(res, 200, result.snapshot);
+      return;
+    }
+
+    if (pathname === "/api/items/batch-issue" && method === "POST") {
+      const input = decodeBody(BatchIssueMaterialBody, await readJsonBody(req));
+      const result = await runEffect(dbService.batchIssueMaterial(input));
+      sendJson(res, 200, result.snapshot);
+      return;
+    }
+
+    if (pathname === "/api/personnel" && method === "POST") {
+      const input = decodeBody(AddPersonnelBody, await readJsonBody(req));
+      const snapshot = await runEffect(dbService.addPersonnel(input));
+      sendJson(res, 200, snapshot);
+      return;
+    }
+
+    const personnelMatch = pathname.match(/^\/api\/personnel\/([^/]+)$/);
+    if (personnelMatch && method === "DELETE") {
+      const snapshot = await runEffect(dbService.removePersonnel(personnelMatch[1]));
+      sendJson(res, 200, snapshot);
+      return;
+    }
+
+    const movementMatch = pathname.match(/^\/api\/movements\/([^/]+)$/);
+    if (movementMatch && method === "DELETE") {
+      const result = await runEffect(dbService.deleteMovement(movementMatch[1]));
+      sendJson(res, 200, result.snapshot);
+      return;
+    }
+
+    if (pathname === "/api/backup-plan" && method === "PUT") {
+      const input = decodeBody(UpdateBackupPlanBody, await readJsonBody(req));
+      sendJson(res, 200, await runEffect(dbService.updateBackupPlan(input)));
+      return;
+    }
+
+    if (pathname === "/api/backup-now" && method === "POST") {
+      sendJson(res, 200, await runEffect(dbService.backupNow()));
+      return;
+    }
+
+    if (pathname === "/api/language" && method === "PUT") {
+      const { language } = decodeBody(UpdateLanguageBody, await readJsonBody(req));
+      await runEffect(dbService.updateLanguage(language));
+      sendJson(res, 200, { ok: true });
+      return;
+    }
 
     // Public item context — read-only lookup for QR scans (no auth, no personnel).
     const contextMatch = pathname.match(/^\/public\/items\/([^/]+)\/context$/);

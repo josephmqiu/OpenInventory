@@ -43,6 +43,11 @@ The app opens an Electron window. The first `npm run dev` rebuilds native module
 for Electron (cached on subsequent runs). Data is stored in
 `~/Library/Application Support/inventory-monitor/data/` (macOS).
 
+For browser-only development, `npm run dev:preview` runs the full admin UI
+against a local unauthenticated API on `.dev-data`. That preview server is a
+development tool only. The packaged production LAN server does not serve the
+admin browser app; it exposes QR item lookup plus authenticated read APIs.
+
 ## Scripts
 
 | Script | Description |
@@ -90,7 +95,7 @@ npm run test:e2e       # E2E workflow against a real Electron instance
 npm run verify:push    # Same gate enforced by the Git pre-push hook
 ```
 
-The E2E suite launches the app with an isolated temporary database and covers the most important product journeys: inventory lifecycle, LAN access, browser QR lookup, backup, theme/language, and stock workflows.
+The E2E suite launches the app with an isolated temporary database and covers the most important product journeys: inventory lifecycle, LAN access, production QR lookup, backup, theme/language, and stock workflows.
 Retries are treated as failures by default so flaky tests have to be fixed instead of silently passing.
 
 ## CI Policy
