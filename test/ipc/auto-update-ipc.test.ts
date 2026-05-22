@@ -31,6 +31,8 @@ const ALLOWED_CHANNELS = new Set([
   "check-for-updates",
   "download-update",
   "install-update",
+  "get-app-version",
+  "get-update-status",
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([
@@ -58,8 +60,13 @@ describe("auto-update IPC channels", () => {
     expect(ALLOWED_EVENT_CHANNELS.has("auto-update-status")).toBe(true);
   });
 
-  it("preload allowlist has exactly 22 invoke channels", () => {
-    expect(ALLOWED_CHANNELS.size).toBe(22);
+  it("preload allowlist includes the read-only version + status query channels", () => {
+    expect(ALLOWED_CHANNELS.has("get-app-version")).toBe(true);
+    expect(ALLOWED_CHANNELS.has("get-update-status")).toBe(true);
+  });
+
+  it("preload allowlist has exactly 24 invoke channels", () => {
+    expect(ALLOWED_CHANNELS.size).toBe(24);
   });
 
   it("preload event allowlist has exactly 1 event channel", () => {

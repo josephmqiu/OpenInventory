@@ -26,6 +26,9 @@ const electronMocks = vi.hoisted(() => {
       getFocusedWindow: vi.fn(() => ({ id: 1 })),
       getAllWindows: vi.fn(() => [{ id: 1 }]),
     },
+    app: {
+      getVersion: vi.fn(() => "0.1.5"),
+    },
   };
 });
 
@@ -33,6 +36,7 @@ vi.mock("electron", () => ({
   ipcMain: electronMocks.ipcMain,
   dialog: electronMocks.dialog,
   BrowserWindow: electronMocks.BrowserWindow,
+  app: electronMocks.app,
 }));
 
 const snapshot: AppSnapshot = {
@@ -532,6 +536,7 @@ describe("registerIpcHandlers", () => {
       makeMockLan(),
     );
 
+    autoUpdateService.getStatus.mockReturnValue({ stage: "downloaded", version: "0.1.5" });
     registerIpcHandlers(runtime, { primaryUrl: "" }, autoUpdateService);
 
     await electronMocks.handlers.get("check-for-updates")?.();
@@ -541,6 +546,26 @@ describe("registerIpcHandlers", () => {
     expect(autoUpdateService.checkForUpdates).toHaveBeenCalledOnce();
     expect(autoUpdateService.downloadUpdate).toHaveBeenCalledOnce();
     expect(autoUpdateService.installUpdate).toHaveBeenCalledOnce();
+
+    await runtime.dispose();
+  });
+
+  it("exposes the app version and current update status", async () => {
+    const runtime = makeTestRuntime(
+      makeMockDb(),
+      { sendLowStockAlert: vi.fn(() => Effect.void) },
+      makeMockLan(),
+    );
+    autoUpdateService.getStatus.mockReturnValue({ stage: "downloaded", version: "0.1.5" });
+
+    registerIpcHandlers(runtime, { primaryUrl: "" }, autoUpdateService);
+
+    const version = await electronMocks.handlers.get("get-app-version")?.();
+    const status = await electronMocks.handlers.get("get-update-status")?.();
+
+    expect(version).toBe("0.1.5");
+    expect(status).toEqual({ stage: "downloaded", version: "0.1.5" });
+    expect(autoUpdateService.getStatus).toHaveBeenCalled();
 
     await runtime.dispose();
   });
