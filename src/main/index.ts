@@ -71,7 +71,7 @@ import { configureSqlitePragmas } from "./infrastructure/sqlite-pragmas";
 import {
   readSchemaVersionSafe,
   backupBeforeMigrate,
-  findLatestPreUpdateBackup,
+  resolveRollbackBackup,
   restorePreUpdateBackup,
   writeRollbackMarker,
   clearRollbackMarker,
@@ -107,9 +107,18 @@ function fatalStartup(title: string, message: string): never {
 async function offerRollback(
   dbPath: string,
   reason: string,
-  opts: { isSmokeTest: boolean; disposeRuntime?: () => Promise<void> },
+  opts: {
+    isSmokeTest: boolean;
+    appVersion: string;
+    freshBackupDir?: string | null;
+    disposeRuntime?: () => Promise<void>;
+  },
 ): Promise<void> {
-  const backupDir = findLatestPreUpdateBackup(dbPath);
+  // Only a backup belonging to THIS upgrade is eligible — never an older snapshot.
+  const backupDir = resolveRollbackBackup(dbPath, {
+    freshBackupDir: opts.freshBackupDir,
+    appVersion: opts.appVersion,
+  });
 
   if (opts.isSmokeTest) {
     await opts.disposeRuntime?.().catch(() => {});
@@ -160,7 +169,7 @@ async function offerRollback(
       restored.close();
     }
     writeRollbackMarker(dbPath, {
-      appVersion: app.getVersion(),
+      appVersion: opts.appVersion,
       schemaVersion: restoredVersion,
       at: new Date().toISOString(),
     });
@@ -184,9 +193,12 @@ function resolveDbPath(): string {
 async function initializeDatabase(
   dbPath: string,
   opts: { dbPreExisted: boolean },
-): Promise<{ restored: boolean }> {
+): Promise<{ restored: boolean; preMigrationBackupDir: string | null }> {
   const db = new Database(dbPath);
   configureSqlitePragmas(db);
+  // The verified pre-migration backup taken this boot (if any). Threaded into the
+  // rollback offer so it restores THIS upgrade's snapshot, never an older one.
+  let preMigrationBackupDir: string | null = null;
 
   // Quick integrity check (single page, <50ms)
   const integrityResult = db.prepare("PRAGMA integrity_check(1)").get() as { integrity_check: string };
@@ -231,13 +243,13 @@ async function initializeDatabase(
   // nothing to lose and skip this.
   if (opts.dbPreExisted && schemaVersion < LATEST_MIGRATION_VERSION) {
     try {
-      const backupDir = await backupBeforeMigrate(
+      preMigrationBackupDir = await backupBeforeMigrate(
         db,
         dbPath,
         schemaVersion,
         LATEST_MIGRATION_VERSION,
       );
-      console.log(`[Migrate] verified pre-migration backup created at ${backupDir}`);
+      console.log(`[Migrate] verified pre-migration backup created at ${preMigrationBackupDir}`);
     } catch (error) {
       db.close();
       fatalStartup(
@@ -263,6 +275,7 @@ async function initializeDatabase(
     db.close();
     throw new StartupMigrationError(
       error instanceof Error ? error.message : String(error),
+      preMigrationBackupDir,
     );
   }
   // Migrations completed (or there were none) — any prior rollback marker is resolved.
@@ -282,7 +295,7 @@ async function initializeDatabase(
   }
 
   db.close();
-  return { restored: result.restored };
+  return { restored: result.restored, preMigrationBackupDir };
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -349,13 +362,18 @@ if (!gotLock) {
     // Detected up front: the rollback offer must never block on a dialog under
     // smoke-test (CI), and the first failure point precedes normal smoke handling.
     const isSmokeTest = process.argv.includes("--smoke-test");
+    const appVersion = app.getVersion();
 
     const dbPath = resolveDbPath();
     // Capture existence BEFORE opening — `new Database()` creates the file, so this
     // is the only point that can distinguish a fresh install from an upgrade.
     const dbPreExisted = fs.existsSync(dbPath);
+    // The pre-migration backup taken this boot (if any), threaded into the rollback
+    // offer so it restores THIS upgrade's snapshot — never an older unrelated one.
+    let freshBackupDir: string | null = null;
     try {
-      await initializeDatabase(dbPath, { dbPreExisted });
+      const initResult = await initializeDatabase(dbPath, { dbPreExisted });
+      freshBackupDir = initResult.preMigrationBackupDir;
     } catch (error) {
       // Only a migration/schema failure (StartupMigrationError) is rollback-eligible
       // — a verified pre-migration backup exists. Fatal conditions (corruption,
@@ -365,19 +383,18 @@ if (!gotLock) {
         await offerRollback(
           dbPath,
           `The database upgrade did not complete: ${error.message}`,
-          { isSmokeTest },
+          { isSmokeTest, appVersion, freshBackupDir: error.backupDir },
         );
         return;
       }
       throw error;
     }
-    const appVersion = app.getVersion();
     const postUpdateCheck = checkPostUpdateDatabase(dbPath, appVersion);
     if (postUpdateCheck.errors.length > 0) {
       await offerRollback(
         dbPath,
         `Post-update validation failed:\n${postUpdateCheck.errors.join("\n")}`,
-        { isSmokeTest },
+        { isSmokeTest, appVersion, freshBackupDir },
       );
       return;
     }
@@ -439,7 +456,7 @@ if (!gotLock) {
         await offerRollback(
           dbPath,
           `The core inventory data could not be loaded after the update: ${error instanceof Error ? error.message : String(error)}`,
-          { isSmokeTest, disposeRuntime: () => runtime.dispose() },
+          { isSmokeTest, appVersion, freshBackupDir, disposeRuntime: () => runtime.dispose() },
         );
         return;
       }

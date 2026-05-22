@@ -6,7 +6,7 @@ import path from "path";
 import {
   readSchemaVersionSafe,
   backupBeforeMigrate,
-  findLatestPreUpdateBackup,
+  resolveRollbackBackup,
   restorePreUpdateBackup,
   readRollbackMarker,
   writeRollbackMarker,
@@ -100,55 +100,72 @@ describe("backupBeforeMigrate", () => {
   });
 });
 
-describe("findLatestPreUpdateBackup", () => {
-  it("returns null when there is no pre-update-backups directory", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-find-"));
-    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
-    expect(findLatestPreUpdateBackup(path.join(dir, "inventory-monitor.db"))).toBeNull();
-  });
+describe("resolveRollbackBackup", () => {
+  const APP = "0.1.6";
 
-  it("returns the newest backup and ignores dirs without database.db", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-find-"));
+  it("prefers the fresh backup created this boot", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-resolve-"));
     cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
     const dbPath = path.join(dir, "inventory-monitor.db");
-    const root = path.join(dir, "pre-update-backups");
+    const fresh = path.join(dir, "pre-update-backups", "migrate-v5-to-v6-now");
+    fs.mkdirSync(fresh, { recursive: true });
+    makeDbWithMarker(path.join(fresh, "database.db"), "fresh");
 
-    const older = path.join(root, "migrate-v3-to-v6-2000");
-    const newer = path.join(root, "migrate-v3-to-v6-2020");
-    const empty = path.join(root, "no-db-here");
-    fs.mkdirSync(older, { recursive: true });
-    fs.mkdirSync(newer, { recursive: true });
-    fs.mkdirSync(empty, { recursive: true });
-    makeDbWithMarker(path.join(older, "database.db"), "older");
-    makeDbWithMarker(path.join(newer, "database.db"), "newer");
-
-    fs.utimesSync(path.join(older, "database.db"), new Date(2000, 0, 1), new Date(2000, 0, 1));
-    fs.utimesSync(path.join(newer, "database.db"), new Date(2020, 0, 1), new Date(2020, 0, 1));
-
-    expect(findLatestPreUpdateBackup(dbPath)).toBe(newer);
+    expect(resolveRollbackBackup(dbPath, { freshBackupDir: fresh, appVersion: APP })).toBe(fresh);
   });
 
-  it("finds a nested auto-update backup (database.db one level deeper)", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-find-"));
+  it("falls back to the auto-update backup matching the current app version (nested layout)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-resolve-"));
     cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
     const dbPath = path.join(dir, "inventory-monitor.db");
     // Mirrors BackupCoordinator: pre-update-backups/<version>-<ts>/<BACKUP_DIR>/database.db
-    const nested = path.join(dir, "pre-update-backups", "0.1.6-2026", "OpenInventory-Backup");
+    const nested = path.join(dir, "pre-update-backups", `${APP}-2026`, "OpenInventory-Backup");
     fs.mkdirSync(nested, { recursive: true });
     makeDbWithMarker(path.join(nested, "database.db"), "auto-update");
 
-    expect(findLatestPreUpdateBackup(dbPath)).toBe(nested);
+    expect(resolveRollbackBackup(dbPath, { freshBackupDir: null, appVersion: APP })).toBe(nested);
   });
 
-  it("skips a corrupt backup", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-find-"));
+  it("NEVER returns a backup from a different version (the data-loss guard)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-resolve-"));
     cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
     const dbPath = path.join(dir, "inventory-monitor.db");
-    const bad = path.join(dir, "pre-update-backups", "migrate-v3-to-v6-bad");
+    // A backup from a PRIOR update (different version) — must be ignored.
+    const stale = path.join(dir, "pre-update-backups", "0.1.4-2025", "OpenInventory-Backup");
+    fs.mkdirSync(stale, { recursive: true });
+    makeDbWithMarker(path.join(stale, "database.db"), "stale-old-version");
+
+    // No fresh backup this boot + no matching-version backup → refuse to restore.
+    expect(resolveRollbackBackup(dbPath, { freshBackupDir: null, appVersion: APP })).toBeNull();
+  });
+
+  it("returns null when there is no pre-update-backups directory", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-resolve-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    expect(
+      resolveRollbackBackup(path.join(dir, "inventory-monitor.db"), { appVersion: APP }),
+    ).toBeNull();
+  });
+
+  it("skips a corrupt version-matching backup", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-resolve-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const dbPath = path.join(dir, "inventory-monitor.db");
+    const bad = path.join(dir, "pre-update-backups", `${APP}-bad`);
     fs.mkdirSync(bad, { recursive: true });
     fs.writeFileSync(path.join(bad, "database.db"), "not a sqlite file");
 
-    expect(findLatestPreUpdateBackup(dbPath)).toBeNull();
+    expect(resolveRollbackBackup(dbPath, { freshBackupDir: null, appVersion: APP })).toBeNull();
+  });
+
+  it("ignores a fresh backup dir that has no valid database.db", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-resolve-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const dbPath = path.join(dir, "inventory-monitor.db");
+    const fresh = path.join(dir, "pre-update-backups", "migrate-v5-to-v6-empty");
+    fs.mkdirSync(fresh, { recursive: true }); // no database.db inside
+
+    expect(resolveRollbackBackup(dbPath, { freshBackupDir: fresh, appVersion: APP })).toBeNull();
   });
 });
 

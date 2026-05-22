@@ -20,7 +20,12 @@ function fileTimestamp(): string {
  *  the startup catch only offers a rollback for genuine upgrade failures — never
  *  for fatal conditions (corruption, downgrade, blocked rollback) that exit. */
 export class StartupMigrationError extends Error {
-  constructor(message: string) {
+  /** The verified pre-migration backup created during this boot (if any), so the
+   *  rollback offer restores THIS upgrade's snapshot rather than discovering one. */
+  constructor(
+    message: string,
+    readonly backupDir: string | null = null,
+  ) {
     super(message);
     this.name = "StartupMigrationError";
   }
@@ -129,17 +134,52 @@ function findDatabaseFiles(dir: string, depth = 0): string[] {
   return found;
 }
 
-/** The directory containing the newest VALID pre-update backup database.db, or
- *  null. Searches recursively (both backup layouts) and skips any backup that
- *  fails its integrity check. "Newest" is correct: it is the snapshot just before
- *  the change that failed. */
-export function findLatestPreUpdateBackup(dbPath: string): string | null {
+/**
+ * Resolve the backup to roll back to for THE CURRENT failed upgrade — never an
+ * older, unrelated snapshot. Returns the directory containing a verified
+ * database.db, or null if no backup belongs to this upgrade (in which case the
+ * caller must NOT auto-restore; it should fall back to a manual-restore prompt).
+ *
+ * Two trustworthy sources, in order:
+ *  1. `freshBackupDir` — the verified backup created during THIS boot's
+ *     pre-migration step. Unambiguously for this upgrade.
+ *  2. The auto-update safety backup made for the version now running. The
+ *     installer-side backup is named `pre-update-backups/<version>-<ts>/...`, so
+ *     a backup whose top-level dir is prefixed with the current app version was
+ *     created for this exact update. Backups prefixed with any OTHER version are
+ *     from a different update and are ignored.
+ *
+ * Picking "newest backup regardless of version" was the bug: a no-migration
+ * update (or a sideload) that fails validation with no fresh backup this boot
+ * would otherwise restore a stale snapshot and lose everything since.
+ */
+export function resolveRollbackBackup(
+  dbPath: string,
+  context: { freshBackupDir?: string | null; appVersion: string },
+): string | null {
+  if (context.freshBackupDir) {
+    const dbFile = path.join(context.freshBackupDir, "database.db");
+    if (fs.existsSync(dbFile) && isDatabaseHealthy(dbFile)) {
+      return context.freshBackupDir;
+    }
+  }
+
   const root = path.join(path.dirname(dbPath), "pre-update-backups");
-  const candidates = findDatabaseFiles(root)
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const versionPrefix = `${context.appVersion}-`;
+  const matches = entries
+    .filter((e) => e.isDirectory() && e.name.startsWith(versionPrefix))
+    .map((e) => path.join(root, e.name))
+    .flatMap((dir) => findDatabaseFiles(dir))
     .filter((dbFile) => isDatabaseHealthy(dbFile))
     .map((dbFile) => ({ dir: path.dirname(dbFile), mtime: fs.statSync(dbFile).mtimeMs }))
     .sort((a, b) => b.mtime - a.mtime);
-  return candidates.length > 0 ? candidates[0].dir : null;
+  return matches.length > 0 ? matches[0].dir : null;
 }
 
 /**
