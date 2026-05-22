@@ -1,5 +1,29 @@
 import Database from "better-sqlite3";
 
+/*
+ * Migration discipline — read before adding a migration.
+ *
+ * initializeDatabase() runs schema.sql AND this migration chain on EVERY boot,
+ * for both fresh installs and upgrades. That splits responsibility:
+ *
+ *   - New TABLE or INDEX  -> add it to schema.sql. `CREATE ... IF NOT EXISTS`
+ *     applies it to existing databases on the next boot, so no migration needed.
+ *   - New or changed COLUMN -> needs a migration here. `CREATE TABLE IF NOT EXISTS`
+ *     is a no-op on a table that already exists, so it can NOT add a column to one.
+ *     This is the real footgun the schema-equivalence test (migrations.test.ts)
+ *     guards: a column added to schema.sql without a matching migration shows up
+ *     on fresh installs but not on upgraded machines.
+ *
+ * Other rules:
+ *   - NEVER renumber or delete a shipped migration. Offline machines may skip many
+ *     releases and must replay the full chain in order.
+ *   - Prefer ADDITIVE changes. Stage destructive ones across two releases: release
+ *     N stops writing the column/table; release N+1 drops it after a soak. This
+ *     avoids needing to roll an entire fleet back over a dropped column.
+ *   - Migrations must be idempotent (they also run against fresh, already-current
+ *     databases): use IF EXISTS / IF NOT EXISTS and the dropColumnIfExists helper.
+ */
+
 interface Migration {
   version: number;
   apply: (db: Database.Database) => void;

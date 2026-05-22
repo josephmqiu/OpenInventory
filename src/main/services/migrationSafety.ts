@@ -175,3 +175,39 @@ export function isBlockedByRollback(
     currentVersion < latestVersion
   );
 }
+
+/**
+ * Keep only the newest `keep` pre-update backups, deleting older ones. Disk
+ * hygiene for long-lived machines that update many times. Best-effort and
+ * non-fatal; returns the directories actually removed.
+ *
+ * Count-based, never age-based: the newest backup is always the rollback target,
+ * so keeping the N most recent guarantees rollback stays possible. `keep` is
+ * floored at 1 so this can never delete every backup.
+ */
+export function prunePreUpdateBackups(dbPath: string, keep = 3): string[] {
+  const root = path.join(path.dirname(dbPath), "pre-update-backups");
+  let names: string[];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  const ordered = names
+    .map((name) => path.join(root, name))
+    .map((dir) => ({ dir, dbFile: path.join(dir, "database.db") }))
+    .filter(({ dbFile }) => fs.existsSync(dbFile))
+    .map(({ dir, dbFile }) => ({ dir, mtime: fs.statSync(dbFile).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+
+  const removed: string[] = [];
+  for (const { dir } of ordered.slice(Math.max(keep, 1))) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      removed.push(dir);
+    } catch {
+      // Best-effort hygiene — leave it for next time.
+    }
+  }
+  return removed;
+}

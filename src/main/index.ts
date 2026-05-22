@@ -76,6 +76,7 @@ import {
   writeRollbackMarker,
   clearRollbackMarker,
   isBlockedByRollback,
+  prunePreUpdateBackups,
 } from "./services/migrationSafety";
 import { registerIpcHandlers } from "./ipc";
 import Database from "better-sqlite3";
@@ -366,6 +367,17 @@ if (!gotLock) {
         { isSmokeTest },
       );
       return;
+    }
+
+    // Boot is healthy past validation — prune old pre-update backups (disk hygiene).
+    // Non-fatal: a prune failure must never block startup.
+    try {
+      const removed = prunePreUpdateBackups(dbPath);
+      if (removed.length > 0) {
+        console.log(`[Migrate] pruned ${removed.length} old pre-update backup(s)`);
+      }
+    } catch (error) {
+      console.warn("[Migrate] pruning pre-update backups failed (non-fatal):", error);
     }
 
     // Mutable ref — the QR generator closure reads this on every snapshot load.

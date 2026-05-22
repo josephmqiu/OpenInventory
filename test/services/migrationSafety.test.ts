@@ -12,6 +12,7 @@ import {
   writeRollbackMarker,
   clearRollbackMarker,
   isBlockedByRollback,
+  prunePreUpdateBackups,
 } from "../../src/main/services/migrationSafety";
 import { createTestDb, seedItem } from "../setup/test-db";
 
@@ -172,5 +173,55 @@ describe("rollback marker (loop guard)", () => {
 
     clearRollbackMarker(dbPath);
     expect(readRollbackMarker(dbPath)).toBeNull();
+  });
+});
+
+describe("prunePreUpdateBackups", () => {
+  function makeBackup(root: string, name: string, mtimeYear: number): string {
+    const dir = path.join(root, name);
+    fs.mkdirSync(dir, { recursive: true });
+    const dbFile = path.join(dir, "database.db");
+    makeDbWithMarker(dbFile, name);
+    fs.utimesSync(dbFile, new Date(mtimeYear, 0, 1), new Date(mtimeYear, 0, 1));
+    return dir;
+  }
+
+  it("keeps the newest N and deletes older ones", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-prune-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const dbPath = path.join(dir, "inventory-monitor.db");
+    const root = path.join(dir, "pre-update-backups");
+    for (const year of [2018, 2019, 2020, 2021, 2022]) {
+      makeBackup(root, `migrate-v3-to-v6-${year}`, year);
+    }
+
+    const removed = prunePreUpdateBackups(dbPath, 3);
+
+    expect(removed.length).toBe(2);
+    const surviving = fs.readdirSync(root).sort();
+    expect(surviving).toEqual([
+      "migrate-v3-to-v6-2020",
+      "migrate-v3-to-v6-2021",
+      "migrate-v3-to-v6-2022",
+    ]);
+  });
+
+  it("never deletes the last backup even when keep is 0", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-prune-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const dbPath = path.join(dir, "inventory-monitor.db");
+    const root = path.join(dir, "pre-update-backups");
+    makeBackup(root, "migrate-v3-to-v6-2020", 2020);
+    makeBackup(root, "migrate-v3-to-v6-2022", 2022);
+
+    prunePreUpdateBackups(dbPath, 0);
+
+    expect(fs.readdirSync(root)).toEqual(["migrate-v3-to-v6-2022"]);
+  });
+
+  it("is a no-op when there is no backups directory", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-prune-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    expect(prunePreUpdateBackups(path.join(dir, "inventory-monitor.db"))).toEqual([]);
   });
 });
