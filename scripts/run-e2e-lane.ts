@@ -36,6 +36,7 @@ const laneProjects: Record<LaneName, { projects: string[] | null; workers: numbe
       "qr-export",
       "i18n",
       "shutdown",
+      "update",
     ],
     workers: 3,
   },

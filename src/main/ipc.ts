@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow } from "electron";
+import { ipcMain, dialog, BrowserWindow, app } from "electron";
 import { Effect, Either, type ManagedRuntime } from "effect";
 import { Schema } from "@effect/schema";
 import { DatabaseService, type MutationResult } from "./services/DatabaseService";
@@ -422,6 +422,12 @@ export function registerIpcHandlers(
   ipcMain.handle("install-update", () => {
     autoUpdateService.installUpdate();
   });
+
+  ipcMain.handle("get-app-version", () => app.getVersion());
+
+  // Lets the renderer recover the current update status on mount (e.g. after a
+  // window recreate/reload, or if the startup check completed before it subscribed).
+  ipcMain.handle("get-update-status", () => autoUpdateService.getStatus());
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

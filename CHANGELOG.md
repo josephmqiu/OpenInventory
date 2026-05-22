@@ -4,6 +4,18 @@ All notable changes to OpenInventory will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-05-22
+
+### Added
+- A new **Update** section in Settings shows your current version, lets you check for updates on demand, and tells you plainly whether you're up to date, downloading, or ready to restart.
+
+### Changed
+- Redesigned the update experience: updates now download quietly in the background, and the only thing you act on is a small "Update ready — Restart" prompt in the top bar. No more manual download step or full-width banner.
+- Updates now apply only when you choose Restart, so the verified pre-update backup always runs first (updates no longer install silently on quit).
+
+### For contributors
+- Replaced `UpdateBanner` with `UpdateChip` (ambient topbar prompt) + `UpdateSettingsPanel` (Settings tab); added `get-app-version` and `get-update-status` IPC, a dev-only browser simulator for exercising update states, and unit + E2E coverage for the new flow.
+
 ## [0.1.4] - 2026-05-21
 
 ### Added

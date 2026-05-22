@@ -401,77 +401,150 @@ textarea:focus-visible {
   color: var(--warning);
 }
 
-/* ---- Update Banner ---- */
+/* ---- Software Update ---- */
 
-.update-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-family: var(--font-sans);
-  border-left: 2px solid var(--border);
-  background: var(--surface);
-}
-
-.update-banner--info {
-  border-color: var(--info);
-  background: var(--info-muted);
-  color: var(--text);
-}
-
-.update-banner--success {
-  border-color: var(--success);
-  background: var(--success-muted);
-  color: var(--text);
-}
-
-.update-banner--error {
-  border-color: var(--danger);
-  background: var(--danger-muted);
-  color: var(--danger);
-}
-
-.update-banner__actions {
-  display: flex;
+/* Ambient restart chip — topbar control cluster, only when an update is ready */
+.update-chip {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
+  padding: 5px 6px 5px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-muted);
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.update-chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
   flex-shrink: 0;
 }
 
-.update-banner__dismiss {
-  flex-shrink: 0;
-  padding: 2px 8px;
-  font-size: 16px;
+.update-chip__action {
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  background: var(--accent);
+  color: var(--accent-on);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.update-chip__action:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.update-chip__dismiss {
+  padding: 2px 4px;
+  font-size: 14px;
   line-height: 1;
   background: transparent;
-  border-color: transparent;
-  color: inherit;
-  opacity: 0.6;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  opacity: 0.7;
+  border-radius: var(--radius-sm);
 }
 
-.update-banner__dismiss:hover {
+.update-chip__dismiss:hover {
   opacity: 1;
   background: transparent;
   border-color: transparent;
 }
 
-.update-banner__progress {
+/* Wayfinding cue: amber dot on the Settings nav item when an update is ready */
+.nav-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Settings → Update tab status line */
+.update-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.update-status__main {
   flex: 1;
-  max-width: 200px;
-  height: 4px;
+  min-width: 0;
+}
+
+.update-status__title {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-status__sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-status .error-text {
+  color: var(--danger);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+.status-dot--accent { background: var(--accent); }
+.status-dot--success { background: var(--success); }
+.status-dot--danger { background: var(--danger); }
+.status-dot--muted { background: transparent; border: 1.5px solid var(--text-dim); }
+
+.mini-progress {
+  margin-top: 8px;
+  height: 3px;
+  max-width: 280px;
   background: var(--border);
   border-radius: 2px;
   overflow: hidden;
 }
 
-.update-banner__progress-bar {
+.mini-progress__bar {
   height: 100%;
-  background: var(--info);
+  background: var(--accent);
   transition: width 0.3s ease;
+}
+
+.spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-muted);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
 }
 
 /* ---- E. Instrument Strip (Dashboard Metrics) ---- */

@@ -10,6 +10,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkForUpdates,
   downloadUpdate,
+  getAppVersion,
+  getUpdateStatus,
   installUpdate,
   onAutoUpdateStatus,
 } from "./inventoryGateway";
@@ -46,6 +48,22 @@ describe("auto-update gateway — desktop runtime", () => {
     await installUpdate();
     expect(invoke).toHaveBeenCalledWith("install-update", undefined);
   });
+
+  it("getAppVersion invokes get-app-version channel and returns the version", async () => {
+    const invoke = vi.fn(async () => "1.2.3");
+    window.electronAPI = { invoke, on: vi.fn() };
+
+    await expect(getAppVersion()).resolves.toBe("1.2.3");
+    expect(invoke).toHaveBeenCalledWith("get-app-version", undefined);
+  });
+
+  it("getUpdateStatus invokes get-update-status channel and returns the status", async () => {
+    const invoke = vi.fn(async () => ({ stage: "downloaded", version: "1.2.3" }));
+    window.electronAPI = { invoke, on: vi.fn() };
+
+    await expect(getUpdateStatus()).resolves.toEqual({ stage: "downloaded", version: "1.2.3" });
+    expect(invoke).toHaveBeenCalledWith("get-update-status", undefined);
+  });
 });
 
 describe("auto-update gateway — non-desktop runtime", () => {
@@ -60,6 +78,14 @@ describe("auto-update gateway — non-desktop runtime", () => {
 
   it("installUpdate is a no-op when electronAPI is absent", async () => {
     await expect(installUpdate()).resolves.toBeUndefined();
+  });
+
+  it("getAppVersion returns null when electronAPI is absent", async () => {
+    await expect(getAppVersion()).resolves.toBeNull();
+  });
+
+  it("getUpdateStatus returns null when electronAPI is absent", async () => {
+    await expect(getUpdateStatus()).resolves.toBeNull();
   });
 });
 
