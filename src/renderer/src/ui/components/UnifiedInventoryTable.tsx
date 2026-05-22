@@ -223,7 +223,7 @@ export function UnifiedInventoryTable({
       sortable: true,
       sortKey: "status",
       render: (item) => (
-        <span className={`status-dot status-dot--${stockStatusSeverity(item.status)}`}>
+        <span className={`status-label status-label--${stockStatusSeverity(item.status)}`}>
           {localizeStockStatus(item.status, language)}
         </span>
       ),
