@@ -64,8 +64,11 @@ describe("backupBeforeMigrate", () => {
   it("writes a verified, consistent snapshot (folding in uncheckpointed WAL)", async () => {
     const t = createTestDb();
     cleanups.push(t.cleanup);
+    // Force WAL mode and write without checkpointing, so the row lives only in the
+    // -wal file. This exercises the online backup API's WAL fold (production runs WAL).
+    t.db.pragma("journal_mode = WAL");
     const itemId = seedItem(t.db, { name: "Backup Me", currentQuantity: 42 });
-    // Intentionally do NOT checkpoint — exercises the online backup API's WAL fold.
+    expect(fs.existsSync(`${t.dbPath}-wal`)).toBe(true);
 
     const dir = await backupBeforeMigrate(t.db, t.dbPath, 3, 6);
 
@@ -124,6 +127,29 @@ describe("findLatestPreUpdateBackup", () => {
 
     expect(findLatestPreUpdateBackup(dbPath)).toBe(newer);
   });
+
+  it("finds a nested auto-update backup (database.db one level deeper)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-find-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const dbPath = path.join(dir, "inventory-monitor.db");
+    // Mirrors BackupCoordinator: pre-update-backups/<version>-<ts>/<BACKUP_DIR>/database.db
+    const nested = path.join(dir, "pre-update-backups", "0.1.6-2026", "OpenInventory-Backup");
+    fs.mkdirSync(nested, { recursive: true });
+    makeDbWithMarker(path.join(nested, "database.db"), "auto-update");
+
+    expect(findLatestPreUpdateBackup(dbPath)).toBe(nested);
+  });
+
+  it("skips a corrupt backup", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-find-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const dbPath = path.join(dir, "inventory-monitor.db");
+    const bad = path.join(dir, "pre-update-backups", "migrate-v3-to-v6-bad");
+    fs.mkdirSync(bad, { recursive: true });
+    fs.writeFileSync(path.join(bad, "database.db"), "not a sqlite file");
+
+    expect(findLatestPreUpdateBackup(dbPath)).toBeNull();
+  });
 });
 
 describe("restorePreUpdateBackup", () => {
@@ -153,23 +179,45 @@ describe("restorePreUpdateBackup", () => {
     expect(failed.length).toBe(1);
     expect(readMarker(path.join(dir, failed[0], "inventory-monitor.db"))).toBe("broken-live");
   });
+
+  it("leaves the live DB untouched when the backup is corrupt (fail-safe)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-restore-"));
+    cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const dbPath = path.join(dir, "inventory-monitor.db");
+
+    const backupDir = path.join(dir, "pre-update-backups", "migrate-v3-to-v6-bad");
+    fs.mkdirSync(backupDir, { recursive: true });
+    fs.writeFileSync(path.join(backupDir, "database.db"), "corrupt"); // not a real DB
+
+    makeDbWithMarker(dbPath, "live-data");
+
+    expect(() => restorePreUpdateBackup(dbPath, backupDir)).toThrow();
+
+    // Live DB is intact, no staged temp left behind, nothing moved aside.
+    expect(readMarker(dbPath)).toBe("live-data");
+    expect(fs.existsSync(`${dbPath}.restore-tmp`)).toBe(false);
+    expect(fs.readdirSync(dir).some((n) => n.startsWith("database-failed-update-"))).toBe(false);
+  });
 });
 
 describe("rollback marker (loop guard)", () => {
-  it("round-trips and gates only the exact failed upgrade", () => {
+  it("round-trips and gates only the same app build on the same data state", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-marker-"));
     cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
     const dbPath = path.join(dir, "inventory-monitor.db");
 
     expect(readRollbackMarker(dbPath)).toBeNull();
-    expect(isBlockedByRollback(dbPath, 5, 6)).toBe(false);
+    expect(isBlockedByRollback(dbPath, "0.1.6", 5)).toBe(false);
 
-    writeRollbackMarker(dbPath, { rolledBackFrom: 6, rolledBackTo: 5, at: new Date().toISOString() });
-    expect(readRollbackMarker(dbPath)?.rolledBackTo).toBe(5);
+    writeRollbackMarker(dbPath, { appVersion: "0.1.6", schemaVersion: 5, at: new Date().toISOString() });
+    expect(readRollbackMarker(dbPath)?.schemaVersion).toBe(5);
 
-    expect(isBlockedByRollback(dbPath, 5, 6)).toBe(true); // exact failed upgrade → halt
-    expect(isBlockedByRollback(dbPath, 5, 7)).toBe(false); // newer app fixes it → proceed
-    expect(isBlockedByRollback(dbPath, 6, 6)).toBe(false); // already current → proceed
+    // Same build that failed, same restored data state → halt (no loop).
+    expect(isBlockedByRollback(dbPath, "0.1.6", 5)).toBe(true);
+    // A newer build (the fix) is never blocked.
+    expect(isBlockedByRollback(dbPath, "0.1.7", 5)).toBe(false);
+    // Same build but different data state → not the same failure, proceed.
+    expect(isBlockedByRollback(dbPath, "0.1.6", 6)).toBe(false);
 
     clearRollbackMarker(dbPath);
     expect(readRollbackMarker(dbPath)).toBeNull();

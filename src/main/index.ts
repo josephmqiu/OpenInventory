@@ -77,6 +77,8 @@ import {
   clearRollbackMarker,
   isBlockedByRollback,
   prunePreUpdateBackups,
+  applySchemaSql,
+  StartupMigrationError,
 } from "./services/migrationSafety";
 import { registerIpcHandlers } from "./ipc";
 import Database from "better-sqlite3";
@@ -147,8 +149,9 @@ async function offerRollback(
 
   try {
     restorePreUpdateBackup(dbPath, backupDir);
-    // Record the version we rolled back to, so the next boot halts instead of
-    // re-attempting (and re-failing) the same upgrade.
+    // Mark this app build + restored data state so the next boot halts instead of
+    // re-attempting (and re-failing) the same upgrade. A newer build, or this build
+    // against a different data state, is not blocked.
     const restored = new Database(dbPath, { readonly: true });
     let restoredVersion = 0;
     try {
@@ -157,8 +160,8 @@ async function offerRollback(
       restored.close();
     }
     writeRollbackMarker(dbPath, {
-      rolledBackFrom: LATEST_MIGRATION_VERSION,
-      rolledBackTo: restoredVersion,
+      appVersion: app.getVersion(),
+      schemaVersion: restoredVersion,
       at: new Date().toISOString(),
     });
     app.relaunch();
@@ -211,7 +214,7 @@ async function initializeDatabase(
 
   // Rollback loop guard: if a previous boot rolled back THIS exact upgrade, do not
   // retry it — that would migrate, fail, and offer the same backup again forever.
-  if (isBlockedByRollback(dbPath, schemaVersion, LATEST_MIGRATION_VERSION)) {
+  if (isBlockedByRollback(dbPath, app.getVersion(), schemaVersion)) {
     db.close();
     fatalStartup(
       "OpenInventory — Previous Update Failed",
@@ -246,17 +249,21 @@ async function initializeDatabase(
     }
   }
 
-  const schemaPath = join(__dirname, "infrastructure/schema.sql");
-  if (fs.existsSync(schemaPath)) {
-    db.exec(fs.readFileSync(schemaPath, "utf-8"));
-  }
-
+  // Apply the latest schema then the migration chain. Both are wrapped: on failure
+  // the DB connection is closed (so the rollback can rename the file on Windows) and
+  // a typed StartupMigrationError is thrown, which the startup catch routes to the
+  // rollback offer. Fatal conditions above exit instead and never reach here.
   try {
+    const schemaPath = join(__dirname, "infrastructure/schema.sql");
+    if (fs.existsSync(schemaPath)) {
+      applySchemaSql(db, fs.readFileSync(schemaPath, "utf-8"));
+    }
     runPendingMigrations(db);
   } catch (error) {
-    // Release the file lock before the caller offers a rollback that renames the DB.
     db.close();
-    throw error;
+    throw new StartupMigrationError(
+      error instanceof Error ? error.message : String(error),
+    );
   }
   // Migrations completed (or there were none) — any prior rollback marker is resolved.
   clearRollbackMarker(dbPath);
@@ -350,13 +357,19 @@ if (!gotLock) {
     try {
       await initializeDatabase(dbPath, { dbPreExisted });
     } catch (error) {
-      // A migration threw mid-upgrade; a verified pre-migration backup exists.
-      await offerRollback(
-        dbPath,
-        `The database upgrade did not complete: ${error instanceof Error ? error.message : String(error)}`,
-        { isSmokeTest },
-      );
-      return;
+      // Only a migration/schema failure (StartupMigrationError) is rollback-eligible
+      // — a verified pre-migration backup exists. Fatal conditions (corruption,
+      // downgrade, blocked rollback, backup failure) already exited via fatalStartup
+      // and must NEVER reach the rollback offer, which could restore older data.
+      if (error instanceof StartupMigrationError) {
+        await offerRollback(
+          dbPath,
+          `The database upgrade did not complete: ${error.message}`,
+          { isSmokeTest },
+        );
+        return;
+      }
+      throw error;
     }
     const appVersion = app.getVersion();
     const postUpdateCheck = checkPostUpdateDatabase(dbPath, appVersion);
