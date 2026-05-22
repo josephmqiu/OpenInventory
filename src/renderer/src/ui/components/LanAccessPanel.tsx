@@ -62,6 +62,10 @@ export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: Lan
   };
 
   const statusClass = busy && lanAccess.enabled ? "lan-warning" : `lan-${lanAccess.status}`;
+  const lookupUrls = useMemo(
+    () => lanAccess.urls.map((url) => `${url.replace(/\/$/, "")}/issue/`),
+    [lanAccess.urls],
+  );
 
   // Focus cancel button when regen dialog opens
   useEffect(() => {
@@ -163,16 +167,16 @@ export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: Lan
             </dd>
           </div>
           <div>
-            <dt>{tt("lanOpenOnDevice", "Open On Another Device")}</dt>
+            <dt>{tt("lanOpenOnDevice", "QR Lookup Page")}</dt>
             <dd className="lan-url-list">
-              {lanAccess.urls.length > 0 ? (
-                lanAccess.urls.map((url) => (
+              {lookupUrls.length > 0 ? (
+                lookupUrls.map((url) => (
                   <a key={url} href={url} rel="noreferrer" target="_blank">
                     {url}
                   </a>
                 ))
               ) : (
-                <span>{tt("lanUrlsUnavailable", "Enable LAN access to see device URLs.")}</span>
+                <span>{tt("lanUrlsUnavailable", "Enable LAN access to see QR lookup URLs.")}</span>
               )}
             </dd>
           </div>

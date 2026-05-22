@@ -35,6 +35,22 @@ afterEach(() => {
 });
 
 describe("LanAccessPanel", () => {
+  it("shows QR lookup page URLs instead of admin root URLs", () => {
+    renderWithI18n(
+      <LanAccessPanel
+        busy={false}
+        lanAccess={{ ...lanAccess, urls: ["http://192.168.0.102:4123"] }}
+        onRegenerateKey={vi.fn().mockResolvedValue(undefined)}
+        onSave={vi.fn().mockResolvedValue(undefined)}
+      />,
+      "en",
+    );
+
+    const link = screen.getByRole("link", { name: "http://192.168.0.102:4123/issue/" });
+    expect(screen.getByText("QR Lookup Page")).toBeTruthy();
+    expect(link.getAttribute("href")).toBe("http://192.168.0.102:4123/issue/");
+  });
+
   it("keeps save disabled until the port changes to a valid value", () => {
     renderWithI18n(
       <LanAccessPanel
