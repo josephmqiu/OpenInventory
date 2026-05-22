@@ -176,7 +176,7 @@ test.describe.serial("LAN access and QR codes", () => {
     }
   });
 
-  test("public issue page works without auth", async ({ browser, page }) => {
+  test("public lookup page works without auth and cannot mutate stock", async ({ browser, page }) => {
     // Get an item ID from the snapshot using the regenerated key
     await navigateTo(page, "settings");
     const lanPanel = page.locator(".panel:has-text('LAN Access')");
@@ -185,9 +185,10 @@ test.describe.serial("LAN access and QR codes", () => {
     const res = await fetch(`${BASE_URL}/api/snapshot`, {
       headers: { "x-inventory-key": currentKey },
     });
-    const snapshot = await res.json() as { items: Array<{ id: string; name: string; currentQuantity: number }> };
+    const snapshot = await res.json() as { items: Array<{ id: string; name: string; sku: string; currentQuantity: number }> };
     const bolts = snapshot.items.find((i) => i.name === "Bolts M6");
     expect(bolts).toBeTruthy();
+    const startingQuantity = bolts!.currentQuantity;
 
     const context = await browser.newContext();
     const publicPage = await context.newPage();
@@ -195,11 +196,25 @@ test.describe.serial("LAN access and QR codes", () => {
     try {
       await publicPage.goto(`${BASE_URL}/issue/${bolts!.id}`, LAN_GOTO_OPTIONS);
       await expect(publicPage.locator(".qi-card")).toBeVisible({ timeout: 10_000 });
-      await publicPage.locator(".qi-input-row input").fill("3");
-      await publicPage.locator(".qi-form select").selectOption("Alice");
-      await publicPage.locator("[data-testid='qi-submit']").click();
+      await expect(publicPage.locator(".qi-header__name")).toHaveText("Bolts M6");
+      await expect(publicPage.locator(".qi-header__sku")).toHaveText(bolts!.sku);
+      await expect(publicPage.locator(".qi-data-row--hero .qi-data-row__value")).toContainText(String(startingQuantity));
+      await expect(publicPage.locator(".qi-input-row input")).toHaveCount(0);
+      await expect(publicPage.locator(".qi-form select")).toHaveCount(0);
+      await expect(publicPage.locator("[data-testid='qi-submit']")).toHaveCount(0);
 
-      await expect(publicPage.locator(".qi-feedback--success").first()).toBeVisible({ timeout: 10_000 });
+      const issueStatus = await publicPage.evaluate(async ({ baseUrl, itemId }) => {
+        const response = await fetch(`${baseUrl}/public/items/${itemId}/issue`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quantity: 3, reason: "QR issue", performedBy: "Alice" }),
+        });
+        return response.status;
+      }, { baseUrl: BASE_URL, itemId: bolts!.id });
+      expect(issueStatus).toBe(404);
+
+      await publicPage.getByTestId("qi-refresh").click();
+      await expect(publicPage.locator(".qi-data-row--hero .qi-data-row__value")).toContainText(String(startingQuantity));
     } finally {
       await context.close();
     }

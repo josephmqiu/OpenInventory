@@ -1,6 +1,6 @@
 # OpenInventory
 
-Desktop inventory management app for small teams. Track stock levels, issue materials, manage reorder alerts, and generate QR labels — all from a local SQLite database with optional LAN access for tablets.
+Desktop inventory management app for small teams. Track stock levels, issue materials, manage reorder alerts, and generate QR labels — all from a local SQLite database with optional read-only LAN lookup for tablets.
 
 Built with Electron, TypeScript, React 19, and Effect TS.
 
@@ -13,7 +13,7 @@ Built with Electron, TypeScript, React 19, and Effect TS.
 - **QR labels** — generate and export labeled QR codes for quick item lookup
 - **Personnel management** — track who performs stock movements
 - **Backup** — scheduled and on-demand SQLite backups
-- **LAN access** — optional HTTP server for tablet-based stock operations on the local network
+- **LAN access** — optional HTTP server for tablet/phone item lookup on the local network
 - **Bilingual** — English and Simplified Chinese (zh-CN)
 - **Dark/Light/Auto themes** — industrial design with amber accent
 
@@ -90,7 +90,7 @@ npm run test:e2e       # E2E workflow against a real Electron instance
 npm run verify:push    # Same gate enforced by the Git pre-push hook
 ```
 
-The E2E suite launches the app with an isolated temporary database and covers the most important product journeys: inventory lifecycle, LAN access, browser quick issue, backup, theme/language, and stock workflows.
+The E2E suite launches the app with an isolated temporary database and covers the most important product journeys: inventory lifecycle, LAN access, browser QR lookup, backup, theme/language, and stock workflows.
 Retries are treated as failures by default so flaky tests have to be fixed instead of silently passing.
 
 ## CI Policy

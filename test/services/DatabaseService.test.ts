@@ -1514,3 +1514,257 @@ describe("delete_movement", () => {
     service.close();
   });
 });
+
+async function withService<T>(
+  fn: (service: ReturnType<typeof makeDatabaseService>) => Promise<T>,
+): Promise<T> {
+  const service = makeDatabaseService(t.dbPath);
+  try {
+    return await fn(service);
+  } finally {
+    service.close();
+  }
+}
+
+describe("DatabaseService public API integration", () => {
+  it("creates, updates, and removes an inventory item through the service", async () => {
+    await withService(async (service) => {
+      const created = await Effect.runPromise(
+        service.createInventoryItem({
+          sku: "SVC-001",
+          name: "Service Item",
+          category: "Consumable",
+          location: "Line 1",
+          unit: "box",
+          supplier: "Service Supplier",
+          reorderQuantity: 10,
+          initialQuantity: 5,
+        }),
+      );
+
+      expect(created.lowStockNotification?.itemName).toBe("Service Item");
+      const item = created.snapshot.items.find((entry) => entry.sku === "SVC-001");
+      expect(item).toBeDefined();
+      expect(item?.location).toBe("Line 1");
+      expect(item?.supplier).toBe("Service Supplier");
+      expect(item?.status).toBe("low_stock");
+
+      const updated = await Effect.runPromise(
+        service.updateInventoryItem({
+          itemId: item!.id,
+          sku: "SVC-002",
+          name: "Service Item Updated",
+          category: "Tooling",
+          location: "Line 2",
+          unit: "each",
+          supplier: "Updated Supplier",
+          reorderQuantity: 3,
+        }),
+      );
+
+      const updatedItem = updated.snapshot.items.find((entry) => entry.id === item!.id);
+      expect(updatedItem?.sku).toBe("SVC-002");
+      expect(updatedItem?.name).toBe("Service Item Updated");
+      expect(updatedItem?.status).toBe("in_stock");
+
+      const removed = await Effect.runPromise(service.removeInventoryItem(item!.id));
+      expect(removed.items.some((entry) => entry.id === item!.id)).toBe(false);
+    });
+  });
+
+  it("records receive, issue, batch issue, and movement reads through the service", async () => {
+    const boltsId = seedItem(t.db, {
+      sku: "SVC-BOLTS",
+      name: "Service Bolts",
+      currentQuantity: 10,
+      reorderQuantity: 5,
+    });
+    const nutsId = seedItem(t.db, {
+      sku: "SVC-NUTS",
+      name: "Service Nuts",
+      currentQuantity: 12,
+      reorderQuantity: 4,
+    });
+
+    await withService(async (service) => {
+      const received = await Effect.runPromise(
+        service.receiveStock({
+          itemId: boltsId,
+          quantity: 10,
+          performedBy: "Alice",
+          reason: "Restock",
+        }),
+      );
+      expect(received.snapshot.items.find((item) => item.id === boltsId)?.currentQuantity).toBe(20);
+
+      const issued = await Effect.runPromise(
+        service.issueMaterial({
+          itemId: boltsId,
+          quantity: 15,
+          performedBy: "Bob",
+          reason: "Production",
+        }),
+      );
+      expect(issued.snapshot.items.find((item) => item.id === boltsId)?.currentQuantity).toBe(5);
+      expect(issued.lowStockNotification?.itemName).toBe("Service Bolts");
+
+      const batch = await Effect.runPromise(
+        service.batchIssueMaterial({
+          items: [
+            { itemId: boltsId, quantity: 1 },
+            { itemId: nutsId, quantity: 2 },
+          ],
+          performedBy: "Alice",
+          reason: "Kitting",
+        }),
+      );
+      expect(batch.snapshot.items.find((item) => item.id === boltsId)?.currentQuantity).toBe(4);
+      expect(batch.snapshot.items.find((item) => item.id === nutsId)?.currentQuantity).toBe(10);
+
+      const movements = await Effect.runPromise(service.getItemMovements(boltsId));
+      expect(movements.map((movement) => movement.movementType)).toContain("receive");
+      expect(movements.map((movement) => movement.movementType)).toContain("issue");
+    });
+  });
+
+  it("returns service validation errors for invalid mutations", async () => {
+    const itemId = seedItem(t.db, { currentQuantity: 3, reorderQuantity: 1 });
+
+    await withService(async (service) => {
+      await expect(
+        Effect.runPromise(
+          service.createInventoryItem({
+            sku: "BAD-001",
+            name: " ",
+            category: "Raw",
+            location: "Rack",
+            unit: "each",
+            supplier: "",
+            reorderQuantity: 1,
+            initialQuantity: 0,
+          }),
+        ),
+      ).rejects.toThrow();
+
+      await expect(
+        Effect.runPromise(
+          service.issueMaterial({
+            itemId,
+            quantity: 9,
+            performedBy: "Alice",
+            reason: "Too much",
+          }),
+        ),
+      ).rejects.toThrow();
+
+      await expect(
+        Effect.runPromise(
+          service.batchIssueMaterial({
+            items: [{ itemId: "missing-item", quantity: 1 }],
+            performedBy: "Alice",
+            reason: "Missing",
+          }),
+        ),
+      ).rejects.toThrow();
+    });
+  });
+
+  it("manages personnel, language, and LAN settings through the service", async () => {
+    await withService(async (service) => {
+      const withPersonnel = await Effect.runPromise(service.addPersonnel({ name: "  Charlie  " }));
+      const charlie = withPersonnel.personnel.find((person) => person.name === "Charlie");
+      expect(charlie).toBeDefined();
+
+      await expect(
+        Effect.runPromise(service.addPersonnel({ name: "charlie" })),
+      ).rejects.toThrow();
+
+      const withoutPersonnel = await Effect.runPromise(service.removePersonnel(charlie!.id));
+      expect(withoutPersonnel.personnel.some((person) => person.id === charlie!.id)).toBe(false);
+
+      await Effect.runPromise(service.updateLanguage("zh-CN"));
+      expect(readSetting(t.db, "app.language")).toBe("zh-CN");
+
+      await Effect.runPromise(
+        service.saveLanAccessSettings({
+          enabled: true,
+          port: 49876,
+          accessKey: "service-lan-key",
+          primaryUrl: "http://127.0.0.1:49876",
+        }),
+      );
+      const settings = await Effect.runPromise(service.loadLanAccessSettings());
+      expect(settings).toEqual({
+        enabled: true,
+        port: 49876,
+        accessKey: "service-lan-key",
+        primaryUrl: "http://127.0.0.1:49876",
+      });
+    });
+  });
+
+  it("returns audit pages and analytics through the service", async () => {
+    const itemId = seedItem(t.db, {
+      sku: "SVC-AUDIT",
+      name: "Service Audit Item",
+      currentQuantity: 15,
+      reorderQuantity: 5,
+    });
+    seedMovement(t.db, itemId, {
+      type: "receive",
+      quantity: 20,
+      previousQty: 0,
+      newQty: 20,
+      performedBy: "Alice",
+      reason: "Initial service receive",
+      performedAt: "2026-04-20 09:00:00",
+    });
+    seedMovement(t.db, itemId, {
+      type: "issue",
+      quantity: 5,
+      previousQty: 20,
+      newQty: 15,
+      performedBy: "Bob",
+      reason: "Service issue",
+      performedAt: "2026-04-20 10:00:00",
+    });
+    seedAlert(t.db, itemId, {
+      status: "open",
+      threshold: 5,
+      quantityAtTrigger: 4,
+      triggeredAt: "2026-04-20 10:30:00",
+    });
+
+    await withService(async (service) => {
+      const page = await Effect.runPromise(
+        service.getAuditMovements({
+          dateFrom: "2026-04-20T00:00",
+          dateTo: "2026-04-20T23:59",
+          itemSearch: "SVC-AUDIT",
+          textSearch: "Service",
+          sortBy: "quantity",
+          sortDir: "asc",
+          page: 1,
+          pageSize: 10,
+        }),
+      );
+      expect(page.rows).toHaveLength(2);
+      expect(page.rows[0].quantity).toBe(5);
+      expect(page.summary.totalReceived).toBe(20);
+      expect(page.summary.totalIssued).toBe(5);
+
+      const analytics = await Effect.runPromise(
+        service.getAuditAnalytics({
+          dateFrom: "2026-04-20T00:00",
+          dateTo: "2026-04-20T23:59",
+          itemId,
+          performedBy: "Bob",
+        }),
+      );
+      expect(analytics.summary.totalMovements).toBe(1);
+      expect(analytics.byPersonnel[0]?.performedBy).toBe("Bob");
+      expect(analytics.byItem[0]?.itemName).toBe("Service Audit Item");
+      expect(analytics.alertFrequency[0]?.itemName).toBe("Service Audit Item");
+    });
+  });
+});

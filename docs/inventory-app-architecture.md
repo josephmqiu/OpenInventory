@@ -9,14 +9,14 @@
 
 OpenInventory is a local-first desktop inventory tracker for a small team
 operating from a single location. An admin runs the desktop app; floor workers
-can issue stock from a tablet or phone over the LAN. It lets users:
+can look up item details from a tablet or phone over the LAN. It lets users:
 
 - create and edit inventory items
 - receive stock into inventory and issue material out
 - see low-stock alerts when quantities drop to or below the reorder level
 - review movement history and an audit log of every stock change
 - back up and restore the local database
-- expose a read-only LAN issue workflow via QR codes
+- expose a read-only LAN item lookup workflow via QR codes
 
 All data lives in a single local SQLite file. The app runs offline; the LAN
 server is optional.
@@ -75,7 +75,7 @@ DbLayer
   low-stock alerts, personnel, audit queries, language, and snapshot loading.
 - **NotificationService** — OS desktop notifications for new low-stock alerts.
 - **LanServerService** — lifecycle and state for the LAN HTTP server, access
-  key generation/validation, and the public issue workflow.
+  key generation/validation, and the public QR lookup workflow.
 - **BackupService** — executes a backup to a target directory (temp file +
   rename + manifest), runnable in parallel with the app.
 - **BackupCoordinator** — orchestrates backup state, validation, restore (with
@@ -160,13 +160,13 @@ serves the React SPA (from the unpacked asar) and a JSON API.
 - **Auth:** a 24-char base64url access key sent as `x-inventory-key`, compared
   in constant time. Five failed attempts from an IP trigger a 15-minute
   lockout.
-- **Public routes (no auth):** fetch an item's issue context and submit an
-  issue — this is the QR-scan workflow a floor worker uses.
-- **Authenticated routes:** full snapshot, item issue, batch issue, movement
-  history, audit movements/analytics, health.
-- **Read-only by design:** item CRUD, personnel, receive, language, and backup
-  are desktop-only (IPC). The LAN API never exposes destructive mutations
-  beyond issuing stock, to keep the blast radius small.
+- **Public routes (no auth):** fetch a single item's lookup context for the
+  QR-scan workflow. Anonymous clients do not receive the personnel roster.
+- **Authenticated routes:** full snapshot, movement history, audit
+  movements/analytics, health.
+- **Read-only by design:** item CRUD, personnel, receive, issue, batch issue,
+  movement deletion, language, and backup are desktop-only (IPC). The LAN API
+  never exposes stock mutations; the desktop admin is the sole writer.
 
 ## 8. Renderer
 
@@ -184,8 +184,8 @@ serves the React SPA (from the unpacked asar) and a JSON API.
   and shared primitives like DataTable and MetricCard).
 - **ui/printing/**, **ui/export/** — QR label rendering (canvas → PNG) and CSV
   helpers.
-- **issue/** — a separate entry point (`issue-main.tsx`) for `QuickIssuePage`,
-  the unauthenticated QR-scan issue form served over the LAN.
+- **issue/** — a separate entry point (`issue-main.tsx`) for the
+  unauthenticated QR-scan item lookup page served over the LAN.
 
 The renderer polls the backend every few seconds; `snapshotEquals()` keeps
 references stable when nothing changed so React skips re-renders.

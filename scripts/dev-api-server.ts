@@ -1,6 +1,6 @@
 /**
  * Standalone dev API server for browser preview.
- * Starts the same HTTP API as the LAN server but without authentication.
+ * Starts the same read-only HTTP API as the LAN server but without authentication.
  * Used during development so the renderer can be previewed in a plain browser.
  */
 import { execSync } from "child_process";
@@ -25,19 +25,9 @@ import http from "http";
 import path from "path";
 import fs from "fs";
 import Database from "better-sqlite3";
-import { Schema } from "@effect/schema";
 import { makeDatabaseService } from "../src/main/services/DatabaseService";
 import { runPendingMigrations } from "../src/main/infrastructure/migrations";
 import { configureSqlitePragmas } from "../src/main/infrastructure/sqlite-pragmas";
-import { ValidationError } from "../src/main/domain/errors";
-import {
-  CreateInventoryItemBody,
-  UpdateInventoryItemBody,
-  StockMutationBody,
-  AddPersonnelBody,
-  UpdateLanguageBody,
-  UpdateBackupPlanBody,
-} from "../src/shared/schemas";
 
 const PORT = 4123;
 const DATA_DIR = path.join(process.cwd(), ".dev-data");
@@ -77,31 +67,6 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
   res.end(JSON.stringify(body));
 }
 
-function readBody(req: http.IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk: string) => (data += chunk));
-    req.on("end", () => {
-      try {
-        resolve(data ? JSON.parse(data) : {});
-      } catch {
-        reject(new ValidationError({ message: "Invalid JSON body" }));
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function decodeBody<A, I>(schema: Schema.Schema<A, I>, raw: unknown): A {
-  try {
-    return Schema.decodeUnknownSync(schema)(raw);
-  } catch (e) {
-    throw new ValidationError({
-      message: e instanceof Error ? e.message : "Invalid request body.",
-    });
-  }
-}
-
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
   const pathname = url.pathname;
@@ -131,41 +96,6 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Create item
-    if (pathname === "/api/items" && method === "POST") {
-      const raw = await readBody(req);
-      const body = decodeBody(CreateInventoryItemBody, raw);
-      const result = await runEffect(dbService.createInventoryItem(body));
-      sendJson(res, 201, result.snapshot);
-      return;
-    }
-
-    // Item routes
-    const itemMatch = pathname.match(/^\/api\/items\/([^/]+)$/);
-    if (itemMatch && method === "PUT") {
-      const raw = await readBody(req);
-      const decoded = decodeBody(UpdateInventoryItemBody, raw);
-      const body = { ...decoded, itemId: itemMatch[1] };
-      const result = await runEffect(dbService.updateInventoryItem(body));
-      sendJson(res, 200, result.snapshot);
-      return;
-    }
-    if (itemMatch && method === "DELETE") {
-      sendJson(res, 200, await runEffect(dbService.removeInventoryItem(itemMatch[1])));
-      return;
-    }
-
-    // Receive stock
-    const receiveMatch = pathname.match(/^\/api\/items\/([^/]+)\/receive$/);
-    if (receiveMatch && method === "POST") {
-      const raw = await readBody(req);
-      const decoded = decodeBody(StockMutationBody, raw);
-      const body = { ...decoded, itemId: receiveMatch[1] };
-      const result = await runEffect(dbService.receiveStock(body));
-      sendJson(res, 200, result.snapshot);
-      return;
-    }
-
     // Movements
     const movementsMatch = pathname.match(/^\/api\/items\/([^/]+)\/movements$/);
     if (movementsMatch && method === "GET") {
@@ -173,42 +103,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Issue and batch-issue are removed — LAN is read-only for stock (mirrors
-    // the production router). The desktop app issues material via IPC.
-
-    // Personnel
-    if (pathname === "/api/personnel" && method === "POST") {
-      const raw = await readBody(req);
-      const body = decodeBody(AddPersonnelBody, raw);
-      sendJson(res, 201, await runEffect(dbService.addPersonnel(body)));
-      return;
-    }
-    const personnelMatch = pathname.match(/^\/api\/personnel\/([^/]+)$/);
-    if (personnelMatch && method === "DELETE") {
-      sendJson(res, 200, await runEffect(dbService.removePersonnel(personnelMatch[1])));
-      return;
-    }
-
-    // Backup
-    if (pathname === "/api/backup-plan" && method === "PUT") {
-      const raw = await readBody(req);
-      const body = decodeBody(UpdateBackupPlanBody, raw);
-      sendJson(res, 200, await runEffect(dbService.updateBackupPlan(body)));
-      return;
-    }
-    if (pathname === "/api/backup-now" && method === "POST") {
-      sendJson(res, 200, await runEffect(dbService.backupNow()));
-      return;
-    }
-
-    // Language
-    if (pathname === "/api/language" && method === "PUT") {
-      const raw = await readBody(req);
-      const body = decodeBody(UpdateLanguageBody, raw);
-      await runEffect(dbService.updateLanguage(body.language));
-      sendJson(res, 200, { ok: true });
-      return;
-    }
+    // LAN/dev preview is read-only: stock writes, item CRUD, personnel,
+    // language, and backup are desktop-only (IPC).
 
     // Public item context — read-only lookup for QR scans (no auth, no personnel).
     const contextMatch = pathname.match(/^\/public\/items\/([^/]+)\/context$/);

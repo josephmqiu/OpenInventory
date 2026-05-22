@@ -1,7 +1,7 @@
 /* ================================================================
-   OPENINVENTORY — MOBILE QUICK ISSUE
-   Mobile-first styles for the QR code scan issue flow.
-   Variant B2: Single Card Flow with preset quantity buttons.
+   OPENINVENTORY — MOBILE QR LOOKUP
+   Mobile-first styles for the read-only QR code item lookup flow.
+   Variant B2: Single card lookup with sticky refresh.
    ================================================================ */
 
 @import "../shared/tokens.css";
