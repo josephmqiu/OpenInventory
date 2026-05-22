@@ -147,6 +147,19 @@ const MIGRATIONS: Migration[] = [
       dropColumnIfExists(db, "low_stock_alerts", "channel_summary");
     },
   },
+  {
+    version: 6,
+    apply: (db) => {
+      // Add optional per-item price (integer minor units of the app currency,
+      // e.g. fen for CNY). Nullable, no DEFAULT: NULL means "no price set",
+      // distinct from a price of 0. SAFETY: static trusted SQL, no user input.
+      if (!hasColumn(db, "inventory_items", "unit_price_minor")) {
+        db.prepare(
+          "ALTER TABLE inventory_items ADD COLUMN unit_price_minor INTEGER",
+        ).run();
+      }
+    },
+  },
 ];
 
 /** The highest migration version in this app build. Used by backup validation to reject future schemas. */

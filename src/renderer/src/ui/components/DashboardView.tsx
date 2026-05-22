@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { formatDate } from "../../app/formatDate";
+import { formatPrice } from "../../app/formatters";
 import { buildDashboardMetrics } from "../../domain/inventory";
-import type { InventoryAlert, InventoryItem, Language } from "../../domain/models";
+import type { CurrencyCode, InventoryAlert, InventoryItem, Language } from "../../domain/models";
 import { getAuditAnalytics } from "../../services/inventoryGateway";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { useTT } from "../hooks/useTT";
@@ -16,6 +17,7 @@ interface DashboardViewProps {
   items: InventoryItem[];
   alerts: InventoryAlert[];
   language: Language;
+  currency: CurrencyCode;
   onNavigateToInventory: (filter: "all" | "low_stock" | "out_of_stock") => void;
   onNavigateToItem: (itemId: string) => void;
 }
@@ -26,6 +28,7 @@ export function DashboardView({
   items,
   alerts,
   language,
+  currency,
   onNavigateToInventory,
   onNavigateToItem,
 }: DashboardViewProps) {
@@ -35,6 +38,21 @@ export function DashboardView({
   const [alertSort, setAlertSort] = useState<SortState | null>(null);
 
   const metrics = useMemo(() => buildDashboardMetrics(items, alerts), [items, alerts]);
+
+  // Total inventory value = Σ(qty × unit price) over priced items only; track
+  // coverage so the figure isn't read as a complete total when items are unpriced.
+  const valuation = useMemo(() => {
+    let totalMinor = 0;
+    let pricedCount = 0;
+    for (const item of items) {
+      if (item.unitPriceMinor !== null) {
+        totalMinor += item.unitPriceMinor * item.currentQuantity;
+        pricedCount += 1;
+      }
+    }
+    return { totalMinor, pricedCount, total: items.length };
+  }, [items]);
+
   const openAlertCount = metrics.openAlertCount;
   const lowCount = metrics.lowStockCount;
   const oosCount = metrics.outOfStockCount;
@@ -145,6 +163,18 @@ export function DashboardView({
         <MetricCard
           label={tt("totalUnits", "Total Units")}
           value={metrics.totalUnits}
+        />
+        <MetricCard
+          label={
+            valuation.pricedCount < valuation.total
+              ? `${tt("totalInventoryValue", "Total Value")} · ${tt("pricedCoverage", "{priced} of {total} items priced", { priced: valuation.pricedCount, total: valuation.total })}`
+              : tt("totalInventoryValue", "Total Value")
+          }
+          value={
+            valuation.pricedCount === 0
+              ? tt("noPrice", "—")
+              : formatPrice(valuation.totalMinor, currency, language)
+          }
         />
         <MetricCard
           label={tt("lowStock", "Low Stock")}

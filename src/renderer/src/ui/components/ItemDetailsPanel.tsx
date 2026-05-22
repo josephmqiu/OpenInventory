@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { formatDate } from "../../app/formatDate";
-import { formatNumber } from "../../app/formatters";
+import { formatNumber, formatPrice } from "../../app/formatters";
 import { translateErrorMessage, localizeCategory, localizeUnit } from "../../app/i18n";
-import type { InventoryItem, InventoryMovement, Language } from "../../domain/models";
+import type { CurrencyCode, InventoryItem, InventoryMovement, Language } from "../../domain/models";
 import { getItemMovements } from "../../services/inventoryGateway";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { useTT } from "../hooks/useTT";
@@ -12,6 +12,7 @@ import { QrCodeImage } from "./QrCodeImage";
 
 interface ItemDetailsPanelProps {
   language: Language;
+  currency: CurrencyCode;
   item: InventoryItem;
   onBack: () => void;
   onExport: () => void;
@@ -19,7 +20,7 @@ interface ItemDetailsPanelProps {
   onRemoveItem?: (itemId: string) => void;
 }
 
-export function ItemDetailsPanel({ language, item, onBack, onExport, onModifyItem, onRemoveItem }: ItemDetailsPanelProps) {
+export function ItemDetailsPanel({ language, currency, item, onBack, onExport, onModifyItem, onRemoveItem }: ItemDetailsPanelProps) {
   const tt = useTT();
   const [sortState, setSortState] = useState<SortState | null>(null);
 
@@ -80,6 +81,7 @@ export function ItemDetailsPanel({ language, item, onBack, onExport, onModifyIte
           <tr><td className="item-details-table__label">{tt("itemName", "Item Name")}</td><td>{item.name}</td><td className="item-details-table__label">{tt("location", "Location")}</td><td>{item.location}</td></tr>
           <tr><td className="item-details-table__label">{tt("unit", "Unit")}</td><td>{localizeUnit(item.unit, language)}</td><td className="item-details-table__label">{tt("supplier", "Supplier")}</td><td>{item.supplier || tt("notProvided", "Not provided")}</td></tr>
           <tr><td className="item-details-table__label">{tt("currentQuantity", "Qty")}</td><td className="cell-strong">{formatNumber(item.currentQuantity, language)}</td><td className="item-details-table__label">{tt("reorderLevel", "Reorder")}</td><td>{formatNumber(item.reorderQuantity, language)}</td></tr>
+          <tr><td className="item-details-table__label">{tt("price", "Price")}</td><td className="cell-mono">{item.unitPriceMinor === null ? tt("noPrice", "—") : formatPrice(item.unitPriceMinor, currency, language)}</td><td></td><td></td></tr>
           <tr><td className="item-details-table__label">{tt("lastUpdated", "Updated")}</td><td>{formatDate(item.lastUpdated, language)}</td><td className="item-details-table__label">{tt("qrCode", "QR Code")}</td><td>{item.qrCodeDataUrl ? <QrCodeImage text={item.qrCodeDataUrl} alt={item.sku} /> : tt("qrCodeUnavailable", "N/A")}</td></tr>
         </tbody>
       </table>

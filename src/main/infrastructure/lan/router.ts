@@ -4,7 +4,12 @@ import path from "path";
 import { Schema } from "@effect/schema";
 import { RateLimiter, getClientIp } from "./auth";
 import type { DatabaseServiceApi } from "../../services/DatabaseService";
-import type { AuditMovementFilters, PublicIssueContext } from "../../../shared/types";
+import type {
+  AppSnapshot,
+  AuditMovementFilters,
+  InventoryItem,
+  PublicIssueContext,
+} from "../../../shared/types";
 import {
   backendMessages,
   normalizeBackendLanguage,
@@ -169,6 +174,21 @@ async function handleApiRoute(
   }
 }
 
+/** Build the public QR-scan context. Price (unitPriceMinor) rides on `item`;
+ *  currency is top-level so the mobile view can format it. Used at both the
+ *  GET context and POST-issue response sites so they never diverge. */
+function buildPublicContext(
+  item: InventoryItem | null,
+  snapshot: AppSnapshot,
+): PublicIssueContext {
+  return {
+    item,
+    personnel: snapshot.personnel,
+    language: snapshot.language,
+    currency: snapshot.currency,
+  };
+}
+
 async function handlePublicRoute(
   pathname: string,
   method: string,
@@ -191,11 +211,7 @@ async function handlePublicRoute(
         sendJson(res, 404, serializeAppError(notFoundError(messages.itemNotFound)));
         return;
       }
-      sendJson(res, 200, {
-        item,
-        personnel: snapshot.personnel,
-        language: snapshot.language,
-      });
+      sendJson(res, 200, buildPublicContext(item, snapshot));
       return;
     }
 
@@ -221,11 +237,7 @@ async function handlePublicRoute(
         // Return PublicIssueContext shape (not the full snapshot) so the
         // frontend can update the QuickIssuePage with the refreshed item.
         const item = result.snapshot.items.find((i) => i.id === issueMatch[1]);
-        return {
-          item: item ?? null,
-          personnel: result.snapshot.personnel,
-          language: result.snapshot.language,
-        };
+        return buildPublicContext(item ?? null, result.snapshot);
       })();
 
       if (!existingRequest) {

@@ -4,6 +4,21 @@
 
 export type Language = "en" | "zh-CN";
 
+// Allowed app currencies (v1: 2-decimal currencies only, so the stored
+// integer-minor-unit exponent is constant and switching currency never
+// rescales values). 0/3-decimal currencies (JPY, KRW, BHD) are deferred.
+export type CurrencyCode =
+  | "CNY"
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "HKD"
+  | "AUD"
+  | "CAD"
+  | "SGD";
+
+export const DEFAULT_CURRENCY: CurrencyCode = "CNY";
+
 export type StockStatus = "in_stock" | "low_stock" | "out_of_stock";
 export type AlertStatus = "open" | "resolved";
 export type BackupIntervalUnit = "hours" | "days" | "weeks";
@@ -30,6 +45,9 @@ export interface InventoryItem {
   supplier: string;
   currentQuantity: number;
   reorderQuantity: number;
+  /** Optional price in integer minor units of the app currency (e.g. fen for
+   *  CNY). null = no price set, distinct from 0. */
+  unitPriceMinor: number | null;
   status: StockStatus;
   lastUpdated: string;
 }
@@ -90,6 +108,7 @@ export interface PublicIssueContext {
   item: InventoryItem | null;
   personnel: PersonnelMember[];
   language: Language;
+  currency: CurrencyCode;
 }
 
 export interface AppSnapshot {
@@ -98,6 +117,7 @@ export interface AppSnapshot {
   personnel: PersonnelMember[];
   backupPlan: BackupPlan;
   language: Language;
+  currency: CurrencyCode;
 }
 
 export interface DashboardMetrics {
@@ -124,6 +144,8 @@ export interface CreateInventoryItemInput {
   supplier: string;
   reorderQuantity: number;
   initialQuantity: number;
+  /** Optional price in minor units; omitted/undefined = no price. */
+  unitPriceMinor?: number | null;
 }
 
 export interface UpdateInventoryItemInput {
@@ -135,6 +157,8 @@ export interface UpdateInventoryItemInput {
   unit: string;
   supplier: string;
   reorderQuantity: number;
+  /** null clears the price; undefined leaves it unchanged. */
+  unitPriceMinor?: number | null;
 }
 
 export interface StockMutationInput {

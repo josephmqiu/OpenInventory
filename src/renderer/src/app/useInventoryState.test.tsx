@@ -73,6 +73,7 @@ const baseItem: InventoryItem = {
   supplier: "Fasteners Inc.",
   currentQuantity: 15,
   reorderQuantity: 10,
+  unitPriceMinor: null,
   status: "in_stock",
   lastUpdated: "2026-03-31T10:00:00Z",
 };
@@ -105,6 +106,7 @@ function createSnapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
       cloudProvider: "",
     },
     language: "en",
+    currency: "CNY",
     ...overrides,
   };
 }

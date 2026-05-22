@@ -16,6 +16,7 @@ const item: InventoryItem = {
   supplier: "Fasteners Inc.",
   currentQuantity: 15,
   reorderQuantity: 10,
+  unitPriceMinor: null,
   status: "in_stock",
   lastUpdated: "2026-03-31T10:00:00Z",
 };
@@ -27,6 +28,7 @@ function renderPanel(overrides: Partial<ComponentProps<typeof ActionPanel>> = {}
     activeItemId: "",
     busy: false,
     language: "en" as Language,
+    currency: "CNY",
     items: [item],
     personnel,
     onClose: vi.fn(),
@@ -148,6 +150,7 @@ describe("ActionPanel", () => {
         supplier: "",
         reorderQuantity: 10,
         initialQuantity: 20,
+        unitPriceMinor: null,
       });
     });
   });
@@ -187,6 +190,7 @@ describe("ActionPanel", () => {
         supplier: "",
         reorderQuantity: 5,
         initialQuantity: 15,
+        unitPriceMinor: null,
       });
     });
   });
@@ -262,6 +266,7 @@ describe("ActionPanel", () => {
         supplier: "",
         reorderQuantity: 10,
         initialQuantity: 20,
+        unitPriceMinor: null,
       });
     });
   });
@@ -299,6 +304,7 @@ describe("ActionPanel", () => {
         supplier: "",
         reorderQuantity: 10,
         initialQuantity: 20,
+        unitPriceMinor: null,
       });
     });
   });

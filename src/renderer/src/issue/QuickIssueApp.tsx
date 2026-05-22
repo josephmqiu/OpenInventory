@@ -91,6 +91,7 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
         busy={busy}
         item={issueContext.item}
         language={language}
+        currency={issueContext.currency}
         notice={notice}
         personnel={issueContext.personnel}
         clearNotice={clearNotice}

@@ -238,7 +238,7 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 404, { message: "Item not found" });
         return;
       }
-      sendJson(res, 200, { item, personnel: snapshot.personnel, language: snapshot.language });
+      sendJson(res, 200, { item, personnel: snapshot.personnel, language: snapshot.language, currency: snapshot.currency });
       return;
     }
 
@@ -250,7 +250,7 @@ const server = http.createServer(async (req, res) => {
       const input = { ...body, itemId: publicIssueMatch[1] };
       const result = await runEffect(dbService.issueMaterial(input));
       const item = result.snapshot.items.find((i) => i.id === publicIssueMatch[1]);
-      sendJson(res, 200, { item: item ?? null, personnel: result.snapshot.personnel, language: result.snapshot.language });
+      sendJson(res, 200, { item: item ?? null, personnel: result.snapshot.personnel, language: result.snapshot.language, currency: result.snapshot.currency });
       return;
     }
 

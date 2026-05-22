@@ -72,6 +72,7 @@ function makeSnapshot() {
         supplier: "",
         currentQuantity: 10,
         reorderQuantity: 5,
+        unitPriceMinor: null,
         status: "in_stock" as const,
         lastUpdated: "2026-03-31T10:00:00Z",
       },
@@ -89,6 +90,7 @@ function makeSnapshot() {
       cloudProvider: "",
     },
     language: "en" as const,
+    currency: "CNY" as const,
   };
 }
 
@@ -96,6 +98,7 @@ function makeState(overrides: Partial<ReturnType<typeof useInventoryStateMock>> 
   return {
     runtime: "desktop" as const,
     language: "en" as const,
+    currency: "CNY" as const,
     snapshot: makeSnapshot(),
     lanAccess: null,
     loadError: null,

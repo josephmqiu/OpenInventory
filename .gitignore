@@ -23,3 +23,6 @@ data/
 *.db-wal
 .gstack/
 .trae/
+
+# AI context scaffolding
+.claude-context-snapshot.md

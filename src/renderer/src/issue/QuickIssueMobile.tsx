@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { i18n, localizeBackendMessage, localizeCategory, localizeUnit } from "../app/i18n";
-import { formatNumber } from "../app/formatters";
-import type { InventoryItem, Language, PersonnelMember, StockMutationInput } from "../../../shared/types";
+import { formatNumber, formatPrice } from "../app/formatters";
+import type { CurrencyCode, InventoryItem, Language, PersonnelMember, StockMutationInput } from "../../../shared/types";
 
 interface QuickIssueMobileProps {
   busy: boolean;
   item: InventoryItem;
   language: Language;
+  currency: CurrencyCode;
   notice: { message: string; tone: "success" | "error" } | null;
   personnel: PersonnelMember[];
   clearNotice: () => void;
@@ -17,7 +18,7 @@ interface QuickIssueMobileProps {
 
 const PRESETS = [1, 5, 10] as const;
 
-export function QuickIssueMobile({ busy, item, language, notice, personnel, clearNotice, onIssue, onRefresh }: QuickIssueMobileProps) {
+export function QuickIssueMobile({ busy, item, language, currency, notice, personnel, clearNotice, onIssue, onRefresh }: QuickIssueMobileProps) {
   const { t } = useTranslation(["inventory", "quickIssue", "common"]);
   const tErrors = i18n.getFixedT(language, "errors");
   const [quantityInput, setQuantityInput] = useState("");
@@ -131,6 +132,12 @@ export function QuickIssueMobile({ busy, item, language, notice, personnel, clea
           <span className="qi-data-row__label">{t("reorderLevel", { ns: "inventory" })}</span>
           <span className="qi-data-row__value">{formatNumber(item.reorderQuantity, language)}</span>
         </div>
+        {item.unitPriceMinor !== null && (
+          <div className="qi-data-row">
+            <span className="qi-data-row__label">{t("price", { ns: "inventory" })}</span>
+            <span className="qi-data-row__value">{formatPrice(item.unitPriceMinor, currency, language)}</span>
+          </div>
+        )}
 
         <div className="qi-divider" />
 

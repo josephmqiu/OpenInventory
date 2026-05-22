@@ -10,7 +10,7 @@ const runtimeMocks = vi.hoisted(() => ({
 
 const gatewayMocks = vi.hoisted(() => ({
   loadAppSnapshot: vi.fn().mockResolvedValue({
-    items: [{ id: "1", sku: "SKU1", qrCodeDataUrl: "", name: "Test", category: "Parts", location: "", unit: "pcs", supplier: "", currentQuantity: 10, reorderQuantity: 5, status: "in_stock", lastUpdated: "" }],
+    items: [{ id: "1", sku: "SKU1", qrCodeDataUrl: "", name: "Test", category: "Parts", location: "", unit: "pcs", supplier: "", currentQuantity: 10, reorderQuantity: 5, unitPriceMinor: null, status: "in_stock", lastUpdated: "" }],
     alerts: [],
     personnel: [],
     backupPlan: {
@@ -24,6 +24,7 @@ const gatewayMocks = vi.hoisted(() => ({
       cloudProvider: "",
     },
     language: "en",
+    currency: "CNY",
   }),
   readPersistedLanguage: vi.fn().mockReturnValue("en"),
   readPersistedLanAccessKey: vi.fn().mockReturnValue("test-key"),

@@ -43,11 +43,13 @@ const mockContext: PublicIssueContext = {
     supplier: "",
     currentQuantity: 100,
     reorderQuantity: 10,
+    unitPriceMinor: null,
     status: "in_stock",
     lastUpdated: "2026-03-31",
   },
   personnel: [{ id: "p1", name: "Chen Jun" }],
   language: "en",
+  currency: "CNY",
 };
 
 beforeEach(() => {

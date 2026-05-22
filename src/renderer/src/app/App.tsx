@@ -5,6 +5,7 @@ import { BackupPanel } from "../ui/components/BackupPanel";
 import { DashboardView } from "../ui/components/DashboardView";
 import { UnifiedInventoryTable } from "../ui/components/UnifiedInventoryTable";
 import { PersonnelPanel } from "../ui/components/PersonnelPanel";
+import { GeneralSettingsPanel } from "../ui/components/GeneralSettingsPanel";
 import { ActionPanel } from "../ui/components/ActionPanel";
 import { BatchIssuePanel } from "../ui/components/BatchIssuePanel";
 import { LanAccessPanel } from "../ui/components/LanAccessPanel";
@@ -29,7 +30,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 type Section = "dashboard" | "inventory" | "activity" | "settings";
-type SettingsTab = "personnel" | "backup" | "lan" | "update";
+type SettingsTab = "general" | "personnel" | "backup" | "lan" | "update";
 
 const navOrder: Section[] = ["dashboard", "inventory", "activity", "settings"];
 
@@ -70,10 +71,11 @@ export function App() {
   const [inventoryFilter, setInventoryFilter] = useState<"all" | "low_stock" | "out_of_stock">("all");
   const [inventorySearch, setInventorySearch] = useState("");
   const [inventoryDetailItemId, setInventoryDetailItemId] = useState("");
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("personnel");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const {
     runtime,
     language,
+    currency,
     snapshot,
     lanAccess,
     loadError,
@@ -104,6 +106,7 @@ export function App() {
     handleAddPersonnel,
     handleRemovePersonnel,
     handleLanguageChange,
+    handleCurrencyChange,
     handleLanAccessSave,
     handleLanAccessKeyRegenerate,
     pollError,
@@ -344,6 +347,7 @@ export function App() {
                   activeItemId={activeItemId}
                   busy={busy}
                   language={language}
+                  currency={currency}
                   items={snapshot.items}
                   personnel={snapshot.personnel}
                   onClose={closeAction}
@@ -369,6 +373,7 @@ export function App() {
                 <UnifiedInventoryTable
                   busy={busy}
                   language={language}
+                  currency={currency}
                   items={snapshot.items}
                   filter={inventoryFilter}
                   onFilterChange={setInventoryFilter}
@@ -389,6 +394,7 @@ export function App() {
                 items={snapshot.items}
                 alerts={snapshot.alerts}
                 language={language}
+                currency={currency}
                 onNavigateToInventory={navigateToInventory}
                 onNavigateToItem={navigateToItem}
               />
@@ -404,6 +410,15 @@ export function App() {
             {section === "settings" && (
               <>
                 <div className="filter-tabs settings-tabs" role="tablist">
+                  <button
+                    className={`filter-tab${settingsTab === "general" ? " filter-tab--active" : ""}`}
+                    onClick={() => setSettingsTab("general")}
+                    type="button"
+                    role="tab"
+                    aria-selected={settingsTab === "general"}
+                  >
+                    {t("settings")}
+                  </button>
                   <button
                     className={`filter-tab${settingsTab === "personnel" ? " filter-tab--active" : ""}`}
                     onClick={() => setSettingsTab("personnel")}
@@ -445,6 +460,13 @@ export function App() {
                     </button>
                   )}
                 </div>
+                {settingsTab === "general" && (
+                  <GeneralSettingsPanel
+                    busy={busy}
+                    currency={currency}
+                    onCurrencyChange={handleCurrencyChange}
+                  />
+                )}
                 {settingsTab === "personnel" && (
                   <PersonnelPanel
                     busy={busy}

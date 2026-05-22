@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS inventory_items (
     unit_of_measure TEXT NOT NULL,
     reorder_quantity INTEGER NOT NULL,
     current_quantity INTEGER NOT NULL,
+    unit_price_minor INTEGER,
     status TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,

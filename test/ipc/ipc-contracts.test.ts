@@ -30,6 +30,7 @@ const IPC_CHANNELS = [
   "export-qr-labels",
   "get-item-movements",
   "update-app-language",
+  "update-app-currency",
   "remove-inventory-item",
   "add-personnel",
   "remove-personnel",
@@ -116,6 +117,11 @@ const CHANNEL_CONTRACTS: Record<
     returns: "void",
     mutates: true,
   },
+  "update-app-currency": {
+    args: "CurrencyCode",
+    returns: "void",
+    mutates: true,
+  },
   "remove-inventory-item": {
     args: "itemId: string",
     returns: "AppSnapshot",
@@ -151,8 +157,8 @@ const CHANNEL_CONTRACTS: Record<
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("IPC channel registration", () => {
-  it("defines exactly 22 channels", () => {
-    expect(IPC_CHANNELS).toHaveLength(22);
+  it("defines exactly 23 channels", () => {
+    expect(IPC_CHANNELS).toHaveLength(23);
   });
 
   it("all channels have unique names", () => {
@@ -185,6 +191,7 @@ describe("IPC channel contracts", () => {
   it("all mutating commands return AppSnapshot (except update-app-language and install-update)", () => {
     const exceptions = new Set([
       "update-app-language",
+      "update-app-currency",
       "update-lan-access",
       "regenerate-lan-access-key",
       "install-update",

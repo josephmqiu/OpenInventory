@@ -3,6 +3,7 @@ import type {
   AppSnapshot,
   BatchIssueMaterialInput,
   CreateInventoryItemInput,
+  CurrencyCode,
   InventoryAlert,
   Language,
   LanAccessState,
@@ -12,6 +13,7 @@ import type {
   UpdateInventoryItemInput,
   UpdateLanAccessInput,
 } from "../domain/models";
+import { DEFAULT_CURRENCY } from "../domain/models";
 import { i18n, localizeBackendMessage, setAppLanguage } from "./i18n";
 import { detectRuntime, isDevPreviewRuntime, type Runtime } from "./runtime";
 import {
@@ -32,6 +34,7 @@ import {
   removeInventoryItem,
   removePersonnel,
   updateAppLanguage,
+  updateAppCurrency,
   selectBackupDirectory,
   selectRestoreSource,
   validateBackup,
@@ -52,6 +55,7 @@ export interface InventoryNotice {
 export interface InventoryState {
   runtime: Runtime;
   language: Language;
+  currency: CurrencyCode;
   snapshot: AppSnapshot | null;
   lanAccess: LanAccessState | null;
   loadError: string | null;
@@ -83,6 +87,7 @@ export interface InventoryState {
   handleRemovePersonnel: (personnelId: string) => Promise<boolean>;
   handleDeleteMovement: (movementId: string) => Promise<boolean>;
   handleLanguageChange: (nextLanguage: Language) => void;
+  handleCurrencyChange: (nextCurrency: CurrencyCode) => void;
   handleLanAccessSave: (input: UpdateLanAccessInput) => Promise<boolean>;
   handleLanAccessKeyRegenerate: () => Promise<void>;
   pollError: boolean;
@@ -105,6 +110,7 @@ function toErrorMessage(error: unknown, language: Language, fallback: string): s
  */
 function snapshotEquals(a: AppSnapshot, b: AppSnapshot): boolean {
   if (a.language !== b.language) return false;
+  if (a.currency !== b.currency) return false;
   if (a.items.length !== b.items.length) return false;
   if (a.personnel.length !== b.personnel.length) return false;
   if (a.alerts.length !== b.alerts.length) return false;
@@ -115,7 +121,8 @@ function snapshotEquals(a: AppSnapshot, b: AppSnapshot): boolean {
         ai.status !== bi.status || ai.name !== bi.name || ai.sku !== bi.sku ||
         ai.lastUpdated !== bi.lastUpdated || ai.reorderQuantity !== bi.reorderQuantity ||
         ai.location !== bi.location || ai.category !== bi.category ||
-        ai.unit !== bi.unit || ai.supplier !== bi.supplier) return false;
+        ai.unit !== bi.unit || ai.supplier !== bi.supplier ||
+        ai.unitPriceMinor !== bi.unitPriceMinor) return false;
   }
 
   for (let i = 0; i < a.personnel.length; i++) {
@@ -514,6 +521,15 @@ export function useInventoryState(): InventoryState {
     });
   };
 
+  // Optimistically reflect the new currency in the snapshot for instant
+  // re-format; the next poll confirms it (snapshotEquals compares currency).
+  const handleCurrencyChange = (nextCurrency: CurrencyCode) => {
+    setSnapshot((prev) => (prev ? { ...prev, currency: nextCurrency } : prev));
+    void updateAppCurrency(nextCurrency).catch((error: unknown) => {
+      handleGatewayError(error);
+    });
+  };
+
   const handleLanAccessSave = async (input: UpdateLanAccessInput): Promise<boolean> => {
     if (!desktopRuntime) {
       setNotice({ message: tCommon("lanDesktopOnly"), tone: "warning" });
@@ -599,6 +615,7 @@ export function useInventoryState(): InventoryState {
   return {
     runtime,
     language,
+    currency: snapshot?.currency ?? DEFAULT_CURRENCY,
     snapshot,
     lanAccess,
     loadError,
@@ -630,6 +647,7 @@ export function useInventoryState(): InventoryState {
     handleRemovePersonnel,
     handleDeleteMovement,
     handleLanguageChange,
+    handleCurrencyChange,
     handleLanAccessSave,
     handleLanAccessKeyRegenerate,
     pollError,
