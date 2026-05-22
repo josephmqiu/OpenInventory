@@ -6,6 +6,9 @@
  * and final schema shape.
  */
 import { describe, it, expect, afterEach } from "vitest";
+import Database from "better-sqlite3";
+import { readFileSync } from "fs";
+import { join } from "path";
 import {
   runPendingMigrations,
   ensureMigrationsTable,
@@ -240,5 +243,131 @@ describe("migration system", () => {
 
     expect(getSetting("backup.interval_value")).toBe("4");
     expect(getSetting("backup.interval_unit")).toBe("hours");
+  });
+});
+
+// ─── Schema equivalence (C4) ─────────────────────────────────────────────────
+// initializeDatabase() runs schema.sql AND the migration chain on every boot, for
+// both fresh installs and upgrades. These tests assert the two paths converge to
+// the same schema, so a column added to schema.sql without a matching migration
+// (which CREATE TABLE IF NOT EXISTS cannot apply to an existing table) is caught.
+
+const PROD_SCHEMA = readFileSync(
+  join(__dirname, "../../src/main/infrastructure/schema.sql"),
+  "utf-8",
+);
+
+type Row = Record<string, unknown>;
+
+/** Apply a multi-statement schema file via prepared statements (no shell). */
+function applySchema(db: Database.Database, sql: string): void {
+  const withoutComments = sql
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("--"))
+    .join("\n");
+  for (const statement of withoutComments.split(";")) {
+    const trimmed = statement.trim();
+    if (trimmed) db.prepare(trimmed).run();
+  }
+}
+
+/** Order-stable, name-normalized structural snapshot of a database's schema.
+ *  Auto-generated (UNIQUE/PK) index names are excluded — only their shape is
+ *  compared — since those names can differ across creation paths. */
+function canonicalSchema(db: Database.Database) {
+  const tables = (
+    db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      )
+      .all() as Row[]
+  ).map((r) => String(r.name));
+
+  const perTable: Record<string, unknown> = {};
+  for (const t of tables) {
+    const columns = (db.prepare("SELECT * FROM pragma_table_xinfo(?)").all(t) as Row[])
+      .map((c) => ({
+        name: String(c.name),
+        type: c.type,
+        notnull: c.notnull,
+        dflt: c.dflt_value,
+        pk: c.pk,
+        hidden: c.hidden,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const indexes = (db.prepare("SELECT * FROM pragma_index_list(?)").all(t) as Row[])
+      .map((idx) => ({
+        name: idx.origin === "c" ? String(idx.name) : null,
+        unique: idx.unique,
+        origin: idx.origin,
+        columns: (
+          db
+            .prepare("SELECT name FROM pragma_index_info(?) ORDER BY seqno")
+            .all(String(idx.name)) as Row[]
+        ).map((c) => String(c.name)),
+      }))
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+
+    const fks = (db.prepare("SELECT * FROM pragma_foreign_key_list(?)").all(t) as Row[])
+      .map((fk) => ({
+        from: fk.from,
+        table: fk.table,
+        to: fk.to,
+        onUpdate: fk.on_update,
+        onDelete: fk.on_delete,
+      }))
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+
+    perTable[t] = { columns, indexes, fks };
+  }
+
+  const others = (
+    db
+      .prepare(
+        "SELECT type, name FROM sqlite_master WHERE type IN ('trigger','view') ORDER BY name",
+      )
+      .all() as Row[]
+  ).map((o) => ({ type: o.type, name: String(o.name) }));
+
+  return { tables, perTable, others };
+}
+
+/** Strip comments, blank lines, and PRAGMA directives so two schema files can be
+ *  compared on DDL alone. */
+function ddlOnly(sql: string): string {
+  return sql
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(
+      (l) => l !== "" && !l.startsWith("--") && !l.toUpperCase().startsWith("PRAGMA"),
+    )
+    .join("\n");
+}
+
+describe("schema equivalence (fresh ≡ legacy upgrade)", () => {
+  it("a fresh install and a fully-upgraded legacy DB converge to the same schema", () => {
+    // DB-A: fresh = production schema.sql + full migration chain.
+    const fresh = new Database(":memory:");
+    cleanups.push(() => {
+      if (fresh.open) fresh.close();
+    });
+    applySchema(fresh, PROD_SCHEMA);
+    runPendingMigrations(fresh);
+
+    // DB-B: upgrade = legacy baseline + schema.sql + chain, mirroring how
+    // initializeDatabase() runs schema.sql then migrations on every boot.
+    const upgraded = createLegacyTestDb();
+    cleanups.push(upgraded.cleanup);
+    applySchema(upgraded.db, PROD_SCHEMA);
+    runPendingMigrations(upgraded.db);
+
+    expect(canonicalSchema(upgraded.db)).toEqual(canonicalSchema(fresh));
+    expect(upgraded.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("the test-harness schema.sql copy has not drifted from production (DDL only)", () => {
+    const testCopy = readFileSync(join(__dirname, "../setup/schema.sql"), "utf-8");
+    expect(ddlOnly(testCopy)).toBe(ddlOnly(PROD_SCHEMA));
   });
 });
