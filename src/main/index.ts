@@ -66,8 +66,9 @@ import {
   checkPostUpdateDatabase,
   markPostUpdateValidationSucceeded,
 } from "./services/postUpdateValidation";
-import { runPendingMigrations } from "./infrastructure/migrations";
+import { runPendingMigrations, LATEST_MIGRATION_VERSION } from "./infrastructure/migrations";
 import { configureSqlitePragmas } from "./infrastructure/sqlite-pragmas";
+import { readSchemaVersionSafe, backupBeforeMigrate } from "./services/migrationSafety";
 import { registerIpcHandlers } from "./ipc";
 import Database from "better-sqlite3";
 import fs from "fs";
@@ -77,13 +78,25 @@ export interface LanState {
   primaryUrl: string;
 }
 
+/** Show a blocking error dialog and terminate. Used for unrecoverable startup
+ *  conditions (corruption, downgrade, failed pre-migration backup) where opening
+ *  the app could lose or damage data. */
+function fatalStartup(title: string, message: string): never {
+  dialog.showErrorBox(title, message);
+  app.exit(1);
+  throw new Error(message); // app.exit ends the process; throw satisfies `never`.
+}
+
 function resolveDbPath(): string {
   const dataDir = join(app.getPath("userData"), "data");
   fs.mkdirSync(dataDir, { recursive: true });
   return join(dataDir, "inventory-monitor.db");
 }
 
-function initializeDatabase(dbPath: string): { restored: boolean } {
+async function initializeDatabase(
+  dbPath: string,
+  opts: { dbPreExisted: boolean },
+): Promise<{ restored: boolean }> {
   const db = new Database(dbPath);
   configureSqlitePragmas(db);
 
@@ -91,12 +104,48 @@ function initializeDatabase(dbPath: string): { restored: boolean } {
   const integrityResult = db.prepare("PRAGMA integrity_check(1)").get() as { integrity_check: string };
   if (integrityResult.integrity_check !== "ok") {
     db.close();
-    dialog.showErrorBox(
+    fatalStartup(
       "OpenInventory — Database Corruption Detected",
       "The database file appears to be corrupted. Please restore from a backup.\n\n" +
-      `Details: ${integrityResult.integrity_check}`,
+        `Details: ${integrityResult.integrity_check}`,
     );
-    app.exit(1);
+  }
+
+  // Downgrade guard: refuse to open data last written by a NEWER app version.
+  // Forward-only migrations cannot understand a future schema and could corrupt it.
+  const schemaVersion = readSchemaVersionSafe(db);
+  if (schemaVersion > LATEST_MIGRATION_VERSION) {
+    db.close();
+    fatalStartup(
+      "OpenInventory — Newer Database Detected",
+      "This data was created by a newer version of OpenInventory. " +
+        "Install the latest version to continue.\n\n" +
+        `(database schema v${schemaVersion}, this app supports v${LATEST_MIGRATION_VERSION})`,
+    );
+  }
+
+  // Pre-migration safety backup: take a verified rollback point before ANY schema
+  // change, but only for a pre-existing database that is behind. Fail closed if it
+  // cannot be created — never migrate without a rollback point. Fresh installs have
+  // nothing to lose and skip this.
+  if (opts.dbPreExisted && schemaVersion < LATEST_MIGRATION_VERSION) {
+    try {
+      const backupDir = await backupBeforeMigrate(
+        db,
+        dbPath,
+        schemaVersion,
+        LATEST_MIGRATION_VERSION,
+      );
+      console.log(`[Migrate] verified pre-migration backup created at ${backupDir}`);
+    } catch (error) {
+      db.close();
+      fatalStartup(
+        "OpenInventory — Update Halted",
+        "OpenInventory could not create a verified backup before upgrading its " +
+          "database, so the upgrade was stopped to protect your data.\n\n" +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   const schemaPath = join(__dirname, "infrastructure/schema.sql");
@@ -185,7 +234,10 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     const dbPath = resolveDbPath();
-    initializeDatabase(dbPath);
+    // Capture existence BEFORE opening — `new Database()` creates the file, so this
+    // is the only point that can distinguish a fresh install from an upgrade.
+    const dbPreExisted = fs.existsSync(dbPath);
+    await initializeDatabase(dbPath, { dbPreExisted });
     const appVersion = app.getVersion();
     const postUpdateCheck = checkPostUpdateDatabase(dbPath, appVersion);
     if (postUpdateCheck.errors.length > 0) {
