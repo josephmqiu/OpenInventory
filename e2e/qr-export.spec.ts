@@ -1,6 +1,7 @@
 import { isolatedTest as test, expect } from "./fixtures/electron-app";
 import { dismissBanner, navigateTo } from "./fixtures/helpers";
 import { readSaveDialogDefaultPath, stubOpenDialog, stubSaveDialog } from "./fixtures/dialogs";
+import { removeDirWithRetry } from "./fixtures/fs-cleanup";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -36,7 +37,7 @@ test.describe.serial("QR label export", () => {
     expect(defaultPath).toContain("SKU-BOLTS-M6");
     expect(defaultPath).toContain("Bolts M6");
 
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    await removeDirWithRetry(tempDir, "qr export dir");
   });
 
   test("exports selected QR labels into a folder", async ({ app, page }) => {
@@ -72,6 +73,6 @@ test.describe.serial("QR label export", () => {
       expect(fs.statSync(path.join(tempDir, entry)).size).toBeGreaterThan(0);
     }
 
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    await removeDirWithRetry(tempDir, "qr export dir");
   });
 });

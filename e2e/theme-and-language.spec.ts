@@ -12,7 +12,10 @@ test.describe("theme and language", () => {
 
     await themeBtn.click();
     await expect(themeBtn).toHaveAttribute("aria-label", "Dark");
-    await expect(page.locator("html")).not.toHaveAttribute("data-theme", "light");
+    // Dark removes the data-theme attribute entirely (useTheme.ts:35 — only "light"
+    // sets it). Assert the attribute is absent, not merely "not light". The
+    // aria-label above is what distinguishes dark from auto (both have no attribute).
+    await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/);
 
     await themeBtn.click();
     await expect(themeBtn).toHaveAttribute("aria-label", "Auto");

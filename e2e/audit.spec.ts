@@ -55,10 +55,12 @@ test.describe("audit features", () => {
     await page.getByTestId("audit-tab-items").click();
 
     const itemLink = page.locator(".cell-link").first();
-    const itemName = await itemLink.textContent();
+    const itemName = (await itemLink.textContent())?.trim();
+    // Guard: a null/empty textContent would make toContainText("") pass vacuously.
+    expect(itemName).toBeTruthy();
     await itemLink.click();
 
-    await expect(page.locator(".audit-breadcrumb")).toContainText(itemName ?? "");
+    await expect(page.locator(".audit-breadcrumb")).toContainText(itemName!);
     await expect(page.getByRole("button", { name: "Back To List" })).toBeVisible();
     await expect(page.locator("table thead th:has-text('Balance')")).toBeVisible();
 

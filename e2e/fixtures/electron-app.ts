@@ -9,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import os from "os";
+import { removeDirWithRetry } from "./fs-cleanup";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,19 +37,7 @@ function createUserDataDir(seedScenario: string): string {
 }
 
 async function cleanupUserDataDir(tempDir: string): Promise<void> {
-  for (let i = 0; i < 5; i++) {
-    try {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-      break;
-    } catch {
-      if (i === 4) {
-        console.warn(`[e2e] Could not clean temp dir after 5 retries: ${tempDir}`);
-        break;
-      }
-      const delay = 100 * Math.pow(2, i);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
+  await removeDirWithRetry(tempDir, "user data dir");
 }
 
 async function launchElectronApp(

@@ -5,6 +5,7 @@ import {
   stubRestoreRelaunchCapture,
   stubRestoreSelection,
 } from "./fixtures/dialogs";
+import { removeDirWithRetry } from "./fixtures/fs-cleanup";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -52,6 +53,6 @@ test("real restore writes pending state and requests an app relaunch", async ({ 
       { type: "exit", code: 0 },
     ]);
   } finally {
-    fs.rmSync(backupDir, { recursive: true, force: true });
+    await removeDirWithRetry(backupDir, "restore-handoff backup dir");
   }
 });

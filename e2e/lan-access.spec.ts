@@ -156,19 +156,31 @@ test.describe.serial("LAN access and QR codes", () => {
     }
   });
 
-  test("LAN port validation prevents saving invalid values", async ({ page }) => {
+  test("LAN port validation keeps save disabled for invalid values", async ({ page }) => {
     await navigateTo(page, "settings");
     const lanPanel = page.locator(".panel:has-text('LAN Access')");
     await expect(lanPanel).toBeVisible({ timeout: 10_000 });
 
     const portInput = lanPanel.locator("input[type='number']");
-    await portInput.fill("0");
-    await expect(page.getByTestId("lan-save")).toBeDisabled();
+    for (const invalid of ["0", "-1", "70000"]) {
+      await portInput.fill(invalid);
+      await expect(page.getByTestId("lan-save")).toBeDisabled();
+    }
 
-    await portInput.fill("70000");
-    await expect(page.getByTestId("lan-save")).toBeDisabled();
-
+    // Restore a valid port before the test ends. This spec is worker-shared and
+    // serial; LanAccessPanel.handleToggle sends the component's formPort, so a
+    // dirtied invalid value here would make the later "disable LAN" toggle send an
+    // invalid port and fail (see learning lan_e2e_formport_state_leak).
     await portInput.fill(String(LAN_PORT));
+  });
+
+  test("LAN save stays disabled when the port is unchanged", async ({ page }) => {
+    await navigateTo(page, "settings");
+    const lanPanel = page.locator(".panel:has-text('LAN Access')");
+    await expect(lanPanel).toBeVisible({ timeout: 10_000 });
+
+    // Re-typing the already-saved port is not a change, so there is nothing to save.
+    await lanPanel.locator("input[type='number']").fill(String(LAN_PORT));
     await expect(page.getByTestId("lan-save")).toBeDisabled();
   });
 
