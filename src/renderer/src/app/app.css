@@ -2441,6 +2441,13 @@ td input[type="checkbox"] {
   background: var(--warning-muted);
 }
 
+/* Columns menu sits above the activity-log table, right-aligned. */
+.audit-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
 .audit-pagination {
   display: flex;
   align-items: center;

@@ -131,6 +131,10 @@ export function AuditPanel({ language, personnel }: AuditPanelProps) {
   }
 
   const summary = data?.summary;
+  // No explicit filters applied (date range is always set) → distinguishes the
+  // "no movements ever" empty state from the "nothing matches" one.
+  const isUnfiltered =
+    !filters.movementType && !filters.itemSearch && !filters.performedBy && !filters.textSearch;
 
   return (
     <section className="panel">
@@ -198,32 +202,23 @@ export function AuditPanel({ language, personnel }: AuditPanelProps) {
           </button>
         </div>
       ) : tab === "log" ? (
-        loading ? (
-          <div className="empty-state">
-            <h3>{t("loadingAuditData", { ns: "audit" })}</h3>
-          </div>
-        ) : data && data.rows.length > 0 ? (
-          <AuditLogTable
-            language={language}
-            data={data}
-            filters={filters}
-            onPageChange={handlePageChange}
-            onItemClick={handleItemClick}
-            onQuickFilter={handleQuickFilter}
-            onDeleteMovement={handleDeleteMovement}
-            onError={setError}
-          />
-        ) : data && data.total === 0 && !filters.movementType && !filters.itemSearch && !filters.performedBy && !filters.textSearch ? (
-          <div className="empty-state">
-            <h3>{t("noAuditDataEver", { ns: "audit" })}</h3>
-            <p>{t("noAuditDataEverHint", { ns: "audit" })}</p>
-          </div>
-        ) : (
-          <div className="empty-state">
-            <h3>{t("noAuditData", { ns: "audit" })}</h3>
-            <p>{t("noAuditDataHint", { ns: "audit" })}</p>
-          </div>
-        )
+        // Render AuditLogTable for every log-tab state (loading / empty / rows)
+        // so its Columns menu stays mounted. The two empty messages — "nothing
+        // ever" vs "nothing matches your filters" — are chosen here and passed
+        // down as the table's empty state.
+        <AuditLogTable
+          language={language}
+          data={data}
+          filters={filters}
+          loading={loading}
+          emptyTitle={isUnfiltered ? t("noAuditDataEver", { ns: "audit" }) : t("noAuditData", { ns: "audit" })}
+          emptyHint={isUnfiltered ? t("noAuditDataEverHint", { ns: "audit" }) : t("noAuditDataHint", { ns: "audit" })}
+          onPageChange={handlePageChange}
+          onItemClick={handleItemClick}
+          onQuickFilter={handleQuickFilter}
+          onDeleteMovement={handleDeleteMovement}
+          onError={setError}
+        />
       ) : (
         <div role="tabpanel">
           <AuditSummaryView
