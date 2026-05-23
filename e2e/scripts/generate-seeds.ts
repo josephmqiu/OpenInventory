@@ -11,6 +11,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { runPendingMigrations } from "../../src/main/infrastructure/migrations";
 import { configureSqlitePragmas } from "../../src/main/infrastructure/sqlite-pragmas";
+import { LAN_SCENARIOS } from "../fixtures/lan-constants";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -218,39 +219,26 @@ function seedLanFixture(
 }
 
 function seedLanAccess(dbPath: string): void {
-  seedLanFixture(dbPath, {
-    port: 19877,
-    accessKey: "e2e-lan-access-key-2026",
-  });
+  seedLanFixture(dbPath, LAN_SCENARIOS["lan-access"]);
 }
 
 function seedLanMobile(dbPath: string): void {
-  seedLanFixture(dbPath, {
-    port: 19879,
-    accessKey: "e2e-mobile-access-key-2026",
-  });
+  seedLanFixture(dbPath, LAN_SCENARIOS["lan-mobile"]);
 }
 
 function seedLanQr(dbPath: string): void {
-  seedLanFixture(dbPath, {
-    port: 19880,
-    accessKey: "e2e-qr-access-key-2026",
-  });
+  seedLanFixture(dbPath, LAN_SCENARIOS["lan-qr"]);
 }
 
 function seedLanWarning(dbPath: string): void {
-  seedLanFixture(dbPath, {
-    port: 19881,
-    accessKey: "e2e-lan-warning-key-2026",
-  });
+  seedLanFixture(dbPath, LAN_SCENARIOS["lan-warning"]);
 }
 
 // ─── Seed: no-personnel-lan ──────────────────────────────────────────────────
 
 function seedNoPersonnelLan(dbPath: string): void {
   seedLanFixture(dbPath, {
-    port: 19878,
-    accessKey: "e2e-no-personnel-key-2026",
+    ...LAN_SCENARIOS["no-personnel-lan"],
     includePersonnel: false,
   });
 }

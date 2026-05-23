@@ -1,10 +1,11 @@
 import { test, expect } from "./fixtures/electron-app";
 import { navigateTo, expectSuccess } from "./fixtures/helpers";
+import { LAN_SCENARIOS, lanBaseUrl } from "./fixtures/lan-constants";
 
-// lan-access seed pre-configures: LAN enabled on port 19877, access key "e2e-lan-access-key-2026"
-const LAN_PORT = 19877;
-const BASE_URL = `http://127.0.0.1:${LAN_PORT}`;
-const SEEDED_KEY = "e2e-lan-access-key-2026";
+// lan-access seed pre-configures LAN enabled on the lan-access port + key.
+const LAN_PORT = LAN_SCENARIOS["lan-access"].port;
+const BASE_URL = lanBaseUrl("lan-access");
+const SEEDED_KEY = LAN_SCENARIOS["lan-access"].accessKey;
 const LAN_GOTO_OPTIONS = { waitUntil: "domcontentloaded" as const, timeout: 20_000 };
 
 async function fetchSnapshot(key: string) {

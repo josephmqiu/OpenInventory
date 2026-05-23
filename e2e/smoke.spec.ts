@@ -1,10 +1,18 @@
-import { isolatedTest as test, expect } from "./fixtures/electron-app";
+// Worker-shared `test`: smoke runs against the empty seed and every test is
+// read-only (navigation + empty-state assertions, no mutations), so one Electron
+// boot per worker is safe. Each test self-navigates; the beforeEach lands on a
+// known section so a prior test's route can't leak.
+import { test, expect } from "./fixtures/electron-app";
 import { navigateTo } from "./fixtures/helpers";
 
 const topbarTitle = (page: import("@playwright/test").Page) =>
   page.locator(".topbar h2");
 
 test.describe.serial("smoke tests (empty seed)", () => {
+  test.beforeEach(async ({ page }) => {
+    await navigateTo(page, "dashboard");
+  });
+
   test("all 4 sidebar nav sections render", async ({ page }) => {
     const sections: Array<{ id: string; title: string }> = [
       { id: "dashboard", title: "Dashboard" },

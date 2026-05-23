@@ -1,9 +1,12 @@
-import { isolatedTest as test, expect } from "./fixtures/electron-app";
+// Worker-shared `test`: every test here is read-only (LAN HTTP + fresh browser
+// contexts; the desktop page is never mutated), so one Electron boot per worker
+// is safe and avoids a cold boot per test.
+import { test, expect } from "./fixtures/electron-app";
 import { getLanItemIdByName, waitForLanReady } from "./fixtures/lan";
+import { LAN_SCENARIOS, lanBaseUrl } from "./fixtures/lan-constants";
 
-const LAN_PORT = 19878;
-const BASE_URL = `http://127.0.0.1:${LAN_PORT}`;
-const ACCESS_KEY = "e2e-no-personnel-key-2026";
+const BASE_URL = lanBaseUrl("no-personnel-lan");
+const ACCESS_KEY = LAN_SCENARIOS["no-personnel-lan"].accessKey;
 
 test.describe.serial("quick lookup edge states without personnel", () => {
   test("issue route without an item id shows the no-item state", async ({ browser, page: _desktopPage }) => {
