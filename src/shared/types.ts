@@ -104,9 +104,9 @@ export interface LanAccessState {
   ipChanged?: boolean;
 }
 
-export interface PublicIssueContext {
+/** Read-only item view served to anonymous LAN clients (QR scan lookup). */
+export interface PublicItemContext {
   item: InventoryItem | null;
-  personnel: PersonnelMember[];
   language: Language;
   currency: CurrencyCode;
 }

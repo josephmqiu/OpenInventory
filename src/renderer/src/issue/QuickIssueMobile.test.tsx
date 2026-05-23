@@ -1,7 +1,7 @@
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QuickIssueMobile } from "./QuickIssueMobile";
-import type { InventoryItem, PersonnelMember } from "../../../shared/types";
+import type { InventoryItem } from "../../../shared/types";
 import i18n from "i18next";
 
 afterEach(cleanup);
@@ -25,103 +25,55 @@ function makeItem(overrides: Partial<InventoryItem> = {}): InventoryItem {
   };
 }
 
-const personnel: PersonnelMember[] = [
-  { id: "p1", name: "Chen Jun" },
-  { id: "p2", name: "Li Ming" },
-];
-
-describe("QuickIssueMobile", () => {
+describe("QuickIssueMobile (read-only lookup)", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("en");
   });
 
-  it("renders item name, SKU, category, location, and current qty", () => {
-    render(
-      <QuickIssueMobile
-        busy={false}
-        item={makeItem()}
-        language="en"
-        currency="CNY"
-        personnel={personnel}
-        onIssue={vi.fn()}
-      />,
-    );
+  it("renders item name, SKU, current qty, location, and supplier", () => {
+    render(<QuickIssueMobile item={makeItem()} language="en" currency="CNY" onRefresh={vi.fn()} />);
     expect(screen.getByText("Test Item")).toBeDefined();
     expect(screen.getByText("SKU-001")).toBeDefined();
     expect(screen.getByText("100")).toBeDefined();
+    expect(screen.getByText("B-12")).toBeDefined();
+    expect(screen.getByText("ACME")).toBeDefined();
   });
 
-  it("preset +1 sets quantity to 1", () => {
-    render(
-      <QuickIssueMobile busy={false} item={makeItem()} language="en" currency="CNY" personnel={personnel} onIssue={vi.fn()} />,
-    );
-    fireEvent.click(screen.getByText("+1"));
-    const input = screen.getByRole("textbox") as HTMLInputElement;
-    expect(input.value).toBe("1");
+  it("does not render any stock-mutation controls", () => {
+    render(<QuickIssueMobile item={makeItem()} language="en" currency="CNY" onRefresh={vi.fn()} />);
+    // No quantity input, no preset buttons, no issue/submit button.
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByText("+5")).toBeNull();
+    expect(screen.queryByRole("button", { name: /issue material/i })).toBeNull();
   });
 
-  it("presets are cumulative: +5 then +10 = 15", () => {
-    render(
-      <QuickIssueMobile busy={false} item={makeItem()} language="en" currency="CNY" personnel={personnel} onIssue={vi.fn()} />,
-    );
-    fireEvent.click(screen.getByText("+5"));
-    fireEvent.click(screen.getByText("+10"));
-    const input = screen.getByRole("textbox") as HTMLInputElement;
-    expect(input.value).toBe("15");
+  it("shows an out-of-stock badge when quantity is zero", () => {
+    render(<QuickIssueMobile item={makeItem({ currentQuantity: 0 })} language="en" currency="CNY" onRefresh={vi.fn()} />);
+    expect(screen.getByText(/out of stock/i)).toBeDefined();
   });
 
-  it("preset caps at currentQuantity", () => {
+  it("shows the price when one is set, formatted in the app currency", () => {
     render(
-      <QuickIssueMobile busy={false} item={makeItem({ currentQuantity: 3 })} language="en" currency="CNY" personnel={personnel} onIssue={vi.fn()} />,
+      <QuickIssueMobile
+        item={makeItem({ unitPriceMinor: 1599 })}
+        language="en"
+        currency="CNY"
+        onRefresh={vi.fn()}
+      />,
     );
-    fireEvent.click(screen.getByText("+5"));
-    const input = screen.getByRole("textbox") as HTMLInputElement;
-    expect(input.value).toBe("3");
+    expect(screen.getByText(/15\.99/)).toBeDefined();
   });
 
-  it("clear button resets quantity to empty", () => {
-    render(
-      <QuickIssueMobile busy={false} item={makeItem()} language="en" currency="CNY" personnel={personnel} onIssue={vi.fn()} />,
-    );
-    fireEvent.click(screen.getByText("+5"));
-    fireEvent.click(screen.getByText("Clear"));
-    const input = screen.getByRole("textbox") as HTMLInputElement;
-    expect(input.value).toBe("");
+  it("omits the price row when no price is set", () => {
+    render(<QuickIssueMobile item={makeItem({ unitPriceMinor: null })} language="en" currency="CNY" onRefresh={vi.fn()} />);
+    expect(screen.queryByText(i18n.t("price", { ns: "inventory" }))).toBeNull();
   });
 
-  it("disables presets and submit when zero stock", () => {
-    render(
-      <QuickIssueMobile busy={false} item={makeItem({ currentQuantity: 0 })} language="en" currency="CNY" personnel={personnel} onIssue={vi.fn()} />,
-    );
-    const presetButtons = screen.getAllByRole("button").filter((b) => b.textContent?.startsWith("+"));
-    for (const btn of presetButtons) {
-      expect((btn as HTMLButtonElement).disabled).toBe(true);
-    }
-    const submitBtn = screen.getByRole("button", { name: /issue material/i });
-    expect((submitBtn as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("disables submit when no personnel", () => {
-    render(
-      <QuickIssueMobile busy={false} item={makeItem()} language="en" currency="CNY" personnel={[]} onIssue={vi.fn()} />,
-    );
-    expect(screen.getByText("No personnel configured. Add personnel in the desktop app before issuing material.")).toBeDefined();
-  });
-
-  it("calls onIssue with correct input on submit", async () => {
-    const onIssue = vi.fn().mockResolvedValue("Success");
-    render(
-      <QuickIssueMobile busy={false} item={makeItem()} language="en" currency="CNY" personnel={personnel} onIssue={onIssue} />,
-    );
-    fireEvent.click(screen.getByText("+5"));
-    fireEvent.click(screen.getByRole("button", { name: /issue material/i }));
-
-    await vi.waitFor(() => expect(onIssue).toHaveBeenCalledOnce());
-    expect(onIssue).toHaveBeenCalledWith({
-      itemId: "item-1",
-      quantity: 5,
-      performedBy: "Chen Jun",
-      reason: "QR issue",
-    });
+  it("calls onRefresh when the refresh button is clicked", () => {
+    const onRefresh = vi.fn();
+    render(<QuickIssueMobile item={makeItem()} language="en" currency="CNY" onRefresh={onRefresh} />);
+    fireEvent.click(screen.getByTestId("qi-refresh"));
+    expect(onRefresh).toHaveBeenCalledOnce();
   });
 });

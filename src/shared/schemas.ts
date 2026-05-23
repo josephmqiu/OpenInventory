@@ -237,12 +237,6 @@ export const UpdateLanguageBody = Schema.Struct({
   language: LanguageSchema,
 });
 
-export const PublicIssueBody = Schema.Struct({
-  quantity: PositiveInt,
-  reason: Schema.String,
-  performedBy: Schema.String,
-});
-
 // ─── Transport Types ─────────────────────────────────────────────────────────
 
 /** Serialized error sent across IPC or HTTP. */

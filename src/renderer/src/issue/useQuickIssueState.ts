@@ -1,17 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import type { Language, PublicIssueContext, StockMutationInput } from "../../../shared/types";
-import { i18n, localizeBackendMessage, setAppLanguage } from "../app/i18n";
+import type { Language, PublicItemContext } from "../../../shared/types";
+import { localizeBackendMessage, setAppLanguage } from "../app/i18n";
 import { i18nResources } from "../app/i18nResources";
-import { loadPublicIssueContext, issueMaterialPublic, IssueGatewayError } from "./issueGateway";
+import { loadPublicItemContext, IssueGatewayError } from "./issueGateway";
 
 export interface QuickIssueState {
   language: Language;
-  issueContext: PublicIssueContext | null;
+  itemContext: PublicItemContext | null;
   loadError: string | null;
-  notice: { message: string; tone: "success" | "error" } | null;
-  busy: boolean;
-  handleQuickIssueMaterial: (input: StockMutationInput) => Promise<string>;
-  clearNotice: () => void;
   retry: () => void;
 }
 
@@ -28,12 +24,9 @@ function readPersistedLanguage(): Language {
 
 export function useQuickIssueState(itemId: string): QuickIssueState {
   const [language, setLanguage] = useState<Language>(readPersistedLanguage);
-  const [issueContext, setIssueContext] = useState<PublicIssueContext | null>(null);
+  const [itemContext, setItemContext] = useState<PublicItemContext | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ message: string; tone: "success" | "error" } | null>(null);
-  const [busy, setBusy] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const inFlightIssueRef = useRef<Promise<string> | null>(null);
   const languageRef = useRef(language);
 
   useEffect(() => {
@@ -43,13 +36,13 @@ export function useQuickIssueState(itemId: string): QuickIssueState {
   useEffect(() => {
     let cancelled = false;
     setLoadError(null);
-    setIssueContext(null);
+    setItemContext(null);
 
-    loadPublicIssueContext(itemId)
+    loadPublicItemContext(itemId)
       .then((ctx) => {
         if (!cancelled) {
           setLanguage(ctx.language);
-          setIssueContext(ctx);
+          setItemContext(ctx);
         }
       })
       .catch((err: unknown) => {
@@ -73,52 +66,12 @@ export function useQuickIssueState(itemId: string): QuickIssueState {
     setAppLanguage(language);
   }, [language]);
 
-  const handleQuickIssueMaterial = async (input: StockMutationInput): Promise<string> => {
-    if (inFlightIssueRef.current) {
-      return inFlightIssueRef.current;
-    }
-
-    const request = (async () => {
-      try {
-        setBusy(true);
-        setNotice(null);
-        const next = await issueMaterialPublic(input);
-        setIssueContext(next);
-        setLanguage(next.language);
-        const tInventory = i18n.getFixedT(next.language, "inventory");
-        setNotice({ message: tInventory("successIssueMaterial"), tone: "success" });
-        return tInventory("successIssueMaterial");
-      } catch (err) {
-        const msg = localizeBackendMessage(
-          err as Error & { messageId?: string; messageValues?: Record<string, string | number> },
-          language,
-          i18nResources[language].common.genericActionError,
-        );
-        setNotice({ message: msg, tone: "error" });
-        throw new Error(msg);
-      } finally {
-        setBusy(false);
-        if (inFlightIssueRef.current === request) {
-          inFlightIssueRef.current = null;
-        }
-      }
-    })();
-
-    inFlightIssueRef.current = request;
-    return request;
-  };
-
-  const clearNotice = () => setNotice(null);
   const retry = () => setReloadKey((k) => k + 1);
 
   return {
     language,
-    issueContext,
+    itemContext,
     loadError,
-    notice,
-    busy,
-    handleQuickIssueMaterial,
-    clearNotice,
     retry,
   };
 }

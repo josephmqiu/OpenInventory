@@ -970,17 +970,17 @@ tr:hover td {
   background: var(--accent-muted);
 }
 
-/* Status dot indicator */
-.status-dot {
+/* Inventory status text label (distinct from the .status-dot indicator above) */
+.status-label {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
-.status-dot--ok { color: var(--success); }
-.status-dot--warning { color: var(--warning); }
-.status-dot--danger { color: var(--danger); }
+.status-label--ok { color: var(--success); }
+.status-label--warning { color: var(--warning); }
+.status-label--danger { color: var(--danger); }
 
 /* ---- H. Status Pills ---- */
 

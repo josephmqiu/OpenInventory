@@ -43,11 +43,62 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Passed via env (not inline ${{ }}) so the tag name can't be injected into the script.
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          $artifacts = Get-ChildItem -Path dist -File | Where-Object { $_.Name -eq 'latest.yml' -or $_.Extension -eq '.exe' -or $_.Name -like '*.exe.blockmap' }
-          if (-not $artifacts) { throw "No release artifacts (latest.yml/.exe/.exe.blockmap) found in dist/" }
-          foreach ($a in $artifacts) {
-            Write-Host "Uploading $($a.Name) to R2"
-            npx --yes wrangler r2 object put "openinventory-releases/$($a.Name)" --file="$($a.FullName)" --remote
-            if ($LASTEXITCODE -ne 0) { throw "R2 upload failed for $($a.Name)" }
+          $ErrorActionPreference = 'Stop'
+          # Public read URL — keep in sync with electron-builder.yml `publish.url`.
+          $publicBase = 'https://pub-ecaf9dac2f994b1eb42181e6e551d3c3.r2.dev'
+          $bucket = 'openinventory-releases'
+
+          $latestYml = Join-Path 'dist' 'latest.yml'
+          if (-not (Test-Path $latestYml)) { throw "latest.yml not found in dist/" }
+
+          function Upload-Artifact($file) {
+            Write-Host "Uploading $($file.Name)"
+            npx --yes wrangler r2 object put "$bucket/$($file.Name)" --file="$($file.FullName)" --remote
+            if ($LASTEXITCODE -ne 0) { throw "R2 upload failed for $($file.Name)" }
           }
+
+          # HEAD-check a public URL, with a few retries for edge propagation.
+          function Assert-Readable($url) {
+            for ($i = 1; $i -le 4; $i++) {
+              try {
+                $resp = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec 30 -UseBasicParsing
+                if ($resp.StatusCode -eq 200) { Write-Host "Readable: $url"; return }
+                throw "HTTP $($resp.StatusCode)"
+              } catch {
+                if ($i -eq 4) { throw "Artifact not publicly readable after 4 tries: $url ($($_.Exception.Message))" }
+                Write-Host "Not yet readable ($url), retry $i..."; Start-Sleep -Seconds 5
+              }
+            }
+          }
+
+          # 1. Upload the payload (installer + blockmap) BEFORE the activation pointer,
+          #    so the pointer is never published ahead of the files it references.
+          $payload = Get-ChildItem -Path 'dist' -File | Where-Object { $_.Extension -eq '.exe' -or $_.Name -like '*.exe.blockmap' }
+          if (-not $payload) { throw "No payload artifacts (.exe/.blockmap) found in dist/" }
+          foreach ($a in $payload) { Upload-Artifact $a }
+
+          # 2. Verify every file electron-updater will fetch is publicly readable BEFORE
+          #    flipping latest.yml. A 404 here is a release clients cannot consume.
+          $exeNames = Select-String -Path $latestYml -Pattern 'url:\s*(\S+\.exe)' -AllMatches |
+            ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+          if (-not $exeNames) { throw "Could not parse any .exe url from latest.yml" }
+          foreach ($name in $exeNames) {
+            Assert-Readable "$publicBase/$name"          # installer
+            Assert-Readable "$publicBase/$name.blockmap" # differential-download blockmap
+          }
+
+          # 3. Upload latest.yml LAST — it is the pointer that activates the release.
+          Upload-Artifact (Get-Item $latestYml)
+
+          # 4. Confirm the published pointer resolves to THIS build. Cache-bust the
+          #    r2.dev edge so we read what we just wrote, not a stale cached pointer.
+          $expected = "$env:REF_NAME".TrimStart('v')
+          $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          $pointer = Invoke-WebRequest -Uri "$publicBase/latest.yml?cb=$bust" -Headers @{ 'Cache-Control' = 'no-cache' } -TimeoutSec 30 -UseBasicParsing
+          if ($pointer.Content -notmatch "(?m)^version:\s*$([regex]::Escape($expected))\s*$") {
+            throw "Published latest.yml did not resolve to expected version $expected"
+          }
+          Write-Host "Release $expected published and verified consumable."

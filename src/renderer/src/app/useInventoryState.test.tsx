@@ -20,11 +20,9 @@ const gatewayMocks = vi.hoisted(() => ({
   clearLanAccessKey: vi.fn(),
   createInventoryItem: vi.fn(),
   issueMaterial: vi.fn(),
-  issueMaterialPublic: vi.fn(),
   isUnauthorizedError: vi.fn(),
   loadAppSnapshot: vi.fn(),
   loadLanAccessState: vi.fn(),
-  loadPublicIssueContext: vi.fn(),
   persistLanAccessKey: vi.fn(),
   readPersistedLanAccessKey: vi.fn(),
   readPersistedLanguage: vi.fn(),
@@ -149,21 +147,11 @@ beforeEach(() => {
   gatewayMocks.clearLanAccessKey.mockImplementation(() => {});
   gatewayMocks.createInventoryItem.mockResolvedValue(createSnapshot());
   gatewayMocks.issueMaterial.mockResolvedValue(createSnapshot());
-  gatewayMocks.issueMaterialPublic.mockResolvedValue({
-    item: baseItem,
-    personnel: [basePersonnel],
-    language: "en",
-  });
   gatewayMocks.isUnauthorizedError.mockImplementation(
     (error: unknown) => error instanceof GatewayError && error.status === 401,
   );
   gatewayMocks.loadAppSnapshot.mockResolvedValue(createSnapshot());
   gatewayMocks.loadLanAccessState.mockResolvedValue(baseLanAccessState);
-  gatewayMocks.loadPublicIssueContext.mockResolvedValue({
-    item: baseItem,
-    personnel: [basePersonnel],
-    language: "en",
-  });
   gatewayMocks.persistLanAccessKey.mockImplementation(() => {});
   gatewayMocks.readPersistedLanAccessKey.mockReturnValue("persisted-access-key");
   gatewayMocks.readPersistedLanguage.mockReturnValue("en");

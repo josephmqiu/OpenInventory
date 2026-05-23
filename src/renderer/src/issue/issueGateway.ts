@@ -1,4 +1,4 @@
-import type { PublicIssueContext, StockMutationInput } from "../../../shared/types";
+import type { PublicItemContext } from "../../../shared/types";
 
 type TransportMessageValues = Record<string, string | number>;
 
@@ -31,16 +31,6 @@ export class IssueGatewayError extends Error {
     this.messageValues = init.messageValues;
     this.debugMessage = init.debugMessage;
   }
-}
-
-let pendingPublicIssueRequest: Promise<PublicIssueContext> | null = null;
-let activePublicIssueKey: string | null = null;
-
-function createPublicIssueKey(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `qi-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -94,34 +84,8 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function loadPublicIssueContext(itemId: string): Promise<PublicIssueContext> {
-  return fetchJson<PublicIssueContext>(`/public/items/${encodeURIComponent(itemId)}/context`, {
+export async function loadPublicItemContext(itemId: string): Promise<PublicItemContext> {
+  return fetchJson<PublicItemContext>(`/public/items/${encodeURIComponent(itemId)}/context`, {
     method: "GET",
   });
-}
-
-export async function issueMaterialPublic(input: StockMutationInput): Promise<PublicIssueContext> {
-  if (pendingPublicIssueRequest) {
-    return pendingPublicIssueRequest;
-  }
-
-  const issueKey = activePublicIssueKey ?? createPublicIssueKey();
-  activePublicIssueKey = issueKey;
-  const request = fetchJson<PublicIssueContext>(`/public/items/${encodeURIComponent(input.itemId)}/issue`, {
-    method: "POST",
-    headers: {
-      "X-Idempotency-Key": issueKey,
-    },
-    body: JSON.stringify(input),
-  }).finally(() => {
-    if (pendingPublicIssueRequest === request) {
-      pendingPublicIssueRequest = null;
-    }
-    if (activePublicIssueKey === issueKey) {
-      activePublicIssueKey = null;
-    }
-  });
-
-  pendingPublicIssueRequest = request;
-  return request;
 }

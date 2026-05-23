@@ -148,6 +148,17 @@ describe("UnifiedInventoryTable", () => {
     expect(screen.getByText("Washers")).toBeTruthy();
   });
 
+  it("renders the out-of-stock status as a text label, not a .status-dot indicator", () => {
+    // Regression: the .status-dot class (a 7px circle with a colored background,
+    // used by the update Settings panel) collided with the inventory status text.
+    // For out_of_stock the danger modifier exists in both, so the label got a red
+    // background + border-radius:50% + red text and rendered as an unreadable blob.
+    renderTable({ filter: "out_of_stock" });
+
+    expect(document.querySelector(".status-label--danger")).toBeTruthy();
+    expect(document.querySelector(".status-dot")).toBeNull();
+  });
+
   it("calls onDetailItemIdChange when a row is clicked", () => {
     const props = renderTable();
 

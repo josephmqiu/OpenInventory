@@ -15,6 +15,7 @@ const __dirname = path.dirname(__filename);
 
 const SEED_CACHE = path.join(__dirname, "../.seed-cache");
 const APP_READY_TIMEOUT_MS = 60_000;
+const APP_CLOSE_TIMEOUT_MS = 5_000;
 
 function createUserDataDir(seedScenario: string): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "oi-e2e-"));
@@ -68,6 +69,23 @@ async function launchElectronApp(
   return electronApp;
 }
 
+async function closeElectronApp(electronApp: ElectronApplication): Promise<void> {
+  const child = electronApp.process();
+  try {
+    await Promise.race([
+      electronApp.close(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Electron close timed out.")), APP_CLOSE_TIMEOUT_MS),
+      ),
+    ]);
+  } catch (error) {
+    console.warn(`[e2e] Electron did not close cleanly; killing process. ${String(error)}`);
+    if (!child.killed) {
+      child.kill("SIGKILL");
+    }
+  }
+}
+
 async function getDesktopPage(electronApp: ElectronApplication): Promise<Page> {
   const windows = electronApp.windows();
   const page = windows.length > 0
@@ -109,9 +127,12 @@ export const test = base.extend<
     const tempDir = userDataDir;
     const electronApp = await launchElectronApp(tempDir, electronEnv);
 
-    await use(electronApp);
-    await electronApp.close();
-    await cleanupUserDataDir(tempDir);
+    try {
+      await use(electronApp);
+    } finally {
+      await closeElectronApp(electronApp);
+      await cleanupUserDataDir(tempDir);
+    }
   }, { scope: "worker" }],
 
   sharedPage: [async ({ electronApp }, use) => {
@@ -156,8 +177,11 @@ export const isolatedTest = base.extend<
 
   electronApp: async ({ userDataDir, electronEnv }, use) => {
     const electronApp = await launchElectronApp(userDataDir, electronEnv);
-    await use(electronApp);
-    await electronApp.close();
+    try {
+      await use(electronApp);
+    } finally {
+      await closeElectronApp(electronApp);
+    }
   },
 
   page: async ({ electronApp }, use) => {

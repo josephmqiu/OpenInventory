@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures/electron-app";
-import { connectLanBrowser, navigateTo, expectSuccess, dismissBanner } from "./fixtures/helpers";
+import { navigateTo, expectSuccess } from "./fixtures/helpers";
 
 // lan-access seed pre-configures: LAN enabled on port 19877, access key "e2e-lan-access-key-2026"
 const LAN_PORT = 19877;
@@ -10,6 +10,13 @@ const LAN_GOTO_OPTIONS = { waitUntil: "domcontentloaded" as const, timeout: 20_0
 async function fetchSnapshot(key: string) {
   const response = await fetch(`${BASE_URL}/api/snapshot`, {
     headers: { "x-inventory-key": key },
+  });
+  return { ok: response.ok, status: response.status };
+}
+
+async function fetchLanApi(path: string, key?: string) {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    headers: key ? { "x-inventory-key": key } : undefined,
   });
   return { ok: response.ok, status: response.status };
 }
@@ -26,80 +33,38 @@ test.describe.serial("LAN access and QR codes", () => {
     await expect(lanPanel.locator("a[href^='http']").first()).toBeVisible({ timeout: 5_000 });
   });
 
-  test("workspace browser access requires valid access key", async ({ browserPage }) => {
+  test("production LAN browser does not serve the admin app", async ({ browserPage }) => {
     await expect.poll(() => fetchSnapshot(SEEDED_KEY).then((result) => result.ok).catch(() => false)).toBe(true);
-    await browserPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
-    await expect(browserPage.locator(".sidebar")).toHaveCount(0);
-    await connectLanBrowser(browserPage, SEEDED_KEY);
-    await expect(browserPage.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
-    await expect(browserPage.locator(".topbar h2")).toHaveText("Dashboard");
-  });
 
-  test("browser disconnect returns to auth and can reconnect with the same key", async ({ browserPage }) => {
-    await browserPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
-    await connectLanBrowser(browserPage, SEEDED_KEY);
-    await expect(browserPage.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
-
-    await browserPage.getByRole("button", { name: "Disconnect" }).click();
-    await expect(browserPage.locator(".auth-card")).toBeVisible({ timeout: 10_000 });
-    await expect(browserPage.locator(".sidebar")).toHaveCount(0);
-
-    await connectLanBrowser(browserPage, SEEDED_KEY);
-    await expect(browserPage.locator(".topbar h2")).toHaveText("Dashboard");
-  });
-
-  test("invalid access key is rejected", async ({ browser }) => {
-    const context = await browser.newContext();
-    const invalidPage = await context.newPage();
-
-    try {
-      await invalidPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
-      await expect(invalidPage.locator(".auth-card")).toBeVisible({ timeout: 10_000 });
-
-      await invalidPage.locator(".auth-card__field input").fill("wrong-key-12345");
-      await invalidPage.locator("button:has-text('Connect')").click();
-
-      // Should remain on auth screen (sidebar should NOT appear)
-      await expect(invalidPage.locator(".auth-card")).toBeVisible({ timeout: 5_000 });
-      await expect(invalidPage.locator(".sidebar")).toHaveCount(0);
-    } finally {
-      await context.close();
+    for (const path of ["/", "/index.html", "/inventory"]) {
+      const response = await browserPage.goto(`${BASE_URL}${path}`, LAN_GOTO_OPTIONS);
+      expect(response?.status(), `${path} should not expose the admin shell`).toBe(404);
+      await expect(browserPage.locator(".sidebar")).toHaveCount(0);
+      await expect(browserPage.locator(".auth-card")).toHaveCount(0);
     }
   });
 
-  test("browser activity view can retry after a failed audit request", async ({ browser }) => {
-    const context = await browser.newContext();
-    const activityPage = await context.newPage();
-    let failedOnce = false;
-    let auditRequests = 0;
+  test("authenticated LAN API accepts the current key and rejects missing or invalid keys", async () => {
+    await expect.poll(() => fetchSnapshot(SEEDED_KEY).then((result) => result.ok).catch(() => false)).toBe(true);
 
-    await activityPage.route(/\/api\/audit\/movements\?/, async (route) => {
-      auditRequests += 1;
-      if (!failedOnce) {
-        failedOnce = true;
-        await route.fulfill({
-          status: 500,
-          contentType: "application/json",
-          body: JSON.stringify({ message: "Audit unavailable." }),
-        });
-        return;
-      }
+    const noKey = await fetchLanApi("/api/snapshot");
+    expect(noKey.status).toBe(401);
 
-      await route.fallback();
-    });
+    const wrongKey = await fetchLanApi("/api/snapshot", "wrong-key-12345");
+    expect(wrongKey.status).toBe(401);
 
-    try {
-      await activityPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
-      await connectLanBrowser(activityPage, SEEDED_KEY);
-      await activityPage.getByTestId("nav-activity").click();
-      await expect(activityPage.locator(".feedback-banner--error")).toContainText("Audit unavailable.");
+    const validKey = await fetchLanApi("/api/snapshot", SEEDED_KEY);
+    expect(validKey.ok).toBe(true);
+  });
 
-      await activityPage.getByRole("button", { name: "Retry" }).click();
-      await expect(activityPage.locator(".feedback-banner--error")).toHaveCount(0);
-      await expect.poll(() => auditRequests).toBeGreaterThanOrEqual(2);
-    } finally {
-      await context.close();
-    }
+  test("authenticated LAN read APIs remain available without a browser admin UI", async () => {
+    await expect.poll(() => fetchSnapshot(SEEDED_KEY).then((result) => result.ok).catch(() => false)).toBe(true);
+
+    const audit = await fetchLanApi("/api/audit/movements?page=1&pageSize=10", SEEDED_KEY);
+    expect(audit.ok).toBe(true);
+
+    const health = await fetchLanApi("/api/health", SEEDED_KEY);
+    expect(health.ok).toBe(true);
   });
 
   test("access key regeneration invalidates old key", async ({ page }) => {
@@ -126,57 +91,27 @@ test.describe.serial("LAN access and QR codes", () => {
     expect(newResult.ok).toBe(true);
   });
 
-  test("regenerating the key forces an existing browser session to re-authenticate", async ({ page, browser }) => {
-    const context = await browser.newContext();
-    const connectedPage = await context.newPage();
+  test("admin browser routes stay unavailable after key regeneration", async ({ page, browserPage }) => {
+    await navigateTo(page, "settings");
+    const lanPanel = page.locator(".panel:has-text('LAN Access')");
+    const oldKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
 
-    try {
-      await navigateTo(page, "settings");
-      const lanPanel = page.locator(".panel:has-text('LAN Access')");
-      const currentKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
+    await page.getByTestId("lan-regen-key").click();
+    await page.getByTestId("regen-dialog-confirm").click();
+    await expectSuccess(page);
 
-      await connectedPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
-      await connectLanBrowser(connectedPage, currentKey);
-      await expect(connectedPage.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
+    const newKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
+    expect(newKey).not.toBe(oldKey);
+    expect((await fetchSnapshot(oldKey)).status).toBe(401);
+    expect((await fetchSnapshot(newKey)).ok).toBe(true);
 
-      const oldKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
-      await page.getByTestId("lan-regen-key").click();
-      await page.getByTestId("regen-dialog-confirm").click();
-      await expectSuccess(page);
-
-      const newKey = await lanPanel.locator("label:has-text('Access Key') input").inputValue();
-      expect(newKey).not.toBe(oldKey);
-
-      await connectedPage.reload();
-      await expect(connectedPage.locator(".auth-card")).toBeVisible({ timeout: 10_000 });
-      await connectLanBrowser(connectedPage, newKey);
-      await expect(connectedPage.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
-    } finally {
-      await context.close();
-    }
+    const response = await browserPage.goto(BASE_URL, LAN_GOTO_OPTIONS);
+    expect(response?.status()).toBe(404);
+    await expect(browserPage.locator(".sidebar")).toHaveCount(0);
+    await expect(browserPage.locator(".auth-card")).toHaveCount(0);
   });
 
-  test("stale persisted browser auth is cleared after an unauthorized response", async ({ browser }) => {
-    const context = await browser.newContext();
-    await context.addInitScript((storedKey) => {
-      window.localStorage.setItem("inventory-monitor.lan-access-key", storedKey);
-    }, SEEDED_KEY);
-    const stalePage = await context.newPage();
-
-    try {
-      await stalePage.goto(BASE_URL, LAN_GOTO_OPTIONS);
-      await expect(stalePage.locator(".auth-card")).toBeVisible({ timeout: 10_000 });
-      await expect(stalePage.locator(".sidebar")).toHaveCount(0);
-      const persistedKey = await stalePage.evaluate(() =>
-        window.localStorage.getItem("inventory-monitor.lan-access-key"),
-      );
-      expect(persistedKey).toBeNull();
-    } finally {
-      await context.close();
-    }
-  });
-
-  test("public issue page works without auth", async ({ browser, page }) => {
+  test("public lookup page works without auth and cannot mutate stock", async ({ browser, page }) => {
     // Get an item ID from the snapshot using the regenerated key
     await navigateTo(page, "settings");
     const lanPanel = page.locator(".panel:has-text('LAN Access')");
@@ -185,9 +120,10 @@ test.describe.serial("LAN access and QR codes", () => {
     const res = await fetch(`${BASE_URL}/api/snapshot`, {
       headers: { "x-inventory-key": currentKey },
     });
-    const snapshot = await res.json() as { items: Array<{ id: string; name: string; currentQuantity: number }> };
+    const snapshot = await res.json() as { items: Array<{ id: string; name: string; sku: string; currentQuantity: number }> };
     const bolts = snapshot.items.find((i) => i.name === "Bolts M6");
     expect(bolts).toBeTruthy();
+    const startingQuantity = bolts!.currentQuantity;
 
     const context = await browser.newContext();
     const publicPage = await context.newPage();
@@ -195,11 +131,25 @@ test.describe.serial("LAN access and QR codes", () => {
     try {
       await publicPage.goto(`${BASE_URL}/issue/${bolts!.id}`, LAN_GOTO_OPTIONS);
       await expect(publicPage.locator(".qi-card")).toBeVisible({ timeout: 10_000 });
-      await publicPage.locator(".qi-input-row input").fill("3");
-      await publicPage.locator(".qi-form select").selectOption("Alice");
-      await publicPage.locator("[data-testid='qi-submit']").click();
+      await expect(publicPage.locator(".qi-header__name")).toHaveText("Bolts M6");
+      await expect(publicPage.locator(".qi-header__sku")).toHaveText(bolts!.sku);
+      await expect(publicPage.locator(".qi-data-row--hero .qi-data-row__value")).toContainText(String(startingQuantity));
+      await expect(publicPage.locator(".qi-input-row input")).toHaveCount(0);
+      await expect(publicPage.locator(".qi-form select")).toHaveCount(0);
+      await expect(publicPage.locator("[data-testid='qi-submit']")).toHaveCount(0);
 
-      await expect(publicPage.locator(".qi-feedback--success").first()).toBeVisible({ timeout: 10_000 });
+      const issueStatus = await publicPage.evaluate(async ({ baseUrl, itemId }) => {
+        const response = await fetch(`${baseUrl}/public/items/${itemId}/issue`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quantity: 3, reason: "QR issue", performedBy: "Alice" }),
+        });
+        return response.status;
+      }, { baseUrl: BASE_URL, itemId: bolts!.id });
+      expect(issueStatus).toBe(404);
+
+      await publicPage.getByTestId("qi-refresh").click();
+      await expect(publicPage.locator(".qi-data-row--hero .qi-data-row__value")).toContainText(String(startingQuantity));
     } finally {
       await context.close();
     }
