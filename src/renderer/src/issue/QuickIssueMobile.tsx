@@ -1,15 +1,16 @@
 import { useTranslation } from "react-i18next";
 import { localizeCategory, localizeStockStatus, localizeUnit } from "../app/i18n";
-import { formatNumber } from "../app/formatters";
-import type { InventoryItem, Language } from "../../../shared/types";
+import { formatNumber, formatPrice } from "../app/formatters";
+import type { CurrencyCode, InventoryItem, Language } from "../../../shared/types";
 
 interface QuickIssueMobileProps {
   item: InventoryItem;
   language: Language;
+  currency: CurrencyCode;
   onRefresh: () => void;
 }
 
-export function QuickIssueMobile({ item, language, onRefresh }: QuickIssueMobileProps) {
+export function QuickIssueMobile({ item, language, currency, onRefresh }: QuickIssueMobileProps) {
   const { t } = useTranslation(["inventory", "quickIssue", "common"]);
 
   const isOutOfStock = item.currentQuantity <= 0;
@@ -53,6 +54,12 @@ export function QuickIssueMobile({ item, language, onRefresh }: QuickIssueMobile
           <span className="qi-data-row__label">{t("supplier", { ns: "inventory" })}</span>
           <span className="qi-data-row__value">{item.supplier}</span>
         </div>
+        {item.unitPriceMinor !== null && (
+          <div className="qi-data-row">
+            <span className="qi-data-row__label">{t("price", { ns: "inventory" })}</span>
+            <span className="qi-data-row__value">{formatPrice(item.unitPriceMinor, currency, language)}</span>
+          </div>
+        )}
       </div>
 
       <div className="qi-submit-area">

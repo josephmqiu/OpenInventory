@@ -1,5 +1,23 @@
 # TODOs
 
+## Item pricing — deferred follow-ups (from /autoplan, 2026-05-22)
+
+Deferred out of the v1 item-price feature (optional per-item price + app currency
+setting). Each was an explicit out-of-scope decision, not an oversight:
+
+- **0-decimal / non-2-decimal currencies (JPY, KRW, BHD).** v1's currency picker
+  offers 2-decimal currencies only, to avoid the cross-exponent rescale bug. Adding
+  these needs rescale-on-switch logic (`stored ×10^Δexponent`) + a USD↔JPY test.
+- **Sell price.** Cost/value only for now. Sales/invoicing is a separate module.
+- **Per-item currency + FX conversion.** One currency per app is the deliberate model.
+- **Price history / per-receipt cost / COGS / weighted-average / FIFO.** Explicitly out
+  — this is an inventory app, not a costing app. A separate effort if ever needed.
+- **CSV price import.** v1 is manual per-item entry.
+- **Price-edit audit log.** Changing a price isn't recorded as a movement.
+- **AI cost insights.** Cloud/SaaS phase.
+
+Reviewed plan: `~/.gstack/projects/josephmqiu-OpenInventory/joe-pricing-plan-fresh-20260522.md`
+
 ## Backup UI: Native directory picker
 
 Replace `BackupPanel.tsx` text input with Electron's `dialog.showOpenDialog`

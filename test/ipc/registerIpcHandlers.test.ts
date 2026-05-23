@@ -54,6 +54,7 @@ const snapshot: AppSnapshot = {
     cloudProvider: "",
   },
   language: "en",
+  currency: "CNY",
 };
 
 function makeMockDb(overrides: Partial<DatabaseServiceApi> = {}): DatabaseServiceApi {
@@ -68,6 +69,7 @@ function makeMockDb(overrides: Partial<DatabaseServiceApi> = {}): DatabaseServic
     updateBackupPlan: vi.fn(),
     backupNow: vi.fn(),
     updateLanguage: vi.fn(),
+    updateCurrency: vi.fn(() => Effect.succeed(undefined)),
     removeInventoryItem: vi.fn(),
     addPersonnel: vi.fn(),
     removePersonnel: vi.fn(),
@@ -682,6 +684,45 @@ describe("registerIpcHandlers", () => {
 
     const handler = electronMocks.handlers.get("update-app-language");
     const result = await handler?.({}, { language: "fr" });
+
+    expect(result).toHaveProperty("ok", false);
+    expect(result).toHaveProperty("error._tag", "ValidationError");
+
+    await runtime.dispose();
+  });
+
+  it("invokes the registered update-app-currency handler and persists the currency", async () => {
+    const db = makeMockDb({
+      updateCurrency: vi.fn(() => Effect.succeed(undefined)),
+    });
+    const runtime = makeTestRuntime(
+      db,
+      { sendLowStockAlert: vi.fn(() => Effect.void) },
+      makeMockLan(),
+    );
+
+    registerIpcHandlers(runtime, { primaryUrl: "" }, autoUpdateService);
+
+    const handler = electronMocks.handlers.get("update-app-currency");
+    const result = await handler?.({}, { currency: "USD" });
+
+    expect(db.updateCurrency).toHaveBeenCalledWith("USD");
+    expect(result).toHaveProperty("ok", true);
+
+    await runtime.dispose();
+  });
+
+  it("returns ValidationError envelope for malformed update-app-currency input", async () => {
+    const runtime = makeTestRuntime(
+      makeMockDb(),
+      { sendLowStockAlert: vi.fn(() => Effect.void) },
+      makeMockLan(),
+    );
+
+    registerIpcHandlers(runtime, { primaryUrl: "" }, autoUpdateService);
+
+    const handler = electronMocks.handlers.get("update-app-currency");
+    const result = await handler?.({}, { currency: "DOGE" });
 
     expect(result).toHaveProperty("ok", false);
     expect(result).toHaveProperty("error._tag", "ValidationError");

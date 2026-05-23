@@ -245,7 +245,7 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 404, { message: "Item not found" });
         return;
       }
-      sendJson(res, 200, { item, language: snapshot.language });
+      sendJson(res, 200, { item, language: snapshot.language, currency: snapshot.currency });
       return;
     }
 

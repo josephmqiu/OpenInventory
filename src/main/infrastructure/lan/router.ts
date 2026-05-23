@@ -160,6 +160,7 @@ async function handlePublicRoute(
       sendJson(res, 200, {
         item,
         language: snapshot.language,
+        currency: snapshot.currency,
       });
       return;
     }

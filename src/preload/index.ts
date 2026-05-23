@@ -23,6 +23,7 @@ const ALLOWED_CHANNELS = new Set([
   "validate-backup",
   "restore-from-backup",
   "update-app-language",
+  "update-app-currency",
   "remove-inventory-item",
   "add-personnel",
   "remove-personnel",

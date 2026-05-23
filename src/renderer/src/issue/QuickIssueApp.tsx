@@ -93,6 +93,7 @@ function QuickIssueAppInner({ itemId, theme, cycleTheme }: { itemId: string; the
       <QuickIssueMobile
         item={itemContext.item}
         language={language}
+        currency={itemContext.currency}
         onRefresh={retry}
       />
       <div className="qi-bottom-spacer" />

@@ -26,6 +26,7 @@ const item: InventoryItem = {
   supplier: "Fasteners Inc.",
   currentQuantity: 150,
   reorderQuantity: 50,
+  unitPriceMinor: null,
   status: "in_stock",
   lastUpdated: "2026-03-31T10:00:00Z",
 };
@@ -33,6 +34,7 @@ const item: InventoryItem = {
 function renderPanel(overrides: Partial<React.ComponentProps<typeof ItemDetailsPanel>> = {}) {
   const props: React.ComponentProps<typeof ItemDetailsPanel> = {
     language: "en",
+    currency: "CNY",
     item,
     onBack: vi.fn(),
     onExport: vi.fn(),

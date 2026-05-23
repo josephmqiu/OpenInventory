@@ -8,6 +8,19 @@ import { Schema } from "@effect/schema";
 
 export const LanguageSchema = Schema.Literal("en", "zh-CN");
 
+// Allowed app currencies — 2-decimal currencies only in v1 (constant
+// minor-unit exponent, so switching currency never rescales stored values).
+export const CurrencyCodeSchema = Schema.Literal(
+  "CNY",
+  "USD",
+  "EUR",
+  "GBP",
+  "HKD",
+  "AUD",
+  "CAD",
+  "SGD",
+);
+
 export const BackupIntervalUnitSchema = Schema.Literal(
   "hours",
   "days",
@@ -23,6 +36,10 @@ const PortNumber = Schema.Number.pipe(Schema.int(), Schema.between(0, 65535));
 const PageNumber = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.greaterThanOrEqualTo(1));
 const PageSize = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.between(1, 10000));
 
+// Optional price in minor units. Accepts `number | null | undefined`:
+// omitted = no change / no price, explicit null = clear the price.
+const OptionalMoneyMinor = Schema.optional(Schema.NullOr(NonNegativeInt));
+
 // ─── IPC Arg Schemas ─────────────────────────────────────────────────────────
 // Each schema matches the `args` object shape the IPC handler receives.
 
@@ -36,6 +53,7 @@ export const CreateInventoryItemArgs = Schema.Struct({
     supplier: Schema.String,
     reorderQuantity: NonNegativeInt,
     initialQuantity: NonNegativeInt,
+    unitPriceMinor: OptionalMoneyMinor,
   }),
 });
 
@@ -49,7 +67,12 @@ export const UpdateInventoryItemArgs = Schema.Struct({
     unit: Schema.String,
     supplier: Schema.String,
     reorderQuantity: NonNegativeInt,
+    unitPriceMinor: OptionalMoneyMinor,
   }),
+});
+
+export const SaveAppCurrencyArgs = Schema.Struct({
+  currency: CurrencyCodeSchema,
 });
 
 export const StockMutationArgs = Schema.Struct({
@@ -166,6 +189,7 @@ export const CreateInventoryItemBody = Schema.Struct({
   supplier: Schema.String,
   reorderQuantity: NonNegativeInt,
   initialQuantity: NonNegativeInt,
+  unitPriceMinor: OptionalMoneyMinor,
 });
 
 export const UpdateInventoryItemBody = Schema.Struct({
@@ -177,6 +201,7 @@ export const UpdateInventoryItemBody = Schema.Struct({
   unit: Schema.String,
   supplier: Schema.String,
   reorderQuantity: NonNegativeInt,
+  unitPriceMinor: OptionalMoneyMinor,
 });
 
 export const StockMutationBody = Schema.Struct({

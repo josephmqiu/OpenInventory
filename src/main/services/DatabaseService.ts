@@ -31,6 +31,7 @@ import type {
   AuditPageResult,
   BatchIssueMaterialInput,
   CreateInventoryItemInput,
+  CurrencyCode,
   InventoryAlert,
   InventoryItem,
   InventoryMovement,
@@ -38,6 +39,28 @@ import type {
   UpdateBackupPlanInput,
   UpdateInventoryItemInput,
 } from "../../shared/types";
+import { DEFAULT_CURRENCY } from "../../shared/types";
+
+// Allowed app currencies (must match CurrencyCodeSchema / CurrencyCode).
+const ALLOWED_CURRENCIES: readonly CurrencyCode[] = [
+  "CNY",
+  "USD",
+  "EUR",
+  "GBP",
+  "HKD",
+  "AUD",
+  "CAD",
+  "SGD",
+];
+
+/** Read the app currency from settings, falling back to the default for
+ *  unset or unrecognized values. */
+function currentCurrency(db: Database.Database): CurrencyCode {
+  const value = readSetting(db, "app.currency");
+  return ALLOWED_CURRENCIES.includes(value as CurrencyCode)
+    ? (value as CurrencyCode)
+    : DEFAULT_CURRENCY;
+}
 
 export type {
   AddPersonnelInput,
@@ -222,6 +245,9 @@ export interface DatabaseServiceApi {
   readonly updateLanguage: (
     language: string,
   ) => Effect.Effect<void, AppError>;
+  readonly updateCurrency: (
+    currency: CurrencyCode,
+  ) => Effect.Effect<void, AppError>;
   readonly removeInventoryItem: (
     itemId: string,
   ) => Effect.Effect<AppSnapshot, AppError>;
@@ -262,6 +288,7 @@ interface ItemRecord {
   barcode: string | null;
   currentQuantity: number;
   reorderQuantity: number;
+  unitPriceMinor: number | null;
 }
 
 function readSetting(
@@ -293,7 +320,7 @@ function getItemRecord(
 ): ItemRecord {
   const row = db
     .prepare(
-      "SELECT id, sku, name, barcode, current_quantity, reorder_quantity FROM inventory_items WHERE id = ?",
+      "SELECT id, sku, name, barcode, current_quantity, reorder_quantity, unit_price_minor FROM inventory_items WHERE id = ?",
     )
     .get(itemId) as
     | {
@@ -303,6 +330,7 @@ function getItemRecord(
         barcode: string | null;
         current_quantity: number;
         reorder_quantity: number;
+        unit_price_minor: number | null;
       }
     | undefined;
 
@@ -317,6 +345,7 @@ function getItemRecord(
     barcode: row.barcode,
     currentQuantity: row.current_quantity,
     reorderQuantity: row.reorder_quantity,
+    unitPriceMinor: row.unit_price_minor,
   };
 }
 
@@ -489,7 +518,8 @@ export function makeDatabaseService(
         `SELECT i.id, i.sku, i.name, i.category,
                 COALESCE(l.name, '') AS location,
                 i.unit_of_measure, COALESCE(s.name, '') AS supplier,
-                i.current_quantity, i.reorder_quantity, i.status, i.updated_at
+                i.current_quantity, i.reorder_quantity, i.unit_price_minor,
+                i.status, i.updated_at
          FROM inventory_items i
          LEFT JOIN locations l ON l.id = i.location_id
          LEFT JOIN suppliers s ON s.id = i.supplier_id
@@ -505,6 +535,7 @@ export function makeDatabaseService(
       supplier: string;
       current_quantity: number;
       reorder_quantity: number;
+      unit_price_minor: number | null;
       status: string;
       updated_at: string;
     }>;
@@ -520,6 +551,7 @@ export function makeDatabaseService(
       supplier: row.supplier,
       currentQuantity: row.current_quantity,
       reorderQuantity: row.reorder_quantity,
+      unitPriceMinor: row.unit_price_minor,
       status: stockStatusKey(row.current_quantity, row.reorder_quantity),
       lastUpdated: row.updated_at,
     }));
@@ -581,6 +613,7 @@ export function makeDatabaseService(
     const bkStatus = readSetting(db, "backup.status") ?? "warning";
     const cloudProvider = readSetting(db, "backup.cloud_provider") ?? "";
     const language = normalizeBackendLanguage(readSetting(db, "app.language"));
+    const currency = currentCurrency(db);
 
     const validStatuses = ["healthy", "warning", "error", "backing_up"] as const;
     const status = validStatuses.includes(bkStatus as typeof validStatuses[number])
@@ -602,6 +635,7 @@ export function makeDatabaseService(
         cloudProvider,
       },
       language,
+      currency,
     };
   }
 
@@ -637,12 +671,14 @@ export function makeDatabaseService(
             db.prepare(
               `INSERT INTO inventory_items
                (id, sku, barcode, name, category, location_id, supplier_id,
-                unit_of_measure, reorder_quantity, current_quantity, status,
+                unit_of_measure, reorder_quantity, current_quantity,
+                unit_price_minor, status,
                 created_at, updated_at)
-               VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+               VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
             ).run(
               itemId, sku, name, category, locationId, supplierId,
-              unit, input.reorderQuantity, input.initialQuantity, status,
+              unit, input.reorderQuantity, input.initialQuantity,
+              input.unitPriceMinor ?? null, status,
             );
 
             if (input.initialQuantity > 0) {
@@ -712,17 +748,22 @@ export function makeDatabaseService(
             const supplierId = ensureSupplier(db, supplier);
             const locationId = ensureLocation(db, location);
             const status = stockStatusKey(item.currentQuantity, input.reorderQuantity);
+            // undefined = leave price unchanged; null = clear; number = set.
+            const nextPrice =
+              input.unitPriceMinor === undefined
+                ? item.unitPriceMinor
+                : input.unitPriceMinor;
 
             db.prepare(
               `UPDATE inventory_items
                SET sku = ?, barcode = NULL, name = ?, category = ?,
                    location_id = ?, supplier_id = ?, unit_of_measure = ?,
-                   reorder_quantity = ?, status = ?,
+                   reorder_quantity = ?, unit_price_minor = ?, status = ?,
                    updated_at = datetime('now','localtime')
                WHERE id = ?`,
             ).run(
               sku, name, category, locationId, supplierId,
-              unit, input.reorderQuantity, status, input.itemId,
+              unit, input.reorderQuantity, nextPrice, status, input.itemId,
             );
 
             const alertCreated = syncLowStockAlert(
@@ -1136,6 +1177,20 @@ export function makeDatabaseService(
           });
           updateFn();
           invalidateLanguageCache();
+        },
+        catch: () => localizedDatabaseError(db),
+      }),
+
+    updateCurrency: (currency) =>
+      Effect.try({
+        try: () => {
+          const next = ALLOWED_CURRENCIES.includes(currency)
+            ? currency
+            : DEFAULT_CURRENCY;
+          const updateFn = db.transaction(() => {
+            writeSetting(db, "app.currency", next);
+          });
+          updateFn();
         },
         catch: () => localizedDatabaseError(db),
       }),

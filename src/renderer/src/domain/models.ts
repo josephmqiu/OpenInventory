@@ -20,6 +20,7 @@ export type {
   BatchIssueItem,
   BatchIssueMaterialInput,
   CreateInventoryItemInput,
+  CurrencyCode,
   DashboardMetrics,
   InventoryAlert,
   InventoryItem,
@@ -40,3 +41,6 @@ export type {
   UpdateLanAccessInput,
   UpdateStatus,
 } from "../../../shared/types";
+
+// Value re-export (not a type): the default app currency.
+export { DEFAULT_CURRENCY } from "../../../shared/types";

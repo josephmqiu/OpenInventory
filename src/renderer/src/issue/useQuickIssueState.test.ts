@@ -42,10 +42,12 @@ const mockContext: PublicItemContext = {
     supplier: "",
     currentQuantity: 100,
     reorderQuantity: 10,
+    unitPriceMinor: null,
     status: "in_stock",
     lastUpdated: "2026-03-31",
   },
   language: "en",
+  currency: "CNY",
 };
 
 beforeEach(() => {

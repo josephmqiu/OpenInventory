@@ -6,6 +6,7 @@ import type {
   AuditPageResult,
   BatchIssueMaterialInput,
   CreateInventoryItemInput,
+  CurrencyCode,
   InventoryMovement,
   Language,
   LanAccessState,
@@ -478,6 +479,14 @@ export async function updateAppLanguage(language: Language): Promise<void> {
   }
 
   throw unsupportedRuntimeError("Updating the app language");
+}
+
+export async function updateAppCurrency(currency: CurrencyCode): Promise<void> {
+  if (detectRuntime() === "desktop") {
+    await invokeCommand<void>("update_app_currency", { currency });
+    return;
+  }
+  throw unsupportedRuntimeError("Updating the app currency");
 }
 
 // ─── Movement deletion ────────────────────────────────────────────────────────

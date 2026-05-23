@@ -35,6 +35,7 @@ const gatewayMocks = vi.hoisted(() => ({
   selectBackupDirectory: vi.fn(),
   selectRestoreSource: vi.fn(),
   updateAppLanguage: vi.fn(),
+  updateAppCurrency: vi.fn(),
   updateBackupPlan: vi.fn(),
   updateInventoryItem: vi.fn(),
   updateLanAccess: vi.fn(),
@@ -71,6 +72,7 @@ const baseItem: InventoryItem = {
   supplier: "Fasteners Inc.",
   currentQuantity: 15,
   reorderQuantity: 10,
+  unitPriceMinor: null,
   status: "in_stock",
   lastUpdated: "2026-03-31T10:00:00Z",
 };
@@ -103,6 +105,7 @@ function createSnapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
       cloudProvider: "",
     },
     language: "en",
+    currency: "CNY",
     ...overrides,
   };
 }
@@ -164,6 +167,7 @@ beforeEach(() => {
   gatewayMocks.selectBackupDirectory.mockResolvedValue("/tmp/openinventory-backups");
   gatewayMocks.selectRestoreSource.mockResolvedValue(null);
   gatewayMocks.updateAppLanguage.mockResolvedValue(undefined);
+  gatewayMocks.updateAppCurrency.mockResolvedValue(undefined);
   gatewayMocks.updateBackupPlan.mockResolvedValue(createSnapshot());
   gatewayMocks.updateInventoryItem.mockResolvedValue(createSnapshot());
   gatewayMocks.updateLanAccess.mockResolvedValue({
@@ -301,6 +305,44 @@ describe("useInventoryState", () => {
     expect(result.current.notice).toEqual({
       message: tBackup("backupCompleted"),
       tone: "success",
+    });
+  });
+
+  it("optimistically updates the currency and persists it on success", async () => {
+    gatewayMocks.loadAppSnapshot.mockResolvedValueOnce(createSnapshot({ currency: "CNY" }));
+
+    const { result } = renderHook(() => useInventoryState());
+    await waitFor(() => {
+      expect(result.current.snapshot?.currency).toBe("CNY");
+    });
+
+    await act(async () => {
+      result.current.handleCurrencyChange("USD");
+    });
+
+    expect(gatewayMocks.updateAppCurrency).toHaveBeenCalledWith("USD");
+    expect(result.current.snapshot?.currency).toBe("USD");
+  });
+
+  it("rolls back the optimistic currency change when persistence fails", async () => {
+    gatewayMocks.loadAppSnapshot.mockResolvedValueOnce(createSnapshot({ currency: "CNY" }));
+    gatewayMocks.updateAppCurrency.mockRejectedValueOnce(
+      new GatewayError({ messageId: "genericActionError", debugMessage: "Updating the app currency is not supported in this runtime." }),
+    );
+
+    const { result } = renderHook(() => useInventoryState());
+    await waitFor(() => {
+      expect(result.current.snapshot?.currency).toBe("CNY");
+    });
+
+    await act(async () => {
+      result.current.handleCurrencyChange("USD");
+    });
+
+    // The optimistic value must not stick — there is no polling loop to
+    // reconcile it in an HTTP/LAN session.
+    await waitFor(() => {
+      expect(result.current.snapshot?.currency).toBe("CNY");
     });
   });
 

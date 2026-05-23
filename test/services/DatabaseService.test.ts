@@ -850,6 +850,121 @@ describe("update_language", () => {
   });
 });
 
+// ─── App Currency ────────────────────────────────────────────────────────────
+
+describe("app_currency", () => {
+  it("defaults to CNY on a fresh database", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    const snapshot = await Effect.runPromise(service.loadSnapshot());
+    service.close();
+    expect(snapshot.currency).toBe("CNY");
+  });
+
+  it("persists a valid currency and reflects it in the snapshot", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    await Effect.runPromise(service.updateCurrency("USD"));
+    const snapshot = await Effect.runPromise(service.loadSnapshot());
+    service.close();
+    expect(readSetting(t.db, "app.currency")).toBe("USD");
+    expect(snapshot.currency).toBe("USD");
+  });
+
+  it("falls back to the default for an unsupported currency code", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    // Cast through unknown: the boundary schema rejects this, but the service
+    // guard must still coerce a bad stored value back to the default.
+    await Effect.runPromise(
+      service.updateCurrency("DOGE" as unknown as never),
+    );
+    const snapshot = await Effect.runPromise(service.loadSnapshot());
+    service.close();
+    expect(snapshot.currency).toBe("CNY");
+  });
+});
+
+// ─── Item Pricing ────────────────────────────────────────────────────────────
+
+const baseItemInput = {
+  sku: "SKU-PRICE",
+  name: "Priced Item",
+  category: "chemicals",
+  location: "B-12",
+  unit: "pieces",
+  supplier: "ACME",
+  reorderQuantity: 5,
+  initialQuantity: 20,
+};
+
+describe("item_pricing", () => {
+  it("stores a price on create and reads it back in the snapshot", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    const { snapshot } = await Effect.runPromise(
+      service.createInventoryItem({ ...baseItemInput, unitPriceMinor: 1599 }),
+    );
+    service.close();
+    expect(snapshot.items[0].unitPriceMinor).toBe(1599);
+  });
+
+  it("defaults the price to null when none is provided on create", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    const { snapshot } = await Effect.runPromise(
+      service.createInventoryItem(baseItemInput),
+    );
+    service.close();
+    expect(snapshot.items[0].unitPriceMinor).toBeNull();
+  });
+
+  it("leaves the price unchanged when update omits unitPriceMinor", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    const created = await Effect.runPromise(
+      service.createInventoryItem({ ...baseItemInput, unitPriceMinor: 2500 }),
+    );
+    const itemId = created.snapshot.items[0].id;
+    const { snapshot } = await Effect.runPromise(
+      service.updateInventoryItem({
+        itemId,
+        sku: baseItemInput.sku,
+        name: "Renamed",
+        category: baseItemInput.category,
+        location: baseItemInput.location,
+        unit: baseItemInput.unit,
+        supplier: baseItemInput.supplier,
+        reorderQuantity: baseItemInput.reorderQuantity,
+      }),
+    );
+    service.close();
+    expect(snapshot.items[0].name).toBe("Renamed");
+    expect(snapshot.items[0].unitPriceMinor).toBe(2500);
+  });
+
+  it("sets and clears the price on update", async () => {
+    const service = makeDatabaseService(t.dbPath);
+    const created = await Effect.runPromise(
+      service.createInventoryItem(baseItemInput),
+    );
+    const itemId = created.snapshot.items[0].id;
+    const update = (unitPriceMinor: number | null) =>
+      service.updateInventoryItem({
+        itemId,
+        sku: baseItemInput.sku,
+        name: baseItemInput.name,
+        category: baseItemInput.category,
+        location: baseItemInput.location,
+        unit: baseItemInput.unit,
+        supplier: baseItemInput.supplier,
+        reorderQuantity: baseItemInput.reorderQuantity,
+        unitPriceMinor,
+      });
+
+    const set = await Effect.runPromise(update(3300));
+    expect(set.snapshot.items[0].unitPriceMinor).toBe(3300);
+
+    const cleared = await Effect.runPromise(update(null));
+    expect(cleared.snapshot.items[0].unitPriceMinor).toBeNull();
+    service.close();
+  });
+});
+
 // ─── LAN Access Settings ────────────────────────────────────────────────────
 
 describe("lan_access_settings", () => {

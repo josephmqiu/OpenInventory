@@ -24,6 +24,7 @@ import {
   ItemIdArgs,
   PersonnelIdArgs,
   LanguageArgs,
+  SaveAppCurrencyArgs,
   AuditMovementFilterArgs,
   AuditAnalyticsFilterArgs,
   DirPathArgs,
@@ -317,6 +318,17 @@ export function registerIpcHandlers(
       const { language } = decodeOrFail(LanguageArgs)(rawArgs);
       return await run(
         Effect.flatMap(DatabaseService, (s) => s.updateLanguage(language)),
+      );
+    } catch (error) {
+      return fail(serializeAppError(error));
+    }
+  });
+
+  ipcMain.handle("update-app-currency", async (_event, rawArgs: unknown) => {
+    try {
+      const { currency } = decodeOrFail(SaveAppCurrencyArgs)(rawArgs);
+      return await run(
+        Effect.flatMap(DatabaseService, (s) => s.updateCurrency(currency)),
       );
     } catch (error) {
       return fail(serializeAppError(error));

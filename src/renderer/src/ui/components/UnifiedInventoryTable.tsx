@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { localizeStockStatus, stockStatusSeverity } from "../../app/i18n";
-import type { ActionKind, InventoryItem, Language } from "../../domain/models";
+import { formatPrice } from "../../app/formatters";
+import type { ActionKind, CurrencyCode, InventoryItem, Language } from "../../domain/models";
 import { exportQrLabel, exportSelectedQrLabels } from "../../services/inventoryGateway";
 import { buildQrLabelExportPayload, buildQrLabelExportPayloads } from "../export/qrLabelExport";
 import { useTT } from "../hooks/useTT";
@@ -11,6 +12,7 @@ import { ItemDetailsPanel } from "./ItemDetailsPanel";
 interface UnifiedInventoryTableProps {
   busy: boolean;
   language: Language;
+  currency: CurrencyCode;
   items: InventoryItem[];
   filter: "all" | "low_stock" | "out_of_stock";
   onFilterChange: (filter: "all" | "low_stock" | "out_of_stock") => void;
@@ -27,6 +29,7 @@ interface UnifiedInventoryTableProps {
 export function UnifiedInventoryTable({
   busy,
   language,
+  currency,
   items,
   filter,
   onFilterChange,
@@ -109,6 +112,7 @@ export function UnifiedInventoryTable({
         case "location": return row.location;
         case "currentQuantity": return row.currentQuantity;
         case "reorderQuantity": return row.reorderQuantity;
+        case "unitPriceMinor": return row.unitPriceMinor ?? -1;
         case "status": return row.status;
         default: return undefined;
       }
@@ -217,6 +221,18 @@ export function UnifiedInventoryTable({
       render: (item) => item.reorderQuantity,
     },
     {
+      key: "price",
+      header: tt("price", "Price"),
+      className: "cell-mono",
+      headerClassName: "col-price",
+      sortable: true,
+      sortKey: "unitPriceMinor",
+      render: (item) =>
+        item.unitPriceMinor === null
+          ? tt("noPrice", "—")
+          : formatPrice(item.unitPriceMinor, currency, language),
+    },
+    {
       key: "status",
       header: tt("status", "Status"),
       headerClassName: "col-status",
@@ -261,7 +277,7 @@ export function UnifiedInventoryTable({
         </div>
       ),
     },
-  ], [tt, language, busy, onAction]);
+  ], [tt, language, currency, busy, onAction]);
 
   // --- Empty state messages ---
 
@@ -292,6 +308,7 @@ export function UnifiedInventoryTable({
       {detailItem && (
         <ItemDetailsPanel
           language={language}
+          currency={currency}
           item={detailItem}
           onBack={() => onDetailItemIdChange("")}
           onExport={() => void handleExport([detailItem])}

@@ -285,9 +285,30 @@ async function main() {
   const insertItem = db.prepare(
     `INSERT INTO inventory_items
      (id, sku, barcode, name, category, location_id, supplier_id, unit_of_measure,
-      reorder_quantity, current_quantity, status, created_at, updated_at)
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      reorder_quantity, current_quantity, unit_price_minor, status, created_at, updated_at)
+     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
+
+  // Rough per-category unit price in minor units (fen for CNY, i.e. ¥1 = 100).
+  // Demo data only; gives the dashboard a believable total inventory value.
+  const CATEGORY_PRICE_FEN: Record<string, number> = {
+    Fasteners: 50,
+    Electrical: 2500,
+    Safety: 3500,
+    Tools: 8000,
+    Plumbing: 4500,
+    Packaging: 1200,
+    Cleaning: 3000,
+    "Raw Materials": 9000,
+  };
+  // Deterministic ±20% variance per SKU so prices aren't all identical.
+  const priceFor = (def: ItemDef): number => {
+    const base = CATEGORY_PRICE_FEN[def.category] ?? 1000;
+    let h = 0;
+    for (const ch of def.sku) h = (h * 31 + ch.charCodeAt(0)) % 1000;
+    const factor = 0.8 + (h / 1000) * 0.4; // 0.8–1.2
+    return Math.max(1, Math.round((base * factor) / 10) * 10);
+  };
 
   interface LiveItem {
     id: string;
@@ -312,6 +333,7 @@ async function main() {
       def.unit,
       def.reorderQty,
       def.initialQty,
+      priceFor(def),
       stockStatus(def.initialQty, def.reorderQty),
       itemCreated,
       itemCreated,

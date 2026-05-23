@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatNumber } from "../../app/formatters";
+import { formatNumber, minorToPriceInput, parsePriceToMinor } from "../../app/formatters";
 import { localizeCategory, localizeUnit } from "../../app/i18n";
 import { useTT } from "../hooks/useTT";
 import type {
   ActionKind,
   CreateInventoryItemInput,
+  CurrencyCode,
   InventoryItem,
   Language,
   PersonnelMember,
@@ -17,6 +18,7 @@ interface ActionPanelProps {
   activeItemId: string;
   busy: boolean;
   language: Language;
+  currency: CurrencyCode;
   items: InventoryItem[];
   personnel: PersonnelMember[];
   onClose: () => void;
@@ -67,6 +69,7 @@ export function ActionPanel({
   activeItemId,
   busy,
   language,
+  currency,
   items,
   personnel,
   onClose,
@@ -90,6 +93,7 @@ export function ActionPanel({
     reorderQuantity: 0,
     initialQuantity: 0,
   });
+  const [priceInput, setPriceInput] = useState<string>("");
   const [categoryMode, setCategoryMode] = useState<string>(NEW_CATEGORY_VALUE);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [unitMode, setUnitMode] = useState<string>(NEW_UNIT_VALUE);
@@ -148,6 +152,9 @@ export function ActionPanel({
     setNewUnitName(nextUnitMode === NEW_UNIT_VALUE ? initialUnit : "");
     setStockForm({ itemId: preferredItemId, quantity: 0, reason: "", performedBy: preferredPersonnel });
     setRemoveItemId(preferredItemId);
+    setPriceInput(
+      managedItem ? minorToPriceInput(managedItem.unitPriceMinor, currency) : "",
+    );
     setItemForm(
       managedItem
         ? {
@@ -171,7 +178,7 @@ export function ActionPanel({
             initialQuantity: 0,
           },
     );
-  }, [action, activeItemId, items, personnel]);
+  }, [action, activeItemId, items, personnel, currency]);
 
   if (!action) {
     return null;
@@ -218,11 +225,18 @@ export function ActionPanel({
           throw new Error(tt("formValidationError", "Check the required fields and quantity values."));
         }
 
+        // Parse optional price: null = no price / cleared, undefined = invalid.
+        const priceMinor = parsePriceToMinor(priceInput, currency);
+        if (priceMinor === undefined) {
+          throw new Error(tt("priceInvalid", "Enter a valid price (e.g. 12.50)."));
+        }
+
         if (action === "createItem") {
           await onCreateItem({
             ...itemForm,
             category: categoryValue,
             unit: unitValue,
+            unitPriceMinor: priceMinor,
           });
           return;
         }
@@ -240,6 +254,7 @@ export function ActionPanel({
           unit: unitValue,
           supplier: itemForm.supplier,
           reorderQuantity: itemForm.reorderQuantity,
+          unitPriceMinor: priceMinor,
         });
         return;
       }
@@ -372,6 +387,18 @@ export function ActionPanel({
               <label>
                 <FieldLabel label={tt("supplier", "Supplier")} optionalText={tt("optionalField", "Optional")} />
                 <input disabled={busy} value={itemForm.supplier} onChange={(event) => setItemForm({ ...itemForm, supplier: event.target.value })} />
+              </label>
+              <label>
+                <FieldLabel label={`${tt("price", "Price")} (${currency})`} optionalText={tt("optionalField", "Optional")} />
+                <input
+                  disabled={busy}
+                  inputMode="decimal"
+                  type="text"
+                  placeholder={tt("priceOptionalHint", "Optional — leave blank if unknown")}
+                  value={priceInput}
+                  onChange={(event) => setPriceInput(event.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !busy) { e.preventDefault(); void handleSubmit(); } }}
+                />
               </label>
               <label>
                 <FieldLabel label={tt("reorderLevel", "Reorder Level")} required />
