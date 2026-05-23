@@ -93,12 +93,48 @@ jobs:
           # 3. Upload latest.yml LAST — it is the pointer that activates the release.
           Upload-Artifact (Get-Item $latestYml)
 
-          # 4. Confirm the published pointer resolves to THIS build. Cache-bust the
-          #    r2.dev edge so we read what we just wrote, not a stale cached pointer.
+          # 4. Confirm the published pointer resolves to THIS build.
           $expected = "$env:REF_NAME".TrimStart('v')
-          $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-          $pointer = Invoke-WebRequest -Uri "$publicBase/latest.yml?cb=$bust" -Headers @{ 'Cache-Control' = 'no-cache' } -TimeoutSec 30 -UseBasicParsing
-          if ($pointer.Content -notmatch "(?m)^version:\s*$([regex]::Escape($expected))\s*$") {
-            throw "Published latest.yml did not resolve to expected version $expected"
+
+          # 4a. Authoritative check — read the canonical object straight from R2
+          #     (no edge cache in front of it). This is what catches a genuinely
+          #     botched upload, and it can't be fooled by r2.dev edge lag.
+          $verifyFile = Join-Path $env:TEMP "latest-verify-$([Guid]::NewGuid()).yml"
+          npx --yes wrangler r2 object get "$bucket/latest.yml" --file="$verifyFile" --remote
+          if ($LASTEXITCODE -ne 0) { throw "Could not read back $bucket/latest.yml from R2" }
+          $canonical = Get-Content $verifyFile -Raw
+          Remove-Item $verifyFile -ErrorAction SilentlyContinue
+          if ($canonical -notmatch "(?m)^version:\s*$([regex]::Escape($expected))\s*$") {
+            throw "Uploaded latest.yml in R2 does not contain expected version $expected — upload botched"
           }
-          Write-Host "Release $expected published and verified consumable."
+          Write-Host "Canonical R2 latest.yml confirmed at version $expected."
+
+          # 4b. Public-edge consumability check — clients fetch latest.yml from the
+          #     r2.dev edge, so confirm that endpoint actually works. Distinguish two
+          #     failure modes the previous single `throw` conflated:
+          #       * readable (HTTP 200) but stale version  -> edge cache lag. Benign:
+          #         the canonical object (4a) is correct and the edge TTL will catch
+          #         up, so WARN rather than red a release that genuinely shipped.
+          #       * never readable (404/403/timeout) after retries -> clients cannot
+          #         consume the release at all (public routing/ACL/caching broken).
+          #         THROW — this is the real failure the hard check must still catch.
+          $edgeReadable = $false   # got HTTP 200 for latest.yml at all
+          $edgeVersionOk = $false  # 200 AND it is the expected version
+          for ($i = 1; $i -le 6; $i++) {
+            try {
+              $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+              $pointer = Invoke-WebRequest -Uri "$publicBase/latest.yml?cb=$bust" -Headers @{ 'Cache-Control' = 'no-cache' } -TimeoutSec 30 -UseBasicParsing
+              if ($pointer.StatusCode -eq 200) {
+                $edgeReadable = $true
+                if ($pointer.Content -match "(?m)^version:\s*$([regex]::Escape($expected))\s*$") { $edgeVersionOk = $true; break }
+              }
+            } catch { }
+            Start-Sleep -Seconds 10
+          }
+          if ($edgeVersionOk) {
+            Write-Host "Release $expected published and verified consumable (canonical + edge)."
+          } elseif ($edgeReadable) {
+            Write-Warning "Public latest.yml is readable but still served a stale version after retries. The canonical R2 object is correct at $expected and the edge cache will catch up shortly; not failing the release."
+          } else {
+            throw "Public latest.yml at $publicBase is not readable after retries — auto-update clients cannot consume this release (check R2 public routing/ACL/caching)."
+          }
