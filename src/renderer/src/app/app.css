@@ -952,14 +952,18 @@ tr:hover td {
 
 /* Column widths for slim tables
    ItemManagement (7 cols): 4+22+22+16+12+12+12 = 100%
-   Inventory (8 cols): 4+18+18+12+8+8+8+24 = 100% */
+   Inventory (9 cols): checkbox 4 + name 20 + sku 16 + location 13 + qty 9 +
+   reorder 9 + price 11 + status 10 = 92%; actions takes the ~8% remainder.
+   table-layout is fixed, so the price column needs an explicit width — without
+   one it collapsed and its sort header overflowed into the status column. */
 .col-checkbox { width: 4%; }
-.col-name { width: 22%; }
-.col-sku { width: 22%; }
-.col-location { width: 16%; }
-.col-qty { width: 12%; }
-.col-reorder { width: 12%; }
-.col-status { width: 12%; }
+.col-name { width: 20%; }
+.col-sku { width: 16%; }
+.col-location { width: 13%; }
+.col-qty { width: 9%; }
+.col-reorder { width: 9%; }
+.col-price { width: 11%; }
+.col-status { width: 10%; }
 
 /* Clickable rows */
 .row-clickable {
