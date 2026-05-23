@@ -81,16 +81,17 @@ timing is noise.
      persists across reload.
   6. invalid price ("1.234" over-precision, negative) → validation error, no item created.
 
-### Commit 5 — coverage: migration-safety + LAN/update edges
-- Bespoke `e2e/migration-safety.spec.ts` (direct launch, `--smoke-test`), assert via the
-  child-process `close` exit code (`electronApp.process()`) with a hard timeout:
-  1. seed `schema_version > LATEST_MIGRATION_VERSION` → process exits 1 (fatal startup).
-  2. pre-place `.rollback-marker.json` → process exits (halt), migration does NOT re-run.
+### Commit 5 — coverage: LAN static + update-ready chip
+(migration-safety E2E was attempted and DROPPED — see NOT in scope.)
 - `lan-access.spec`: GET `/assets/<real>.js` → 200 + MIME (prefix match); GET `/assets/`
-  (dir) → 404 + app stays up (EISDIR regression); traversal `/assets/../`, `%2e%2e`, and
-  backslash variants → 403/404 (Windows path-normalization sensitive).
-- `update.spec`: stub `get-update-status` → "downloaded"; assert `update-chip` visible +
-  Install affordance. Confirm useAutoUpdate reads status via poll so the stub persists.
+  (dir) → 404 + app stays up (EISDIR regression); traversal `%2e%2e`, `%2f`, `%5c`
+  variants → 403/404. Readiness/liveness via the no-auth `/issue.html` route (the spec
+  is serial and earlier tests regenerate the access key, so keyed checks would fail here).
+- `update.spec`: stub `get-update-status` → "downloaded" and reload; assert `update-chip`
+  visible + its action.
+
+### Commit 6 — docs
+- Update `.claude/rules/useeffect-polling-guards.md` to list `currency` in snapshotEquals.
 
 ### Commit 6 — docs + validation
 - Update `.claude/rules/useeffect-polling-guards.md` to list `currency` in snapshotEquals
@@ -100,7 +101,18 @@ timing is noise.
   if it is faster AND 0-flaky across all 3; otherwise keep CI=3. Capture before/after
   duration from `test-results/e2e-report.json` on the same platform.
 
+## Outcome note (2026-05-23)
+Shipped: worker auto-derivation, read-only worker-shared conversions, review finding
+fixes, price/currency E2E, the `.col-price` width fix (a real pre-existing bug the
+price-sort test surfaced), and the LAN static + update-chip edges. **Migration-safety
+E2E was attempted and dropped** — asserting a startup-time process exit under
+Playwright's managed Electron proved unreliable (exit/dialog timing, exactly as the
+outside voice predicted). The downgrade guard and rollback-marker guard remain covered
+by `test/services/migrationSafety.test.ts` + `test/integration/migrations.test.ts`.
+
 ## NOT in scope (deferred, with rationale)
+- Migration-safety startup-guard E2E — Playwright/Electron process-exit timing is
+  unreliable for startup-time exits; the guards are unit-covered. (Attempted, reverted.)
 - Convert audit/inventory-discovery to worker-shared — implicit ordering fragility +
   documented state-leak risk; speedup not worth it.
 - Live migration fault-injection E2E — fragile; the failure→backup→rollback path stays

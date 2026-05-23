@@ -16,7 +16,9 @@ most cases.
   need to distinguish "item added/removed" from "item data changed" (e.g., quantity
   update should not reset the batch form). Derive a key from IDs only and compare.
 
-**snapshotEquals fields:** language, items (id + all display fields + updatedAt),
-personnel (id + name), alerts (id + status + quantity), backupPlan (all fields).
-If you add a new field to AppSnapshot, add it to `snapshotEquals` in
-`useInventoryState.ts` or components won't see changes to that field.
+**snapshotEquals fields:** language, currency, items (id + all display fields +
+updatedAt), personnel (id + name), alerts (id + status + quantity), backupPlan (all
+fields). If you add a new field to AppSnapshot, add it to `snapshotEquals` in
+`useInventoryState.ts` or components won't see changes to that field. (`currency` is
+compared so an app-currency switch re-formats prices live — see the optimistic update
+in `useInventoryState.ts`.)
