@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures/electron-app";
 import { navigateTo, expectSuccess } from "./fixtures/helpers";
 import { LAN_SCENARIOS, lanBaseUrl } from "./fixtures/lan-constants";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const RENDERER_ASSETS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "out", "renderer", "assets");
 
 // lan-access seed pre-configures LAN enabled on the lan-access port + key.
 const LAN_PORT = LAN_SCENARIOS["lan-access"].port;
@@ -212,6 +217,48 @@ test.describe.serial("LAN access and QR codes", () => {
     });
     await lanPanel.getByRole("button", { name: "Copy" }).click();
     await expect(lanPanel.locator(".feedback-banner--error")).toContainText("Unable to copy");
+  });
+
+  // Static serving is pre-auth, so these tests use /issue.html (always served, no
+  // key) for readiness + liveness. They must NOT depend on SEEDED_KEY: earlier tests
+  // in this serial spec regenerate the access key, which would make a keyed readiness
+  // poll time out here.
+  test("serves built static assets with the correct MIME type", async () => {
+    await expect.poll(() => fetch(`${BASE_URL}/issue.html`).then((r) => r.ok).catch(() => false)).toBe(true);
+
+    // Asset names are content-hashed, so discover a real .js bundle from the build.
+    const jsAsset = fs.readdirSync(RENDERER_ASSETS_DIR).find((f) => f.endsWith(".js"));
+    expect(jsAsset, "no built .js asset found — was the renderer built?").toBeTruthy();
+
+    const response = await fetch(`${BASE_URL}/assets/${jsAsset}`);
+    expect(response.status).toBe(200);
+    // Assert by prefix; charset/casing can vary by platform.
+    expect(response.headers.get("content-type") ?? "").toContain("javascript");
+  });
+
+  test("a directory under /assets returns 404 and does not crash the app (EISDIR regression)", async () => {
+    // GET /assets/ used to hit fs.readFileSync on a directory → EISDIR → an
+    // unhandled rejection the main process treats as fatal: an unauthenticated
+    // remote DoS, since static serving runs before auth. Must be a clean 404.
+    const dir = await fetch(`${BASE_URL}/assets/`);
+    expect(dir.status).toBe(404);
+
+    // Prove the server is still up afterwards (the bug crashed the whole app).
+    // Use the no-auth static route, not /api (the access key was regenerated above).
+    const liveness = await fetch(`${BASE_URL}/issue.html`);
+    expect(liveness.ok).toBe(true);
+  });
+
+  test("blocks path traversal out of the renderer directory", async () => {
+    // fetch normalizes literal "../", so use percent-encoded variants (also the
+    // Windows-relevant case). Either 403 (caught as traversal) or 404 is fine —
+    // what matters is it never serves a file outside the renderer dir.
+    for (const evil of ["/assets/%2e%2e/package.json", "/assets/..%2fpackage.json", "/assets/..%5cpackage.json"]) {
+      const res = await fetch(`${BASE_URL}${evil}`);
+      expect([403, 404]).toContain(res.status);
+      const body = await res.text();
+      expect(body).not.toContain("\"name\":");
+    }
   });
 
   test("disable LAN and verify stopped status", async ({ page }) => {
