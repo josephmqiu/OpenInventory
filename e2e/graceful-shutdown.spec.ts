@@ -1,12 +1,6 @@
 /**
  * E2E: Verify graceful shutdown disposes scoped resources.
  *
- * Launches a separate Electron instance, creates an item to prove the DB works,
- * closes the app, and then verifies the database file is not locked.
- */
-/**
- * E2E: Verify graceful shutdown disposes scoped resources.
- *
  * Launches a separate Electron instance, verifies the app boots,
  * closes it, and confirms the database file exists and is not locked
  * (verified by being readable as a regular file — we can't use

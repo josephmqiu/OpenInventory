@@ -1,11 +1,11 @@
 import { test, expect } from "./fixtures/electron-app";
 import { getLanItemIdByName, waitForLanReady } from "./fixtures/lan";
+import { LAN_SCENARIOS, lanBaseUrl } from "./fixtures/lan-constants";
 import type { Browser } from "@playwright/test";
 
-// lan-mobile seed pre-configures: LAN enabled on port 19879, access key, items + personnel.
-const LAN_PORT = 19879;
-const BASE_URL = `http://127.0.0.1:${LAN_PORT}`;
-const ACCESS_KEY = "e2e-mobile-access-key-2026";
+// lan-mobile seed pre-configures LAN enabled on the lan-mobile port + key, items + personnel.
+const BASE_URL = lanBaseUrl("lan-mobile");
+const ACCESS_KEY = LAN_SCENARIOS["lan-mobile"].accessKey;
 
 async function openMobileLookup(browser: Browser, itemId: string) {
   const ctx = await browser.newContext({ viewport: { width: 375, height: 812 } });
@@ -139,29 +139,8 @@ test.describe.serial("QR code mobile lookup flow", () => {
     }
   });
 
-  test("public issue POST is removed and stock remains unchanged", async ({ browser, app: _app }) => {
-    await waitForLanReady(BASE_URL);
-    const boltsItemId = await getLanItemIdByName(BASE_URL, ACCESS_KEY, "Bolts M6");
-    const { ctx, page } = await openMobileLookup(browser, boltsItemId);
-
-    try {
-      await expect(page.locator(".qi-card")).toBeVisible({ timeout: 10_000 });
-      await expect(page.locator(".qi-data-row--hero .qi-data-row__value")).toContainText("100");
-
-      const status = await page.evaluate(async ({ baseUrl, itemId }) => {
-        const response = await fetch(`${baseUrl}/public/items/${itemId}/issue`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ quantity: 5, performedBy: "Alice", reason: "QR issue" }),
-        });
-        return response.status;
-      }, { baseUrl: BASE_URL, itemId: boltsItemId });
-      expect(status).toBe(404);
-
-      await page.getByTestId("qi-refresh").click();
-      await expect(page.locator(".qi-data-row--hero .qi-data-row__value")).toContainText("100");
-    } finally {
-      await ctx.close();
-    }
-  });
+  // NOTE: the "public issue POST → 404 / stock unchanged" assertion lives in
+  // lan-access.spec.ts ("public lookup page works without auth and cannot mutate
+  // stock"). It was duplicated here; kept in lan-access as the security-boundary
+  // home so this mobile spec stays focused on the lookup UX.
 });

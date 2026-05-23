@@ -1,9 +1,20 @@
-import { isolatedTest as test, expect } from "./fixtures/electron-app";
+// Worker-shared `test`: every test here is read-only (drill-through navigation,
+// no DB mutation), so one Electron boot per worker is safe. The beforeEach resets
+// shared UI state a prior test's drill-through can leave behind (inventory filter
+// tab, search text, row selection, open details panel) so order can't leak.
+import { test, expect } from "./fixtures/electron-app";
 import { navigateTo } from "./fixtures/helpers";
 
 test.describe.serial("dashboard drill-through flows", () => {
   test.beforeEach(async ({ page }) => {
+    // Reset inventory view state, then land on a clean dashboard.
     await navigateTo(page, "inventory");
+    const backToList = page.getByRole("button", { name: /Back To List/i });
+    if (await backToList.count()) await backToList.first().click();
+    await page.getByRole("button", { name: /^All/i }).click();
+    await page.locator(".inventory-search").fill("");
+    const clearSelection = page.getByRole("button", { name: "Clear" });
+    if (await clearSelection.count()) await clearSelection.first().click();
     await navigateTo(page, "dashboard");
     await expect(page.locator(".topbar h2")).toHaveText("Dashboard");
   });

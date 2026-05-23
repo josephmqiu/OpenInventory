@@ -1,10 +1,18 @@
-import { isolatedTest as test, expect } from "./fixtures/electron-app";
+// Worker-shared `test`: smoke runs against the empty seed and every test is
+// read-only (navigation + empty-state assertions, no mutations), so one Electron
+// boot per worker is safe. Each test self-navigates; the beforeEach lands on a
+// known section so a prior test's route can't leak.
+import { test, expect } from "./fixtures/electron-app";
 import { navigateTo } from "./fixtures/helpers";
 
 const topbarTitle = (page: import("@playwright/test").Page) =>
   page.locator(".topbar h2");
 
 test.describe.serial("smoke tests (empty seed)", () => {
+  test.beforeEach(async ({ page }) => {
+    await navigateTo(page, "dashboard");
+  });
+
   test("all 4 sidebar nav sections render", async ({ page }) => {
     const sections: Array<{ id: string; title: string }> = [
       { id: "dashboard", title: "Dashboard" },
@@ -24,17 +32,12 @@ test.describe.serial("smoke tests (empty seed)", () => {
     await navigateTo(page, "inventory");
     await expect(topbarTitle(page)).toHaveText("Inventory");
 
-    // Table should exist but have zero body rows, or an empty state message is shown
-    const table = page.locator("table");
-    const emptyState = page.locator(".empty-state, .no-data, [class*='empty']");
-    const bodyRows = table.locator("tbody tr");
-
-    const hasTable = await table.count();
-    if (hasTable > 0) {
-      await expect(bodyRows).toHaveCount(0);
-    } else {
-      await expect(emptyState.first()).toBeVisible();
-    }
+    // On the empty seed, UnifiedInventoryTable renders the DataTable empty state
+    // (DataTable.tsx:102) with the "no inventory records" title — not a table with
+    // zero rows. Assert that real DOM directly (no silent if/else branch).
+    await expect(page.locator(".empty-state")).toBeVisible();
+    await expect(page.locator(".empty-state")).toContainText("No inventory records yet.");
+    await expect(page.locator("tbody tr")).toHaveCount(0);
   });
 
   test("empty personnel section shows no cards", async ({ page }) => {

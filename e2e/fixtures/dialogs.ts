@@ -63,6 +63,16 @@ export async function stubRestoreSelection(
     const invokeHandlers = (ipcMain as typeof ipcMain & {
       _invokeHandlers?: Map<string, UnknownHandler>;
     })._invokeHandlers;
+    // Guard the private Electron internal we snapshot here. If a future Electron
+    // renames/removes _invokeHandlers, fail loudly with a fixable message instead
+    // of silently capturing `undefined` (which would make restoreElectronTestStubs
+    // a no-op and leak stubbed handlers across the worker-shared backup tests).
+    if (!(invokeHandlers instanceof Map)) {
+      throw new Error(
+        "e2e: ipcMain._invokeHandlers is not a Map — Electron internal changed; " +
+          "update the stub/restore helpers in e2e/fixtures/dialogs.ts.",
+      );
+    }
     g.__e2eOriginalIpcHandlers ??= {};
     g.__e2eOriginalIpcHandlers["select-restore-source"] ??=
       invokeHandlers?.get("select-restore-source") ?? null;
@@ -86,6 +96,16 @@ export async function stubValidateBackupResult(
     const invokeHandlers = (ipcMain as typeof ipcMain & {
       _invokeHandlers?: Map<string, UnknownHandler>;
     })._invokeHandlers;
+    // Guard the private Electron internal we snapshot here. If a future Electron
+    // renames/removes _invokeHandlers, fail loudly with a fixable message instead
+    // of silently capturing `undefined` (which would make restoreElectronTestStubs
+    // a no-op and leak stubbed handlers across the worker-shared backup tests).
+    if (!(invokeHandlers instanceof Map)) {
+      throw new Error(
+        "e2e: ipcMain._invokeHandlers is not a Map — Electron internal changed; " +
+          "update the stub/restore helpers in e2e/fixtures/dialogs.ts.",
+      );
+    }
     g.__e2eOriginalIpcHandlers ??= {};
     g.__e2eOriginalIpcHandlers["validate-backup"] ??=
       invokeHandlers?.get("validate-backup") ?? null;
@@ -108,6 +128,16 @@ export async function stubRestoreFromBackupSuccess(
     const invokeHandlers = (ipcMain as typeof ipcMain & {
       _invokeHandlers?: Map<string, UnknownHandler>;
     })._invokeHandlers;
+    // Guard the private Electron internal we snapshot here. If a future Electron
+    // renames/removes _invokeHandlers, fail loudly with a fixable message instead
+    // of silently capturing `undefined` (which would make restoreElectronTestStubs
+    // a no-op and leak stubbed handlers across the worker-shared backup tests).
+    if (!(invokeHandlers instanceof Map)) {
+      throw new Error(
+        "e2e: ipcMain._invokeHandlers is not a Map — Electron internal changed; " +
+          "update the stub/restore helpers in e2e/fixtures/dialogs.ts.",
+      );
+    }
     g.__e2eOriginalIpcHandlers ??= {};
     g.__e2eRestoreCalls = [];
     g.__e2eOriginalIpcHandlers["restore-from-backup"] ??=

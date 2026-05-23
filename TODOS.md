@@ -198,3 +198,32 @@ implementation (test at 900px with a long page title).
 `src/renderer/update-ui-mockup.html`).
 
 **Files:** the new update chip component + `src/renderer/src/app/app.css`.
+
+---
+
+## E2E: dynamic LAN port allocation (Windows CI robustness)
+
+**What:** Replace the fixed per-scenario LAN ports (19877-19883) with OS-assigned
+(`port 0`) or worker-index-derived ports for E2E seeds, and have the test read the
+app's actually-bound port instead of hard-coding it.
+
+**Why:** On `windows-latest` (the only production CI target) with parallel workers +
+Playwright retries, a retried project re-binding its fixed port can hit a lingering
+socket (TIME_WAIT). Surfaced by Codex during the /plan-eng-review of the E2E
+optimization PR. Ports are currently unique-per-project, so cross-worker collision
+can't happen today — this hardens the retry edge only.
+
+**Pros:** Eliminates the port-bind flake class on the production CI platform.
+**Cons:** Non-trivial — the LAN port is written into the seeded DB at seed time and
+consumed by the app's LAN server; OS-assigned ports require the app to surface the
+chosen port back to the test (the app already logs LAN URLs, so a hook exists).
+
+**Context:** Deferred out of the E2E optimization PR (2026-05-23) as out-of-proportion
+to a test-optimization change. Revisit if Windows CI shows intermittent port-bind
+failures. Start at `e2e/scripts/generate-seeds.ts` (seedLanFixture) and the new
+`e2e/fixtures/lan-constants.ts`.
+
+**Depends on:** App surfacing its bound LAN port to tests (currently fixed via seed).
+
+**Files:** `e2e/scripts/generate-seeds.ts`, `e2e/fixtures/lan-constants.ts`, LAN specs,
+`src/main/services/LanServerService.ts` (port reporting).

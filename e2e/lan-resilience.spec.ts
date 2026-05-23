@@ -1,8 +1,9 @@
 import { isolatedTest as test, expect } from "./fixtures/electron-app";
 import { navigateTo } from "./fixtures/helpers";
+import { RESILIENCE_CONFLICT_PORT } from "./fixtures/lan-constants";
 import http from "node:http";
 
-const CONFLICT_PORT = 19883;
+const CONFLICT_PORT = RESILIENCE_CONFLICT_PORT;
 
 test.describe.serial("LAN resilience", () => {
   test("saving an occupied port moves LAN into the error state with actionable status text", async ({ page }) => {

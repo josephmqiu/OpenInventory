@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 type LaneName = "full" | "smoke" | "parallel-safe";
@@ -7,10 +8,29 @@ type LaneName = "full" | "smoke" | "parallel-safe";
 const lane = (process.argv[2] as LaneName | undefined) ?? "full";
 const build = process.argv.includes("--build");
 
+// Worker count is auto-derived rather than hard-coded per lane.
+//
+// Local dev (often 8+ cores): scale to min(cpus-1, 4) so a fast machine gets
+// real parallelism without starving the OS. Floor of 2 keeps slow/2-core boxes
+// running more than one Electron at a time.
+//
+// CI (windows-latest, the only production target, ~4 vCPU): default to 3. Each
+// worker is a full Electron instance, and on Windows the boot concurrency plus
+// SQLite/userData file locking can make 4 workers SLOWER and flakier, not
+// faster. The bump to 4 is gated on a Windows A/B (run the changed lanes 3x at
+// PW_WORKERS=3 and 4; adopt 4 only if faster AND 0-flaky across all three).
+//
+// `PW_WORKERS` always overrides, which is what the A/B uses.
+function autoWorkers(): number {
+  if (process.env.CI) return 3;
+  const cpus = os.cpus()?.length ?? 2;
+  return Math.max(2, Math.min(cpus - 1, 4));
+}
+
 const laneProjects: Record<LaneName, { projects: string[] | null; workers: number }> = {
   full: {
     projects: null,
-    workers: 2,
+    workers: autoWorkers(),
   },
   smoke: {
     projects: [
@@ -19,6 +39,8 @@ const laneProjects: Record<LaneName, { projects: string[] | null; workers: numbe
       "inventory-view",
       "stock",
     ],
+    // Smoke stays intentionally small and serial-light for fast local
+    // confidence; 2 workers is plenty for a 4-project lane.
     workers: 2,
   },
   "parallel-safe": {
@@ -37,8 +59,9 @@ const laneProjects: Record<LaneName, { projects: string[] | null; workers: numbe
       "i18n",
       "shutdown",
       "update",
+      "pricing",
     ],
-    workers: 3,
+    workers: autoWorkers(),
   },
 };
 

@@ -1,10 +1,16 @@
 import { test, expect } from "./fixtures/electron-app";
 import { navigateTo, expectSuccess } from "./fixtures/helpers";
+import { LAN_SCENARIOS, lanBaseUrl } from "./fixtures/lan-constants";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-// lan-access seed pre-configures: LAN enabled on port 19877, access key "e2e-lan-access-key-2026"
-const LAN_PORT = 19877;
-const BASE_URL = `http://127.0.0.1:${LAN_PORT}`;
-const SEEDED_KEY = "e2e-lan-access-key-2026";
+const RENDERER_ASSETS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "out", "renderer", "assets");
+
+// lan-access seed pre-configures LAN enabled on the lan-access port + key.
+const LAN_PORT = LAN_SCENARIOS["lan-access"].port;
+const BASE_URL = lanBaseUrl("lan-access");
+const SEEDED_KEY = LAN_SCENARIOS["lan-access"].accessKey;
 const LAN_GOTO_OPTIONS = { waitUntil: "domcontentloaded" as const, timeout: 20_000 };
 
 async function fetchSnapshot(key: string) {
@@ -155,19 +161,31 @@ test.describe.serial("LAN access and QR codes", () => {
     }
   });
 
-  test("LAN port validation prevents saving invalid values", async ({ page }) => {
+  test("LAN port validation keeps save disabled for invalid values", async ({ page }) => {
     await navigateTo(page, "settings");
     const lanPanel = page.locator(".panel:has-text('LAN Access')");
     await expect(lanPanel).toBeVisible({ timeout: 10_000 });
 
     const portInput = lanPanel.locator("input[type='number']");
-    await portInput.fill("0");
-    await expect(page.getByTestId("lan-save")).toBeDisabled();
+    for (const invalid of ["0", "-1", "70000"]) {
+      await portInput.fill(invalid);
+      await expect(page.getByTestId("lan-save")).toBeDisabled();
+    }
 
-    await portInput.fill("70000");
-    await expect(page.getByTestId("lan-save")).toBeDisabled();
-
+    // Restore a valid port before the test ends. This spec is worker-shared and
+    // serial; LanAccessPanel.handleToggle sends the component's formPort, so a
+    // dirtied invalid value here would make the later "disable LAN" toggle send an
+    // invalid port and fail (see learning lan_e2e_formport_state_leak).
     await portInput.fill(String(LAN_PORT));
+  });
+
+  test("LAN save stays disabled when the port is unchanged", async ({ page }) => {
+    await navigateTo(page, "settings");
+    const lanPanel = page.locator(".panel:has-text('LAN Access')");
+    await expect(lanPanel).toBeVisible({ timeout: 10_000 });
+
+    // Re-typing the already-saved port is not a change, so there is nothing to save.
+    await lanPanel.locator("input[type='number']").fill(String(LAN_PORT));
     await expect(page.getByTestId("lan-save")).toBeDisabled();
   });
 
@@ -199,6 +217,48 @@ test.describe.serial("LAN access and QR codes", () => {
     });
     await lanPanel.getByRole("button", { name: "Copy" }).click();
     await expect(lanPanel.locator(".feedback-banner--error")).toContainText("Unable to copy");
+  });
+
+  // Static serving is pre-auth, so these tests use /issue.html (always served, no
+  // key) for readiness + liveness. They must NOT depend on SEEDED_KEY: earlier tests
+  // in this serial spec regenerate the access key, which would make a keyed readiness
+  // poll time out here.
+  test("serves built static assets with the correct MIME type", async () => {
+    await expect.poll(() => fetch(`${BASE_URL}/issue.html`).then((r) => r.ok).catch(() => false)).toBe(true);
+
+    // Asset names are content-hashed, so discover a real .js bundle from the build.
+    const jsAsset = fs.readdirSync(RENDERER_ASSETS_DIR).find((f) => f.endsWith(".js"));
+    expect(jsAsset, "no built .js asset found — was the renderer built?").toBeTruthy();
+
+    const response = await fetch(`${BASE_URL}/assets/${jsAsset}`);
+    expect(response.status).toBe(200);
+    // Assert by prefix; charset/casing can vary by platform.
+    expect(response.headers.get("content-type") ?? "").toContain("javascript");
+  });
+
+  test("a directory under /assets returns 404 and does not crash the app (EISDIR regression)", async () => {
+    // GET /assets/ used to hit fs.readFileSync on a directory → EISDIR → an
+    // unhandled rejection the main process treats as fatal: an unauthenticated
+    // remote DoS, since static serving runs before auth. Must be a clean 404.
+    const dir = await fetch(`${BASE_URL}/assets/`);
+    expect(dir.status).toBe(404);
+
+    // Prove the server is still up afterwards (the bug crashed the whole app).
+    // Use the no-auth static route, not /api (the access key was regenerated above).
+    const liveness = await fetch(`${BASE_URL}/issue.html`);
+    expect(liveness.ok).toBe(true);
+  });
+
+  test("blocks path traversal out of the renderer directory", async () => {
+    // fetch normalizes literal "../", so use percent-encoded variants (also the
+    // Windows-relevant case). Either 403 (caught as traversal) or 404 is fine —
+    // what matters is it never serves a file outside the renderer dir.
+    for (const evil of ["/assets/%2e%2e/package.json", "/assets/..%2fpackage.json", "/assets/..%5cpackage.json"]) {
+      const res = await fetch(`${BASE_URL}${evil}`);
+      expect([403, 404]).toContain(res.status);
+      const body = await res.text();
+      expect(body).not.toContain("\"name\":");
+    }
   });
 
   test("disable LAN and verify stopped status", async ({ page }) => {

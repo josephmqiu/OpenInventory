@@ -31,4 +31,23 @@ test.describe.serial("software update", () => {
     // No update is ready, so the ambient restart chip must not appear.
     await expect(page.getByTestId("update-chip")).toHaveCount(0);
   });
+
+  // Kept last: stubs get-update-status for this worker without restoring, so it
+  // must not run before the up-to-date assertions above.
+  test("shows the restart chip when an update has finished downloading", async ({ page, app }) => {
+    // useAutoUpdate fetches get-update-status on mount; force a "downloaded" status
+    // and reload so the ambient chip renders (the dev updater otherwise reports
+    // not-available, which is why this state can't be reached organically in E2E).
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler("get-update-status");
+      ipcMain.handle("get-update-status", () => ({ stage: "downloaded", version: "0.1.5" }));
+    });
+
+    await page.reload();
+    await page.waitForSelector(".sidebar", { timeout: 30_000 });
+
+    const chip = page.getByTestId("update-chip");
+    await expect(chip).toBeVisible();
+    await expect(chip.locator(".update-chip__action")).toBeVisible();
+  });
 });

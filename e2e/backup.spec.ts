@@ -7,6 +7,7 @@ import {
   stubRestoreSelection,
   stubValidateBackupResult,
 } from "./fixtures/dialogs";
+import { removeDirWithRetry } from "./fixtures/fs-cleanup";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -20,9 +21,9 @@ test.describe.serial("backup and restore", () => {
     await restoreElectronTestStubs(app);
   });
 
-  test.afterAll(() => {
+  test.afterAll(async () => {
     if (backupDir) {
-      fs.rmSync(backupDir, { force: true, recursive: true });
+      await removeDirWithRetry(backupDir, "backup dir");
     }
   });
 
@@ -197,7 +198,7 @@ test.describe.serial("backup and restore", () => {
 
       await expectError(page, "No database.db found");
     } finally {
-      fs.rmSync(invalidDir, { recursive: true, force: true });
+      await removeDirWithRetry(invalidDir, "invalid restore dir");
     }
   });
 
