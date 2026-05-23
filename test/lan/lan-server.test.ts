@@ -12,7 +12,7 @@ import { Effect } from "effect";
 import http from "http";
 import { createTestDb, type TestDb } from "../setup/test-db";
 import { makeDatabaseService } from "../../src/main/services/DatabaseService";
-import { makeLanServerService, type LanServerServiceApi } from "../../src/main/services/LanServerService";
+import { isPrivateLanIpv4, makeLanServerService, type LanServerServiceApi } from "../../src/main/services/LanServerService";
 
 let t: TestDb;
 let dbService: ReturnType<typeof makeDatabaseService>;
@@ -45,6 +45,17 @@ afterEach(async () => {
 });
 
 describe("LanServerService", () => {
+  it("keeps browser-facing URLs to private LAN IPv4 addresses", () => {
+    expect(isPrivateLanIpv4("192.168.0.102")).toBe(true);
+    expect(isPrivateLanIpv4("10.0.0.8")).toBe(true);
+    expect(isPrivateLanIpv4("172.16.0.8")).toBe(true);
+    expect(isPrivateLanIpv4("172.31.255.255")).toBe(true);
+    expect(isPrivateLanIpv4("198.18.0.1")).toBe(false);
+    expect(isPrivateLanIpv4("127.0.0.1")).toBe(false);
+    expect(isPrivateLanIpv4("172.32.0.1")).toBe(false);
+    expect(isPrivateLanIpv4("not-an-ip")).toBe(false);
+  });
+
   it("starts in stopped state with no prior settings", async () => {
     const state = await run(lanService.loadState());
     expect(state.status).toBe("stopped");

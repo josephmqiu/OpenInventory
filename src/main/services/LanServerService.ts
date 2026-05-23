@@ -27,13 +27,30 @@ export class LanServerService extends Context.Tag("LanServerService")<
 
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
 
+export function isPrivateLanIpv4(address: string): boolean {
+  const parts = address.split(".").map((part) => Number(part));
+  if (
+    parts.length !== 4 ||
+    parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
+  ) {
+    return false;
+  }
+
+  const [a, b] = parts;
+  return (
+    a === 10 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  );
+}
+
 function getLocalIps(): string[] {
   const interfaces = os.networkInterfaces();
   const ips: string[] = [];
   for (const [, addrs] of Object.entries(interfaces)) {
     if (!addrs) continue;
     for (const addr of addrs) {
-      if (addr.family === "IPv4" && !addr.internal) {
+      if (addr.family === "IPv4" && !addr.internal && isPrivateLanIpv4(addr.address)) {
         ips.push(addr.address);
       }
     }
