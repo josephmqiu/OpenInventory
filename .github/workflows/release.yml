@@ -109,23 +109,32 @@ jobs:
           }
           Write-Host "Canonical R2 latest.yml confirmed at version $expected."
 
-          # 4b. Best-effort edge check — clients read the public r2.dev edge, which
-          #     caches and can lag tens of seconds after a write. Probe it with
-          #     generous retries, but only WARN on persistent lag: the canonical
-          #     object above is already correct and the edge will catch up. A hard
-          #     fail here was a false negative that reddened releases that in fact
-          #     published fine (the .exe + blockmap were verified readable above).
-          $edgeOk = $false
+          # 4b. Public-edge consumability check — clients fetch latest.yml from the
+          #     r2.dev edge, so confirm that endpoint actually works. Distinguish two
+          #     failure modes the previous single `throw` conflated:
+          #       * readable (HTTP 200) but stale version  -> edge cache lag. Benign:
+          #         the canonical object (4a) is correct and the edge TTL will catch
+          #         up, so WARN rather than red a release that genuinely shipped.
+          #       * never readable (404/403/timeout) after retries -> clients cannot
+          #         consume the release at all (public routing/ACL/caching broken).
+          #         THROW — this is the real failure the hard check must still catch.
+          $edgeReadable = $false   # got HTTP 200 for latest.yml at all
+          $edgeVersionOk = $false  # 200 AND it is the expected version
           for ($i = 1; $i -le 6; $i++) {
             try {
               $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
               $pointer = Invoke-WebRequest -Uri "$publicBase/latest.yml?cb=$bust" -Headers @{ 'Cache-Control' = 'no-cache' } -TimeoutSec 30 -UseBasicParsing
-              if ($pointer.Content -match "(?m)^version:\s*$([regex]::Escape($expected))\s*$") { $edgeOk = $true; break }
+              if ($pointer.StatusCode -eq 200) {
+                $edgeReadable = $true
+                if ($pointer.Content -match "(?m)^version:\s*$([regex]::Escape($expected))\s*$") { $edgeVersionOk = $true; break }
+              }
             } catch { }
             Start-Sleep -Seconds 10
           }
-          if ($edgeOk) {
+          if ($edgeVersionOk) {
             Write-Host "Release $expected published and verified consumable (canonical + edge)."
+          } elseif ($edgeReadable) {
+            Write-Warning "Public latest.yml is readable but still served a stale version after retries. The canonical R2 object is correct at $expected and the edge cache will catch up shortly; not failing the release."
           } else {
-            Write-Warning "Public r2.dev edge still served a stale latest.yml after retries. The canonical R2 object is correct at $expected and the edge cache will catch up shortly; not failing the release."
+            throw "Public latest.yml at $publicBase is not readable after retries — auto-update clients cannot consume this release (check R2 public routing/ACL/caching)."
           }
