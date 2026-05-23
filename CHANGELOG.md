@@ -4,6 +4,29 @@ All notable changes to OpenInventory will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-05-23
+
+### Added
+- You can now give each item an optional unit price and choose the app's currency (CNY, USD, EUR, or GBP). Prices appear in the inventory table and item details, formatted for your currency and language, and the price column sorts (items without a price sort to the end). Items priced in one currency keep their numbers if you switch currency — only the symbol changes.
+- Prices are visible on the phone/QR lookup too, so someone scanning an item's code sees its current price alongside stock.
+
+### Changed
+- LAN access is now read-only. The phone/QR lookup shows item details (including price and stock) but can no longer issue stock — every stock change goes through the desktop app, so there's a single source of truth. In production the LAN server serves only the lookup page, never the admin interface.
+- On startup, OpenInventory now takes a verified backup before applying any database schema change, and refuses to open a database created by a newer version of the app (a downgrade can't silently corrupt your data). If a database upgrade fails, it offers a one-click rollback to the pre-update backup and won't keep retrying the same failed upgrade on every launch. Old pre-update backups are pruned automatically, keeping the most recent few.
+
+### Fixed
+- Out-of-stock and low-stock labels in the inventory table are readable again — they render as colored text instead of an unreadable solid red block.
+
+### Security
+- Closed a flaw where an unauthenticated LAN request for a directory path (such as `/assets/`) could crash the app. Static file serving now returns a clean 404 for non-files, and rejects path-traversal attempts.
+
+### For contributors
+- New `unit_price_minor` column (migration v6) stores prices as integer minor units; an `app.currency` setting drives `Intl`-based formatting. Currency changes update optimistically and roll back if the write fails. `snapshotEquals` now compares `currency` so a switch re-formats prices live.
+- Startup data-safety lives in `migrationSafety.ts` (verified pre-migration backup, downgrade guard via `schema_migrations` max version, rollback-marker loop guard, backup pruning), with unit + integration coverage.
+- LAN hardening: removed the public stock-issue endpoints; `serveStaticFile` guards reads with `statSync().isFile()`; production routing restricted to the QR lookup.
+- E2E suite optimization: Playwright worker count auto-derives from CPU count (CI fixed at 3); read-only specs converted to share one Electron instance per worker; a duplicated test removed; LAN ports/keys centralized in `e2e/fixtures/lan-constants.ts`; several silent-pass and fragile-cleanup issues fixed. New end-to-end coverage for item pricing + currency, LAN static-asset serving (including the directory-path DoS regression and path traversal), and the update-ready chip. The suite went from 92 tests / 116s to 103 tests / ~52s, 0 flaky locally. Migration-safety startup guards stay unit-covered (an E2E layer proved unreliable under Playwright's Electron). Fixed the inventory price column's missing width so its sort header is clickable.
+- Release pipeline: R2 release uploads are ordered and verified for consumability before the release is activated.
+
 ## [0.1.5] - 2026-05-22
 
 ### Added
