@@ -47,5 +47,6 @@ export default defineConfig({
     { name: "i18n", testMatch: /theme-and-language\.spec/, use: { seedScenario: "empty" } },
     { name: "shutdown", testMatch: /graceful-shutdown\.spec/, use: { seedScenario: "none" } },
     { name: "regression", testMatch: /regression\.spec/, use: { seedScenario: "inventory-basics" } },
+    { name: "pricing", testMatch: /pricing\.spec/, use: { seedScenario: "pricing" } },
   ],
 });

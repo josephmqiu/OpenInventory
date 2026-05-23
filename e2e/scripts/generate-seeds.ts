@@ -40,7 +40,14 @@ function insertItem(
   id: string,
   sku: string,
   name: string,
-  opts: { category?: string; unit?: string; reorderQty?: number; currentQty?: number; status?: string } = {},
+  opts: {
+    category?: string;
+    unit?: string;
+    reorderQty?: number;
+    currentQty?: number;
+    status?: string;
+    priceMinor?: number | null;
+  } = {},
 ): void {
   const currentQty = opts.currentQty ?? 100;
   const reorderQty = opts.reorderQty ?? 10;
@@ -48,9 +55,9 @@ function insertItem(
   db.prepare(
     `INSERT INTO inventory_items
      (id, sku, barcode, name, category, location_id, supplier_id, unit_of_measure,
-      reorder_quantity, current_quantity, status, created_at, updated_at)
-     VALUES (?, ?, NULL, ?, ?, NULL, NULL, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
-  ).run(id, sku, name, opts.category ?? "Raw Material", opts.unit ?? "pcs", reorderQty, currentQty, status);
+      reorder_quantity, current_quantity, status, unit_price_minor, created_at, updated_at)
+     VALUES (?, ?, NULL, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+  ).run(id, sku, name, opts.category ?? "Raw Material", opts.unit ?? "pcs", reorderQty, currentQty, status, opts.priceMinor ?? null);
 }
 
 function insertPersonnel(db: Database.Database, id: string, name: string): void {
@@ -243,6 +250,32 @@ function seedNoPersonnelLan(dbPath: string): void {
   });
 }
 
+// ─── Seed: pricing ───────────────────────────────────────────────────────────
+//
+// App currency CNY (¥, 2-decimal). Items have distinct prices plus one null-price
+// item so the price-column sort can be asserted in both directions (null sorts as
+// -1: first ascending, last descending). The pricing spec reads these for the
+// sort/details/currency tests and creates its OWN throwaway item for the
+// create→modify→clear arc, so a create failure can't corrupt the read tests.
+
+function seedPricing(dbPath: string): void {
+  const db = createFreshDb(dbPath);
+
+  insertItem(db, "item-bolts", "SKU-BOLTS-M6", "Bolts M6", { currentQty: 100, reorderQty: 20, priceMinor: 1250 }); // ¥12.50
+  insertItem(db, "item-nuts", "SKU-NUTS-M6", "Nuts M6", { currentQty: 50, reorderQty: 10, priceMinor: 599 }); // ¥5.99
+  insertItem(db, "item-washers", "SKU-WASHERS-M6", "Washers M6", { currentQty: 30, reorderQty: 10, priceMinor: 8800 }); // ¥88.00
+  insertItem(db, "item-gizmo", "SKU-GIZMO", "Gizmo", { currentQty: 40, reorderQty: 10, priceMinor: null }); // no price
+
+  insertPersonnel(db, "person-alice", "Alice");
+  insertPersonnel(db, "person-bob", "Bob");
+
+  writeSetting(db, "app.currency", "CNY");
+  // Pin the language so Intl currency formatting is deterministic in assertions.
+  writeSetting(db, "app.language", "en");
+
+  db.close();
+}
+
 // ─── Seed: backup-overdue ────────────────────────────────────────────────────
 
 function seedBackupOverdue(dbPath: string): void {
@@ -302,6 +335,7 @@ function main(): void {
     "no-personnel-lan": seedNoPersonnelLan,
     "backup-overdue": seedBackupOverdue,
     "backup-error": seedBackupError,
+    pricing: seedPricing,
   };
 
   for (const [name, seed] of Object.entries(scenarios)) {

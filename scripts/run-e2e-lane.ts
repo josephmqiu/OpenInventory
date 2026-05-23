@@ -59,6 +59,7 @@ const laneProjects: Record<LaneName, { projects: string[] | null; workers: numbe
       "i18n",
       "shutdown",
       "update",
+      "pricing",
     ],
     workers: autoWorkers(),
   },
