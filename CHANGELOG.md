@@ -4,6 +4,17 @@ All notable changes to OpenInventory will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-05-25
+
+### Added
+- The inventory table is now yours to arrange. A **Columns** menu lets you show or hide columns (including ones that are off by default, like Category), and you can drag a column's right edge to resize it or drag its header to reorder it. Your layout is remembered on each machine, and a **Reset** returns to the shipped default.
+- The Activity Log table gets the same Columns menu for showing/hiding and reordering its columns (resize isn't offered there yet).
+
+### For contributors
+- New `useTableColumns(persistKey, catalog)` hook owns per-table column state — visibility, order, and px widths — persisted to `localStorage["oi-table-cols:<key>"]` with guarded read/write (mirrors `useTheme`). `DataTable` stays presentational: it gained optional `onColumnReorder`/`onColumnResize` callbacks, a `<colgroup>` driven by `ColumnDef.width`, and per-`<th>` drag/resize affordances. Menu + persistence live in `UnifiedInventoryTable`/`AuditLogTable`, not in `DataTable`.
+- Inventory column widths moved from CSS `.col-*` percentage classes to per-column px widths (`ColumnDef.defaultWidth` → colgroup). The now-dead `.col-*` rules were removed from `app.css`, and the master sort E2E specs were repointed from `th.col-qty`/`th.col-price` selectors to the sortable header button by text.
+- This work was built earlier but orphaned: PRs #29/#30 merged into intermediate stacked branches instead of master, so it never reached v0.1.6. Recovered by cherry-picking onto current master.
+
 ## [0.1.6] - 2026-05-23
 
 ### Added

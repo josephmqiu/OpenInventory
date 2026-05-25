@@ -470,3 +470,90 @@ describe("DataTable sorting", () => {
     expect(onSortChange).not.toHaveBeenCalled();
   });
 });
+
+describe("DataTable configurable columns (resize + reorder)", () => {
+  // name is pinned (structural); value + id are reorderable. value + name are
+  // sortable, so this exercises the three-gesture header on the real button shape.
+  const cols: ColumnDef<TestRow>[] = [
+    { key: "name", header: "Name", pin: "start", sortable: true, sortKey: "name", render: (r) => r.name },
+    { key: "value", header: "Value", sortable: true, sortKey: "value", render: (r) => r.value },
+    { key: "id", header: "ID", render: (r) => r.id },
+  ];
+
+  it("adds the table--fluid class only when fluid is set", () => {
+    const { container, rerender } = renderWithI18n(
+      <DataTable columns={cols} data={rows} rowKey={(r) => r.id} />,
+    );
+    expect(container.querySelector("table")?.classList.contains("table--fluid")).toBe(false);
+    rerender(<DataTable columns={cols} data={rows} rowKey={(r) => r.id} fluid />);
+    expect(container.querySelector("table")?.classList.contains("table--fluid")).toBe(true);
+  });
+
+  it("renders resize handles on all but the last column when onColumnResize is set", () => {
+    const { container } = renderWithI18n(
+      <DataTable columns={cols} data={rows} rowKey={(r) => r.id} onColumnResize={vi.fn()} />,
+    );
+    expect(container.querySelectorAll(".col-resize-handle")).toHaveLength(cols.length - 1);
+  });
+
+  it("renders no resize handles without onColumnResize", () => {
+    const { container } = renderWithI18n(
+      <DataTable columns={cols} data={rows} rowKey={(r) => r.id} />,
+    );
+    expect(container.querySelectorAll(".col-resize-handle")).toHaveLength(0);
+  });
+
+  it("resize-handle pointerdown does not trigger a sort", () => {
+    const onSortChange = vi.fn();
+    const { container } = renderWithI18n(
+      <DataTable
+        columns={cols}
+        data={rows}
+        rowKey={(r) => r.id}
+        sortState={null}
+        onSortChange={onSortChange}
+        onColumnResize={vi.fn()}
+      />,
+    );
+    fireEvent.pointerDown(container.querySelector(".col-resize-handle")!, { clientX: 100 });
+    expect(onSortChange).not.toHaveBeenCalled();
+  });
+
+  it("makes non-pinned headers draggable and leaves pinned ones static", () => {
+    const { container } = renderWithI18n(
+      <DataTable columns={cols} data={rows} rowKey={(r) => r.id} onColumnReorder={vi.fn()} />,
+    );
+    const ths = container.querySelectorAll("thead th");
+    expect(ths[0].getAttribute("draggable")).toBeNull(); // name (pinned)
+    expect(ths[1].getAttribute("draggable")).toBe("true"); // value
+  });
+
+  it("dropping one header onto another calls onColumnReorder", () => {
+    const onColumnReorder = vi.fn();
+    const { container } = renderWithI18n(
+      <DataTable columns={cols} data={rows} rowKey={(r) => r.id} onColumnReorder={onColumnReorder} />,
+    );
+    const ths = container.querySelectorAll("thead th");
+    fireEvent.dragStart(ths[1], { dataTransfer: {} }); // value
+    fireEvent.dragOver(ths[2], { dataTransfer: {} });
+    fireEvent.drop(ths[2], { dataTransfer: {} }); // onto id
+    expect(onColumnReorder).toHaveBeenCalledWith("value", "id", expect.any(Boolean));
+  });
+
+  it("a sortable + reorderable + resizable header still fires sort on click", () => {
+    const onSortChange = vi.fn();
+    renderWithI18n(
+      <DataTable
+        columns={cols}
+        data={rows}
+        rowKey={(r) => r.id}
+        sortState={null}
+        onSortChange={onSortChange}
+        onColumnResize={vi.fn()}
+        onColumnReorder={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Value/i }));
+    expect(onSortChange).toHaveBeenCalledWith({ key: "value", dir: "asc" });
+  });
+});

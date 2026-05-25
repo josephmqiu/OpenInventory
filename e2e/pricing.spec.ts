@@ -34,7 +34,9 @@ test.describe.serial("item pricing and currency", () => {
   test("sorting by price puts null prices first ascending and last descending", async ({ page }) => {
     await navigateTo(page, "inventory");
 
-    const priceHeader = page.locator("th.col-price .th-sortable__button");
+    // Configurable columns moved widths from CSS `.col-price` classes to px
+    // ColumnDef widths, so target the sortable button by its header text.
+    const priceHeader = page.locator("thead .th-sortable__button", { hasText: "Price" });
     const rowNames = page.locator("tbody tr .cell-title");
 
     await priceHeader.click();

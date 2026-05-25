@@ -900,6 +900,161 @@ th {
   color: var(--accent);
 }
 
+/* ---- Configurable columns (show/hide + resize + reorder) ---- */
+
+/* Opt-in: stretch table so the last (unsized) column flexes. Base table rule
+   stays width:max-content so non-adopting tables are unaffected. */
+.table--fluid {
+  width: 100%;
+}
+.table--fluid th {
+  position: relative;
+}
+
+.th-static {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Drag-to-resize grip on a column's right edge. */
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+.col-resize-handle::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: transparent;
+}
+.col-resize-handle:hover::after {
+  background: var(--accent);
+}
+
+/* Drag-to-reorder headers + drop indicator. */
+.th-reorderable {
+  cursor: grab;
+}
+.th-reorderable:active {
+  cursor: grabbing;
+}
+th.drop-before {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+th.drop-after {
+  box-shadow: inset -2px 0 0 var(--accent);
+}
+
+/* Popover menu (reusable) */
+.popover-menu {
+  position: relative;
+  display: inline-block;
+}
+.popover-menu__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 220px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  animation: popover-in 150ms ease-out;
+}
+@keyframes popover-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Columns menu */
+.columns-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.columns-menu__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.columns-menu {
+  display: flex;
+  flex-direction: column;
+}
+.columns-menu__section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  padding: 8px 8px 4px;
+}
+.columns-menu__opt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+}
+.columns-menu__opt:hover {
+  background: var(--raised);
+}
+.columns-menu__opt input {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+.columns-menu__opt-label {
+  flex: 1;
+}
+.columns-menu__opt--locked {
+  color: var(--text-dim);
+  cursor: default;
+}
+.columns-menu__opt--locked:hover {
+  background: transparent;
+}
+.columns-menu__opt--locked input {
+  cursor: not-allowed;
+}
+.columns-menu__lock {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.columns-menu__reset {
+  margin-top: 4px;
+  padding: 8px;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.columns-menu__reset:hover {
+  background: var(--raised);
+}
+
 td {
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
@@ -950,20 +1105,10 @@ tr:hover td {
   text-overflow: ellipsis;
 }
 
-/* Column widths for slim tables
-   ItemManagement (7 cols): 4+22+22+16+12+12+12 = 100%
-   Inventory (9 cols): checkbox 4 + name 20 + sku 16 + location 13 + qty 9 +
-   reorder 9 + price 11 + status 10 = 92%; actions takes the ~8% remainder.
-   table-layout is fixed, so the price column needs an explicit width — without
-   one it collapsed and its sort header overflowed into the status column. */
+/* The selection checkbox column. Inventory column widths used to live here as
+   `.col-*` percentage rules; configurable columns moved them to per-column px
+   widths (ColumnDef.defaultWidth → colgroup), so only the checkbox remains. */
 .col-checkbox { width: 4%; }
-.col-name { width: 20%; }
-.col-sku { width: 16%; }
-.col-location { width: 13%; }
-.col-qty { width: 9%; }
-.col-reorder { width: 9%; }
-.col-price { width: 11%; }
-.col-status { width: 10%; }
 
 /* Clickable rows */
 .row-clickable {
@@ -1171,6 +1316,13 @@ button.button-icon-only svg {
 .backup-config input:focus,
 .backup-config select:focus {
   border-color: var(--accent);
+}
+
+/* Native option popup defaults to OS colors (unreadable in dark mode). */
+.form-grid select option,
+.backup-config select option {
+  background: var(--surface);
+  color: var(--text);
 }
 
 .form-grid input::placeholder,
@@ -2277,6 +2429,13 @@ td input[type="checkbox"] {
 .audit-row--anomaly {
   border-left: 3px solid var(--warning);
   background: var(--warning-muted);
+}
+
+/* Columns menu sits above the activity-log table, right-aligned. */
+.audit-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
 
 .audit-pagination {

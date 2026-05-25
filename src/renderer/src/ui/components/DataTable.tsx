@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 export interface SortState {
   key: string;
@@ -10,7 +10,7 @@ export interface ColumnDef<TRow> {
   key: string;
   /** Content rendered inside <th> */
   header: ReactNode;
-  /** CSS width for <col> (e.g. "20%") */
+  /** CSS width for <col> (e.g. "20%" or "240px") */
   width?: string;
   /** CSS class applied to every <td> in this column */
   className?: string;
@@ -22,7 +22,23 @@ export interface ColumnDef<TRow> {
   sortable?: boolean;
   /** Data field key used for sorting. Required when sortable is true. */
   sortKey?: string;
+  // ---- Configurable-columns metadata (consumed by useTableColumns / the menu) ----
+  /** false = structural, can never be hidden (default: true). */
+  hideable?: boolean;
+  /** Pinned position; excluded from reorder. */
+  pin?: "start" | "end";
+  /** Shown out of the box (= today's layout). Absent/false ⇒ off by default. */
+  defaultVisible?: boolean;
+  /** Baseline px width before any user resize. */
+  defaultWidth?: number;
+  /** Plain-text label for the visibility menu (header is ReactNode, unsafe as a label). */
+  menuLabel?: string;
+  /** Server-side sort key (reserved for tables that sort via the backend). */
+  backendSortKey?: string;
 }
+
+/** Minimum column width (px) a resize drag can produce. */
+export const MIN_COLUMN_WIDTH = 64;
 
 export interface DataTableProps<TRow> {
   columns: ColumnDef<TRow>[];
@@ -45,6 +61,9 @@ export interface DataTableProps<TRow> {
   className?: string;
   /** data-testid passed through to <table> */
   testId?: string;
+  /** Stretch the table to 100% width so the last (unsized) column flexes.
+   *  Opt-in per table — the shared base rule stays `width: max-content`. */
+  fluid?: boolean;
   /** Checkbox selection support */
   selection?: {
     selectedIds: string[];
@@ -57,6 +76,10 @@ export interface DataTableProps<TRow> {
   sortState?: SortState | null;
   /** Called when a sortable column header is clicked with the new sort state */
   onSortChange?: (newState: SortState | null) => void;
+  /** Enables pointer column resizing. Called on drag with the new width in px. */
+  onColumnResize?: (key: string, widthPx: number) => void;
+  /** Enables header drag-to-reorder. Called on drop. Pinned columns never move. */
+  onColumnReorder?: (srcKey: string, targetKey: string, after: boolean) => void;
 }
 
 function nextSortState(current: SortState | null | undefined, sortKey: string): SortState | null {
@@ -87,10 +110,18 @@ export function DataTable<TRow>({
   rowClassName,
   className,
   testId,
+  fluid,
   selection,
   sortState,
   onSortChange,
+  onColumnResize,
+  onColumnReorder,
 }: DataTableProps<TRow>) {
+  // Resize/reorder transient state. resizingRef guards reorder from firing mid-resize.
+  const resizingRef = useRef(false);
+  const dragKeyRef = useRef<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ key: string; after: boolean } | null>(null);
+
   if (loading) {
     return (
       <div className="empty-state">
@@ -109,10 +140,31 @@ export function DataTable<TRow>({
   }
 
   const hasWidths = columns.some((c) => c.width) || !!selection;
+  const tableClass = [className, fluid ? "table--fluid" : ""].filter(Boolean).join(" ") || undefined;
+
+  const startResize = (e: React.PointerEvent<HTMLSpanElement>, key: string) => {
+    if (!onColumnResize) return;
+    e.preventDefault();
+    e.stopPropagation();
+    resizingRef.current = true;
+    const th = e.currentTarget.closest("th");
+    const startX = e.clientX;
+    const startW = th ? th.getBoundingClientRect().width : 0;
+    const onMove = (ev: PointerEvent) => {
+      onColumnResize(key, Math.max(MIN_COLUMN_WIDTH, Math.round(startW + ev.clientX - startX)));
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   return (
     <div className="table-wrap">
-      <table className={className} data-testid={testId}>
+      <table className={tableClass} data-testid={testId}>
         {hasWidths && (
           <colgroup>
             {selection && <col style={{ width: "4%" }} />}
@@ -127,6 +179,7 @@ export function DataTable<TRow>({
               <th className="col-checkbox">
                 <label className="checkbox-cell">
                   <input
+                    aria-label="Select all rows"
                     checked={selection.allSelected}
                     onChange={selection.onToggleAll}
                     type="checkbox"
@@ -134,29 +187,80 @@ export function DataTable<TRow>({
                 </label>
               </th>
             )}
-            {columns.map((col) => {
+            {columns.map((col, i) => {
               const sk = col.sortKey ?? col.key;
-              if (col.sortable && onSortChange) {
-                return (
-                  <th
-                    key={col.key}
-                    className={`th-sortable${col.headerClassName ? ` ${col.headerClassName}` : ""}`}
-                    aria-sort={sortAriaSort(sortState, sk)}
-                  >
-                    <button
-                      type="button"
-                      className="th-sortable__button"
-                      onClick={() => onSortChange(nextSortState(sortState, sk))}
-                    >
-                      {col.header}
-                      <SortIndicator sortState={sortState} sortKey={sk} />
-                    </button>
-                  </th>
-                );
-              }
-              return (
-                <th key={col.key} className={col.headerClassName}>
+              const reorderable = !!onColumnReorder && !col.pin;
+              const resizable = !!onColumnResize && i < columns.length - 1;
+              const dropClass =
+                dropTarget && dropTarget.key === col.key
+                  ? dropTarget.after
+                    ? " drop-after"
+                    : " drop-before"
+                  : "";
+
+              const headerContent = col.sortable && onSortChange ? (
+                <button
+                  type="button"
+                  className="th-sortable__button"
+                  onClick={() => onSortChange(nextSortState(sortState, sk))}
+                >
                   {col.header}
+                  <SortIndicator sortState={sortState} sortKey={sk} />
+                </button>
+              ) : (
+                <span className="th-static">{col.header}</span>
+              );
+
+              const thProps: React.ThHTMLAttributes<HTMLTableCellElement> & { "aria-sort"?: "ascending" | "descending" | "none" } = {};
+              if (col.sortable && onSortChange) thProps["aria-sort"] = sortAriaSort(sortState, sk);
+              if (reorderable) {
+                thProps.draggable = true;
+                thProps.onDragStart = (e) => {
+                  if (resizingRef.current) {
+                    e.preventDefault();
+                    return;
+                  }
+                  dragKeyRef.current = col.key;
+                  if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+                };
+                thProps.onDragOver = (e) => {
+                  if (!dragKeyRef.current || dragKeyRef.current === col.key) return;
+                  e.preventDefault();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setDropTarget({ key: col.key, after: e.clientX > r.left + r.width / 2 });
+                };
+                thProps.onDrop = (e) => {
+                  const src = dragKeyRef.current;
+                  if (!src || src === col.key) return;
+                  e.preventDefault();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  onColumnReorder!(src, col.key, e.clientX > r.left + r.width / 2);
+                  dragKeyRef.current = null;
+                  setDropTarget(null);
+                };
+                thProps.onDragEnd = () => {
+                  dragKeyRef.current = null;
+                  setDropTarget(null);
+                };
+              }
+
+              const headerClassName =
+                (col.sortable && onSortChange ? "th-sortable" : "") +
+                (col.headerClassName ? ` ${col.headerClassName}` : "") +
+                (reorderable ? " th-reorderable" : "") +
+                dropClass;
+
+              return (
+                <th key={col.key} className={headerClassName.trim() || undefined} {...thProps}>
+                  {headerContent}
+                  {resizable && (
+                    <span
+                      className="col-resize-handle"
+                      aria-hidden="true"
+                      draggable={false}
+                      onPointerDown={(e) => startResize(e, col.key)}
+                    />
+                  )}
                 </th>
               );
             })}
@@ -177,6 +281,7 @@ export function DataTable<TRow>({
                 {selection && (
                   <td onClick={(e) => e.stopPropagation()}>
                     <input
+                      aria-label="Select row"
                       checked={selection.selectedIds.includes(selection.getId(row))}
                       onChange={() => selection.onToggle(selection.getId(row))}
                       type="checkbox"

@@ -7,6 +7,8 @@ import { buildQrLabelExportPayload, buildQrLabelExportPayloads } from "../export
 import { useTT } from "../hooks/useTT";
 import { sortData } from "../utils/sortData";
 import { DataTable, type ColumnDef, type SortState } from "./DataTable";
+import { ColumnsMenu } from "./ColumnsMenu";
+import { useTableColumns } from "../hooks/useTableColumns";
 import { ItemDetailsPanel } from "./ItemDetailsPanel";
 
 interface UnifiedInventoryTableProps {
@@ -114,6 +116,10 @@ export function UnifiedInventoryTable({
         case "reorderQuantity": return row.reorderQuantity;
         case "unitPriceMinor": return row.unitPriceMinor ?? -1;
         case "status": return row.status;
+        case "category": return row.category;
+        case "unit": return row.unit;
+        case "supplier": return row.supplier;
+        case "lastUpdated": return row.lastUpdated;
         default: return undefined;
       }
     }),
@@ -174,68 +180,86 @@ export function UnifiedInventoryTable({
     }
   };
 
-  // --- Column definitions ---
+  // --- Column catalog ---
+  // Default-visible columns + their order = today's layout. The extra fields
+  // (category/unit/supplier/lastUpdated) ship off-by-default and can be added
+  // from the Columns menu. Name is pinned first, Actions pinned last; both are
+  // structural (never hidden or reordered).
 
-  const columns = useMemo<ColumnDef<InventoryItem>[]>(() => [
+  const catalog = useMemo<ColumnDef<InventoryItem>[]>(() => [
     {
       key: "name",
       header: tt("itemName", "Item Name"),
+      menuLabel: tt("itemName", "Item Name"),
       className: "cell-title",
-      headerClassName: "col-name",
       sortable: true,
       sortKey: "name",
       render: (item) => item.name,
+      pin: "start",
+      hideable: false,
+      defaultVisible: true,
+      defaultWidth: 200,
     },
     {
       key: "sku",
       header: tt("sku", "SKU"),
+      menuLabel: tt("sku", "SKU"),
       className: "cell-mono cell-truncate",
-      headerClassName: "col-sku",
       sortable: true,
       sortKey: "sku",
       render: (item) => item.sku,
+      defaultVisible: true,
+      defaultWidth: 130,
     },
     {
       key: "location",
       header: tt("location", "Location"),
-      headerClassName: "col-location",
+      menuLabel: tt("location", "Location"),
       sortable: true,
       sortKey: "location",
       render: (item) => item.location,
+      defaultVisible: true,
+      defaultWidth: 130,
     },
     {
       key: "qty",
       header: tt("currentQuantity", "Qty"),
+      menuLabel: tt("currentQuantity", "Qty"),
       className: "cell-strong",
-      headerClassName: "col-qty",
       sortable: true,
       sortKey: "currentQuantity",
       render: (item) => item.currentQuantity,
+      defaultVisible: true,
+      defaultWidth: 90,
     },
     {
       key: "reorder",
       header: tt("reorderLevel", "Reorder"),
-      headerClassName: "col-reorder",
+      menuLabel: tt("reorderLevel", "Reorder"),
       sortable: true,
       sortKey: "reorderQuantity",
       render: (item) => item.reorderQuantity,
+      defaultVisible: true,
+      defaultWidth: 90,
     },
     {
       key: "price",
       header: tt("price", "Price"),
+      menuLabel: tt("price", "Price"),
       className: "cell-mono",
-      headerClassName: "col-price",
       sortable: true,
       sortKey: "unitPriceMinor",
       render: (item) =>
         item.unitPriceMinor === null
           ? tt("noPrice", "—")
           : formatPrice(item.unitPriceMinor, currency, language),
+      defaultVisible: true,
+      defaultWidth: 105,
     },
     {
       key: "status",
       header: tt("status", "Status"),
-      headerClassName: "col-status",
+      menuLabel: tt("status", "Status"),
       sortable: true,
       sortKey: "status",
       render: (item) => (
@@ -243,10 +267,51 @@ export function UnifiedInventoryTable({
           {localizeStockStatus(item.status, language)}
         </span>
       ),
+      defaultVisible: true,
+      defaultWidth: 115,
+    },
+    // --- Off by default (available to add from the Columns menu) ---
+    {
+      key: "category",
+      header: tt("category", "Category"),
+      menuLabel: tt("category", "Category"),
+      sortable: true,
+      sortKey: "category",
+      render: (item) => item.category,
+      defaultWidth: 140,
+    },
+    {
+      key: "unit",
+      header: tt("unit", "Unit"),
+      menuLabel: tt("unit", "Unit"),
+      sortable: true,
+      sortKey: "unit",
+      render: (item) => item.unit,
+      defaultWidth: 90,
+    },
+    {
+      key: "supplier",
+      header: tt("supplier", "Supplier"),
+      menuLabel: tt("supplier", "Supplier"),
+      sortable: true,
+      sortKey: "supplier",
+      render: (item) => item.supplier,
+      defaultWidth: 160,
+    },
+    {
+      key: "lastUpdated",
+      header: tt("lastUpdated", "Last Updated"),
+      menuLabel: tt("lastUpdated", "Last Updated"),
+      className: "cell-mono",
+      sortable: true,
+      sortKey: "lastUpdated",
+      render: (item) => item.lastUpdated,
+      defaultWidth: 160,
     },
     {
       key: "actions",
       header: tt("actions", "Actions"),
+      menuLabel: tt("actions", "Actions"),
       render: (item) => (
         <div className="row-actions row-actions--compact">
           <button
@@ -276,8 +341,24 @@ export function UnifiedInventoryTable({
           </button>
         </div>
       ),
+      pin: "end",
+      hideable: false,
+      defaultVisible: true,
     },
   ], [tt, language, currency, busy, onAction]);
+
+  const cols = useTableColumns("inventory", catalog);
+
+  // Hiding the column you're sorted by would leave an invisible, un-clearable
+  // sort — clear it first. Note column key (e.g. "price") ≠ sortKey ("unitPriceMinor").
+  const handleToggleColumn = (key: string) => {
+    if (!cols.isHidden(key)) {
+      const col = catalog.find((c) => c.key === key);
+      const sk = col?.sortKey ?? key;
+      if (sortState && sortState.key === sk) setSortState(null);
+    }
+    cols.toggle(key);
+  };
 
   // --- Empty state messages ---
 
@@ -412,14 +493,24 @@ export function UnifiedInventoryTable({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
           />
+          <ColumnsMenu
+            catalog={cols.catalog}
+            isHidden={cols.isHidden}
+            onToggle={handleToggleColumn}
+            onReset={cols.reset}
+            hiddenCount={cols.hiddenCount}
+          />
         </div>
 
         {/* 5. Table */}
         <DataTable
-          columns={columns}
+          columns={cols.visibleColumns}
           data={sorted}
           rowKey={(item) => item.id}
           className="table--fixed"
+          fluid
+          onColumnResize={cols.setWidth}
+          onColumnReorder={cols.moveColumn}
           onRowClick={(item) => onDetailItemIdChange(item.id)}
           selection={{
             selectedIds,

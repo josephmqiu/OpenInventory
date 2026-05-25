@@ -11,6 +11,7 @@ Built with Electron, TypeScript, React 19, and Effect TS.
 - **Batch issue** — issue multiple items in a single transaction
 - **Low-stock alerts** — automatic alerts when quantities drop below reorder levels
 - **Item pricing** — optional per-item unit price with an app-wide currency (CNY/USD/EUR/GBP)
+- **Configurable columns** — show/hide, resize, and reorder inventory and activity-log columns; layout persists per machine
 - **QR labels** — generate and export labeled QR codes for quick item lookup
 - **Personnel management** — track who performs stock movements
 - **Backup** — scheduled and on-demand SQLite backups
