@@ -37,7 +37,10 @@ test.describe.serial("inventory discovery flows", () => {
   });
 
   test("quantity sorting reorders visible rows", async ({ page }) => {
-    const qtyHeader = page.locator("th.col-qty .th-sortable__button");
+    // Configurable columns moved widths from CSS `.col-qty` classes to px
+    // ColumnDef widths, so target the sortable button by its header text
+    // (the `currentQuantity` key renders as "Current Quantity").
+    const qtyHeader = page.locator("thead .th-sortable__button", { hasText: "Current Quantity" });
     const rowNames = page.locator("tbody tr .cell-title");
 
     await qtyHeader.click();
