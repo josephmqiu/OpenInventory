@@ -240,6 +240,45 @@ describe("DataTable", () => {
     expect((cols[1] as HTMLElement).style.width).toBe("40%");
   });
 
+  it("forces a fluid px-width table wide enough that body controls never clip", () => {
+    // Regression: on a narrow viewport (Windows CI) a fluid (width:100%) table
+    // with px columns would squeeze columns below their px size and clip the
+    // overflow:hidden body cells, leaving row checkboxes/buttons unhittable.
+    // minWidth = 200 + 130 + 144 (unsized actions floor) + 48 (selection) = 522.
+    const pxColumns: ColumnDef<TestRow>[] = [
+      { key: "name", header: "Name", width: "200px", render: (r) => r.name },
+      { key: "value", header: "Value", width: "130px", render: (r) => r.value },
+      { key: "actions", header: "Actions", render: () => <button type="button">Act</button> },
+    ];
+
+    const { container } = renderWithI18n(
+      <DataTable
+        columns={pxColumns}
+        data={rows}
+        rowKey={(r) => r.id}
+        className="table--fixed"
+        fluid
+        selection={{
+          selectedIds: [],
+          onToggle: vi.fn(),
+          onToggleAll: vi.fn(),
+          getId: (r) => r.id,
+          allSelected: false,
+        }}
+      />,
+    );
+
+    expect((container.querySelector("table") as HTMLElement).style.minWidth).toBe("522px");
+  });
+
+  it("does not force a minWidth on non-fluid or percentage-width tables", () => {
+    const { container } = renderWithI18n(
+      <DataTable columns={columns} data={rows} rowKey={(r) => r.id} className="table--fixed" />,
+    );
+
+    expect((container.querySelector("table") as HTMLElement).style.minWidth).toBe("");
+  });
+
   it("does not render table when data is empty and emptyTitle is provided", () => {
     renderWithI18n(
       <DataTable

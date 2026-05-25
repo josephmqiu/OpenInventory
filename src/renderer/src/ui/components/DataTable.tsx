@@ -40,6 +40,18 @@ export interface ColumnDef<TRow> {
 /** Minimum column width (px) a resize drag can produce. */
 export const MIN_COLUMN_WIDTH = 64;
 
+/** Floor widths used to size a fluid table so its body controls never clip.
+ *  See `fluidMinWidth` below. */
+const MIN_SELECTION_COLUMN_WIDTH = 48;
+const MIN_FLUID_UNSIZED_COLUMN_WIDTH = 144;
+
+function pxWidthValue(width: string | undefined): number | null {
+  const match = width?.trim().match(/^(\d+(?:\.\d+)?)px$/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
 export interface DataTableProps<TRow> {
   columns: ColumnDef<TRow>[];
   data: TRow[];
@@ -142,6 +154,24 @@ export function DataTable<TRow>({
   const hasWidths = columns.some((c) => c.width) || !!selection;
   const tableClass = [className, fluid ? "table--fluid" : ""].filter(Boolean).join(" ") || undefined;
 
+  // A fluid table stretches to width:100%. With px column widths that exceed a
+  // narrow viewport (e.g. Windows CI), fixed layout would squeeze columns below
+  // their px size and the body cells (overflow:hidden) clip their controls —
+  // making row checkboxes/buttons unhittable. Force a minWidth from the px
+  // columns so the table scrolls horizontally instead of clipping; on wide
+  // screens width:100% still wins, so the last unsized column keeps flexing.
+  const pxWidths = columns.map((col) => pxWidthValue(col.width));
+  const fluidMinWidth =
+    fluid && pxWidths.some((width) => width !== null)
+      ? Math.ceil(
+          pxWidths.reduce(
+            (sum, width) => sum + (width ?? MIN_FLUID_UNSIZED_COLUMN_WIDTH),
+            selection ? MIN_SELECTION_COLUMN_WIDTH : 0,
+          ),
+        )
+      : undefined;
+  const tableStyle = fluidMinWidth ? { minWidth: `${fluidMinWidth}px` } : undefined;
+
   const startResize = (e: React.PointerEvent<HTMLSpanElement>, key: string) => {
     if (!onColumnResize) return;
     e.preventDefault();
@@ -164,7 +194,7 @@ export function DataTable<TRow>({
 
   return (
     <div className="table-wrap">
-      <table className={tableClass} data-testid={testId}>
+      <table className={tableClass} data-testid={testId} style={tableStyle}>
         {hasWidths && (
           <colgroup>
             {selection && <col style={{ width: "4%" }} />}
