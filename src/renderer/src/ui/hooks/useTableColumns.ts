@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { MIN_COLUMN_WIDTH, type ColumnDef } from "../components/DataTable";
+import { MIN_COLUMN_WIDTH, type ColumnDef, type DataTableProps, type SortState } from "../components/DataTable";
+import type { ColumnsMenuProps } from "../components/ColumnsMenu";
 
 /**
  * Per-table column configuration: which columns are shown, their order, and
@@ -99,6 +100,17 @@ function resolveConfig<TRow>(catalog: ColumnDef<TRow>[], stored: Partial<StoredC
   return { hidden, widths, order };
 }
 
+/** Per-table options. Omit entirely for an unsortable, resizable table. */
+export interface UseTableColumnsOptions {
+  /** Current sort (compared by sortKey) — needed to clear sort when its column is hidden. */
+  sortState?: SortState | null;
+  /** Clear the active sort. Client tables: `() => setSort(null)`.
+   *  Server tables (e.g. Activity Log): `() => onQuickFilter({ sortBy: undefined, ... })`. */
+  onClearSort?: () => void;
+  /** false ⇒ no resize handles wired (onColumnResize omitted from dataTableProps). Default: true. */
+  resize?: boolean;
+}
+
 export interface UseTableColumns<TRow> {
   /** Ordered, filtered, sized columns — pass straight to <DataTable columns>. */
   visibleColumns: ColumnDef<TRow>[];
@@ -112,9 +124,17 @@ export interface UseTableColumns<TRow> {
   reset: () => void;
   /** Count of currently-hidden hideable columns (for the trigger badge). */
   hiddenCount: number;
+  /** Ready-made <DataTable> props — spread directly. onColumnResize omitted when options.resize === false. */
+  dataTableProps: Pick<DataTableProps<TRow>, "columns" | "onColumnReorder" | "onColumnResize">;
+  /** Ready-made <ColumnsMenu> props — spread directly. onToggle clears a stranded sort; onMove enables keyboard reorder. */
+  menuProps: ColumnsMenuProps<TRow>;
 }
 
-export function useTableColumns<TRow>(persistKey: string, catalog: ColumnDef<TRow>[]): UseTableColumns<TRow> {
+export function useTableColumns<TRow>(
+  persistKey: string,
+  catalog: ColumnDef<TRow>[],
+  options?: UseTableColumnsOptions,
+): UseTableColumns<TRow> {
   const [config, setConfig] = useState<StoredConfig>(() => resolveConfig(catalog, readStored(persistKey)));
 
   const byKey = useMemo(() => new Map(catalog.map((c) => [c.key, c])), [catalog]);
@@ -192,6 +212,64 @@ export function useTableColumns<TRow>(persistKey: string, catalog: ColumnDef<TRo
     });
   }, [catalog, byKey, config]);
 
+  const hiddenCount = useMemo(
+    () => config.hidden.filter((k) => hideable.has(k)).length,
+    [config.hidden, hideable],
+  );
+
+  // Move a column one step among the currently-visible movable columns (skips
+  // hidden ones). Powers the keyboard reorder buttons in the menu.
+  const onMove = useCallback(
+    (key: string, dir: -1 | 1) => {
+      setConfig((prev) => {
+        const visible = prev.order.filter((k) => !prev.hidden.includes(k));
+        const i = visible.indexOf(key);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= visible.length) return prev;
+        const target = visible[j];
+        const without = prev.order.filter((k) => k !== key);
+        let idx = without.indexOf(target);
+        if (dir > 0) idx += 1;
+        without.splice(idx, 0, key);
+        return persist({ ...prev, order: without });
+      });
+    },
+    [persist],
+  );
+
+  // Toggle that clears a stranded sort: hiding the sorted column would leave an
+  // invisible, un-clearable sort. Compare the resolved sortKey (a column's key
+  // may differ from its sortKey, e.g. "price" → "unitPriceMinor").
+  // NOTE: callers pass a fresh `options` literal each render, so this callback
+  // (and `menuProps`) re-create per render. That's harmless — ColumnsMenu isn't
+  // memoized, so identity never gates a render. Do NOT wrap `options` in useMemo
+  // to "fix" it: it wouldn't help and would risk staling the onClearSort closure.
+  const onToggle = useCallback(
+    (key: string) => {
+      const { sortState, onClearSort } = options ?? {};
+      if (sortState && onClearSort && !isHidden(key)) {
+        const sk = catalog.find((c) => c.key === key)?.sortKey ?? key;
+        if (sk === sortState.key) onClearSort();
+      }
+      toggle(key);
+    },
+    [options, isHidden, catalog, toggle],
+  );
+
+  const dataTableProps = useMemo<Pick<DataTableProps<TRow>, "columns" | "onColumnReorder" | "onColumnResize">>(
+    () => ({
+      columns: visibleColumns,
+      onColumnReorder: moveColumn,
+      ...(options?.resize === false ? {} : { onColumnResize: setWidth }),
+    }),
+    [visibleColumns, moveColumn, setWidth, options?.resize],
+  );
+
+  const menuProps = useMemo<ColumnsMenuProps<TRow>>(
+    () => ({ catalog, isHidden, onToggle, onReset: reset, hiddenCount, movableOrder: config.order, onMove }),
+    [catalog, isHidden, onToggle, reset, hiddenCount, config.order, onMove],
+  );
+
   return {
     visibleColumns,
     catalog,
@@ -200,6 +278,8 @@ export function useTableColumns<TRow>(persistKey: string, catalog: ColumnDef<TRo
     setWidth,
     moveColumn,
     reset,
-    hiddenCount: config.hidden.filter((k) => hideable.has(k)).length,
+    hiddenCount,
+    dataTableProps,
+    menuProps,
   };
 }

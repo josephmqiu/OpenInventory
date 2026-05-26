@@ -542,6 +542,25 @@ describe("DataTable configurable columns (resize + reorder)", () => {
     expect(container.querySelectorAll(".col-resize-handle")).toHaveLength(0);
   });
 
+  // T7: resizable:false suppresses the handle on a non-last column (e.g. a status
+  // stripe), while a sibling movable column keeps its handle. Guards against a
+  // gate typo silently re-enabling resize on indicator columns.
+  it("resizable:false yields no resize handle even on a non-last column", () => {
+    const gated: ColumnDef<TestRow>[] = [
+      { key: "name", header: "Name", render: (r) => r.name },
+      { key: "value", header: "Value", resizable: false, render: (r) => r.value }, // middle, locked
+      { key: "id", header: "ID", render: (r) => r.id }, // last (fluid → no handle anyway)
+    ];
+    const { container } = renderWithI18n(
+      <DataTable columns={gated} data={rows} rowKey={(r) => r.id} onColumnResize={vi.fn()} />,
+    );
+    const ths = container.querySelectorAll("thead th");
+    expect(ths[0].querySelector(".col-resize-handle")).not.toBeNull(); // name keeps its handle
+    expect(ths[1].querySelector(".col-resize-handle")).toBeNull(); // value (resizable:false)
+    expect(ths[2].querySelector(".col-resize-handle")).toBeNull(); // last column
+    expect(container.querySelectorAll(".col-resize-handle")).toHaveLength(1);
+  });
+
   it("resize-handle pointerdown does not trigger a sort", () => {
     const onSortChange = vi.fn();
     const { container } = renderWithI18n(
