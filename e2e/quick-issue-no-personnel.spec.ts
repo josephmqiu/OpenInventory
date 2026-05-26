@@ -9,15 +9,18 @@ const BASE_URL = lanBaseUrl("no-personnel-lan");
 const ACCESS_KEY = LAN_SCENARIOS["no-personnel-lan"].accessKey;
 
 test.describe.serial("quick lookup edge states without personnel", () => {
-  test("issue route without an item id shows the no-item state", async ({ browser, page: _desktopPage }) => {
+  test("issue route without an item id lands on the searchable list", async ({ browser, page: _desktopPage }) => {
     await waitForLanReady(BASE_URL);
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const page = await ctx.newPage();
 
     try {
       await page.goto(`${BASE_URL}/issue/`);
-      await expect(page.locator(".qi-state-screen")).toBeVisible({ timeout: 10_000 });
-      await expect(page.locator(".qi-state-screen")).toContainText("No item specified");
+      // No item id is no longer a dead-end: it lands on the searchable catalog
+      // list (the generic "Inventory Lookup" entry), even with no personnel.
+      await expect(page.locator(".qi-list")).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator(".qi-list__title")).toContainText(/inventory lookup/i);
+      await expect(page.locator(".qi-list-row").first()).toBeVisible();
     } finally {
       await ctx.close();
     }
