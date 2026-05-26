@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { loadPublicItemContext, IssueGatewayError } from "./issueGateway";
+import { loadPublicItemContext, loadPublicCatalog, IssueGatewayError } from "./issueGateway";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -56,5 +56,25 @@ describe("loadPublicItemContext", () => {
     await loadPublicItemContext("item/with spaces");
     const url = mockFetch.mock.calls[0][0];
     expect(url).toBe("/public/items/item%2Fwith%20spaces/context");
+  });
+});
+
+describe("loadPublicCatalog", () => {
+  it("fetches the catalog from /public/items with GET and no access key", async () => {
+    const catalog = { items: [{ id: "item-1", name: "Widget" }], language: "en", currency: "CNY" };
+    mockFetch.mockResolvedValue(jsonResponse(200, catalog));
+
+    const result = await loadPublicCatalog();
+    expect(result).toEqual(catalog);
+
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe("/public/items");
+    expect(init.method).toBe("GET");
+    expect((init.headers as Headers).has("x-inventory-key")).toBe(false);
+  });
+
+  it("throws IssueGatewayError with status on failure", async () => {
+    mockFetch.mockResolvedValue(jsonResponse(500, { message: "boom" }));
+    await expect(loadPublicCatalog()).rejects.toThrow(IssueGatewayError);
   });
 });

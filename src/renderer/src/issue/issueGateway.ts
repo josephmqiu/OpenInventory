@@ -1,4 +1,4 @@
-import type { PublicItemContext } from "../../../shared/types";
+import type { PublicItemCatalog, PublicItemContext } from "../../../shared/types";
 
 type TransportMessageValues = Record<string, string | number>;
 
@@ -88,4 +88,9 @@ export async function loadPublicItemContext(itemId: string): Promise<PublicItemC
   return fetchJson<PublicItemContext>(`/public/items/${encodeURIComponent(itemId)}/context`, {
     method: "GET",
   });
+}
+
+/** Fetch the full read-only catalog for QR-scan browse/search. */
+export async function loadPublicCatalog(): Promise<PublicItemCatalog> {
+  return fetchJson<PublicItemCatalog>(`/public/items`, { method: "GET" });
 }

@@ -7,29 +7,43 @@
  * LAN serving is handled by src/main/infrastructure/lan/router.ts and remains
  * QR/read-only.
  */
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { createRequire } from "module";
 
 // Preflight: ensure better-sqlite3 is compiled for the current Node ABI.
 // The Electron rebuild scripts may leave it compiled for a different ABI.
+//
+// NOTE: require() only loads the JS wrapper — the native .node binary is
+// dlopen'd lazily on the first `new Database()`. So a require() that succeeds
+// does NOT prove the ABI matches. We must actually construct a database to
+// trigger the load; otherwise a wrong-ABI binary slips past this check and
+// crashes later (which broke spinning up the preview on a fresh run).
 const _require = createRequire(import.meta.url);
-try {
-  _require("better-sqlite3");
-} catch {
-  console.log("Rebuilding better-sqlite3 for current Node ABI...");
-  const npmPath = process.env.npm_execpath ?? "/opt/homebrew/bin/npm";
-  execSync(`${npmPath} rebuild better-sqlite3`, { stdio: "inherit" });
-  // Re-clear the module cache isn't possible for native addons — restart is needed.
-  // Since this runs at startup before anything else, the execSync is blocking
-  // and we can just re-require after rebuild.
-  _require("better-sqlite3");
+function ensureNodeAbiBinary(): void {
+  const probe = () => {
+    const BetterSqlite3 = _require("better-sqlite3");
+    new BetterSqlite3(":memory:").close();
+  };
+  try {
+    probe();
+  } catch {
+    console.log("Rebuilding better-sqlite3 for current Node ABI...");
+    const npmPath = process.env.npm_execpath ?? "/opt/homebrew/bin/npm";
+    execFileSync(npmPath, ["rebuild", "better-sqlite3"], { stdio: "inherit" });
+    // The previous dlopen failed (not cached), so constructing again now loads
+    // the freshly rebuilt binary. This also surfaces a clear error if the
+    // rebuild somehow didn't take, instead of crashing deeper in startup.
+    probe();
+  }
 }
+ensureNodeAbiBinary();
 
 import http from "http";
 import path from "path";
 import fs from "fs";
 import Database from "better-sqlite3";
 import { makeDatabaseService } from "../src/main/services/DatabaseService";
+import { toPublicCatalogItem } from "../src/shared/publicCatalog";
 import { runPendingMigrations } from "../src/main/infrastructure/migrations";
 import { configureSqlitePragmas } from "../src/main/infrastructure/sqlite-pragmas";
 import {
@@ -233,6 +247,16 @@ const server = http.createServer(async (req, res) => {
       const { language } = decodeBody(UpdateLanguageBody, await readJsonBody(req));
       await runEffect(dbService.updateLanguage(language));
       sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    // Public catalog — read-only browse/search for QR scans (no auth). Mirrors the
+    // production LAN route's explicit projection (omits qrCodeDataUrl; never the
+    // whole snapshot) so the preview exercises the real public shape.
+    if (pathname === "/public/items" && method === "GET") {
+      const snapshot = await runEffect(dbService.loadSnapshot());
+      const items = snapshot.items.map(toPublicCatalogItem);
+      sendJson(res, 200, { items, language: snapshot.language, currency: snapshot.currency });
       return;
     }
 

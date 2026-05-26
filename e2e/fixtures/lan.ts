@@ -25,11 +25,16 @@ export async function waitForLanReady(
 
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${baseUrl}/api/health`);
+      // Probe a PUBLIC endpoint, not /api/health: /api/* requires the access
+      // key, so a keyless readiness poll returns 401 and the LAN rate limiter
+      // records it as a failed attempt. Repeated polls across a worker-scoped
+      // app then lock out 127.0.0.1 (429) and break later authed calls. The
+      // public catalog returns 200 once the server AND DB are ready.
+      const response = await fetch(`${baseUrl}/public/items`);
       if (response.status < 500) {
         return;
       }
-      lastError = new Error(`LAN health check returned ${response.status}.`);
+      lastError = new Error(`LAN readiness check returned ${response.status}.`);
     } catch (error) {
       lastError = error;
     }

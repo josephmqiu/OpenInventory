@@ -3,6 +3,7 @@ import i18n from "i18next";
 import { translateErrorMessage } from "../../app/i18n";
 import type { LanAccessState, UpdateLanAccessInput } from "../../domain/models";
 import { useTT } from "../hooks/useTT";
+import { QrCodeImage } from "./QrCodeImage";
 
 interface LanAccessPanelProps {
   busy: boolean;
@@ -181,6 +182,19 @@ export function LanAccessPanel({ busy, lanAccess, onSave, onRegenerateKey }: Lan
             </dd>
           </div>
         </dl>
+
+        {/* Generic "Inventory Lookup" QR — post one code so staff can browse the
+            read-only catalog without scanning an individual item. */}
+        {lookupUrls.length > 0 && (
+          <div className="lan-lookup-qr">
+            <div className="lan-lookup-qr__text">
+              <dt>{tt("lanInventoryLookupQr", "Inventory Lookup QR")}</dt>
+              <dd>{tt("lanInventoryLookupQrHint", "Post this code so staff can browse the catalog (read-only). No item scan needed.")}</dd>
+              <a href={lookupUrls[0]} rel="noreferrer" target="_blank">{lookupUrls[0]}</a>
+            </div>
+            <QrCodeImage text={lookupUrls[0]} alt={tt("lanInventoryLookupQr", "Inventory Lookup QR")} size={160} />
+          </div>
+        )}
       </div>
 
       {/* Footer */}

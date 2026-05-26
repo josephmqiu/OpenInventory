@@ -4,6 +4,7 @@ import path from "path";
 import { RateLimiter, getClientIp } from "./auth";
 import type { DatabaseServiceApi } from "../../services/DatabaseService";
 import type { AuditMovementFilters } from "../../../shared/types";
+import { toPublicCatalogItem } from "../../../shared/publicCatalog";
 import {
   backendMessages,
   normalizeBackendLanguage,
@@ -147,6 +148,21 @@ async function handlePublicRoute(
   messages: ReturnType<typeof backendMessages>,
 ): Promise<void> {
   try {
+    // GET /public/items — read-only catalog for QR-scan browse/search. Lets a
+    // floor worker who scanned one item (or opened the generic lookup URL) search
+    // the rest without re-scanning. Still read-only; the admin is the sole mutator.
+    // The response is built EXPLICITLY ({ items, language, currency }) — never the
+    // whole snapshot — so personnel/backupPlan/lanAccess never leak to anon clients.
+    if (pathname === "/public/items" && method === "GET") {
+      const snapshot = await runEffect(db.loadSnapshot());
+      sendJson(res, 200, {
+        items: snapshot.items.map(toPublicCatalogItem),
+        language: snapshot.language,
+        currency: snapshot.currency,
+      });
+      return;
+    }
+
     // GET /public/items/:id/context — read-only item lookup for QR scans.
     const contextMatch = pathname.match(/^\/public\/items\/([^/]+)\/context$/);
     if (contextMatch && method === "GET") {

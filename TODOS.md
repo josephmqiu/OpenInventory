@@ -255,3 +255,28 @@ Both design voices flagged it as undiscoverable + keyboard-dead. Candidate fix: 
 drag-handle/grip + "Move left/right" keyboard actions inside `ColumnsMenu` (benefits all
 tables). May fold into the refactor PR (final-gate taste call) or ship as a follow-up a11y PR.
 **Files:** `ColumnsMenu.tsx`, `DataTable.tsx` (th drag affordance), `app.css` (~920-955).
+
+## Mobile LAN browse + search (v? — feat/mobile-lan-browse-search) follow-ups
+Deferred during /autoplan review of the read-only mobile catalog browse/search feature.
+
+### Pinyin / fuzzy / partial-Chinese / barcode search
+v1 search is exact substring on name/SKU/location (mirrors the desktop table via
+`src/renderer/src/domain/itemFilter.ts`). China-first floor workers often search by pinyin,
+abbreviations, or barcode. Add a normalization/alias layer in `filterInventoryItems` (benefits
+the desktop table too). **Revisit when:** workers report search "not finding" Chinese items.
+
+### Large-catalog rendering (debounce / windowing)
+`QuickItemList` filters with `useMemo` and renders every matching row. Fine for SMB scale
+(tens–low hundreds). At thousands of items on weak phones, add `useDeferredValue`/debounce on
+search + windowed rendering. **Revisit when:** a customer catalog exceeds ~1k items.
+
+### Public-route cache / rate-limit (autoplan T1 — deferred)
+`GET /public/items` (and `/public/items/:id/context`) are intentionally unauthenticated and
+unthrottled on the trusted LAN. Codex flagged repeated-read DoS; deferred (matches existing
+public route, read-only). Cheap fast-follow if refresh-spam shows up: a 1–2s in-memory cache
+in `src/main/infrastructure/lan/router.ts` and/or a per-IP limit on public routes.
+
+### Remove the single-item fallback path (post-bake cleanup)
+`useQuickIssueState` + `loadPublicItemContext` are kept as a catalog-load-failure fallback in
+`QuickIssueApp`. Once the catalog path has shipped one stable release, consider collapsing to
+the catalog-only path. **Revisit after:** one release with no catalog-load incidents.
