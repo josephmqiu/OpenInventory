@@ -347,18 +347,11 @@ export function UnifiedInventoryTable({
     },
   ], [tt, language, currency, busy, onAction]);
 
-  const cols = useTableColumns("inventory", catalog);
-
-  // Hiding the column you're sorted by would leave an invisible, un-clearable
-  // sort — clear it first. Note column key (e.g. "price") ≠ sortKey ("unitPriceMinor").
-  const handleToggleColumn = (key: string) => {
-    if (!cols.isHidden(key)) {
-      const col = catalog.find((c) => c.key === key);
-      const sk = col?.sortKey ?? key;
-      if (sortState && sortState.key === sk) setSortState(null);
-    }
-    cols.toggle(key);
-  };
+  const cols = useTableColumns("inventory", catalog, {
+    sortState,
+    onClearSort: () => setSortState(null),
+    resize: true,
+  });
 
   // --- Empty state messages ---
 
@@ -493,24 +486,16 @@ export function UnifiedInventoryTable({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
           />
-          <ColumnsMenu
-            catalog={cols.catalog}
-            isHidden={cols.isHidden}
-            onToggle={handleToggleColumn}
-            onReset={cols.reset}
-            hiddenCount={cols.hiddenCount}
-          />
+          <ColumnsMenu {...cols.menuProps} />
         </div>
 
         {/* 5. Table */}
         <DataTable
-          columns={cols.visibleColumns}
+          {...cols.dataTableProps}
           data={sorted}
           rowKey={(item) => item.id}
           className="table--fixed"
           fluid
-          onColumnResize={cols.setWidth}
-          onColumnReorder={cols.moveColumn}
           onRowClick={(item) => onDetailItemIdChange(item.id)}
           selection={{
             selectedIds,

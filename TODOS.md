@@ -227,3 +227,31 @@ failures. Start at `e2e/scripts/generate-seeds.ts` (seedLanFixture) and the new
 
 **Files:** `e2e/scripts/generate-seeds.ts`, `e2e/fixtures/lan-constants.ts`, LAN specs,
 `src/main/services/LanServerService.ts` (port reporting).
+
+---
+
+## Deferred from /autoplan (configurable-columns rollout, 2026-05-26)
+
+### Presets / table-density toggles (alternative to per-table column menus)
+**Why deferred:** Both CEO voices flagged "per-table column config on everything" as
+mistaking consistency for quality. A "compact / full" density toggle or a single
+"show optional fields" control may serve a 1-2 person admin better than nine separate
+Columns menus. Larger UX paradigm — not this plan.
+**Revisit if:** users actually ask to reshape tables, or column-config usage data shows
+real adoption on the shipped surfaces.
+
+### Dashboard widgets + Personnel + Batch Issue column config — DROPPED, not deferred
+Dashboard Top Movers / Recent Alerts (5-row glanceable readouts), Personnel (2 structural
+columns → degenerate menu), Batch Issue (workflow form). Excluded by design intent
+(DESIGN.md "the table is the hero" / "instrument panel"). Only revisit with explicit demand.
+
+### Resize on Activity Log
+Shipped deliberately without resize in v0.1.7. Not re-enabled. Revisit only on a real
+complaint about column widths there.
+
+### Keyboard-accessible column reorder (a11y)
+Drag-to-reorder is mouse-only native HTML5 drag (pre-existing on the 2 shipped tables).
+Both design voices flagged it as undiscoverable + keyboard-dead. Candidate fix: add a
+drag-handle/grip + "Move left/right" keyboard actions inside `ColumnsMenu` (benefits all
+tables). May fold into the refactor PR (final-gate taste call) or ship as a follow-up a11y PR.
+**Files:** `ColumnsMenu.tsx`, `DataTable.tsx` (th drag affordance), `app.css` (~920-955).
