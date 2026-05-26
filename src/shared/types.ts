@@ -111,6 +111,21 @@ export interface PublicItemContext {
   currency: CurrencyCode;
 }
 
+/** A catalog item as exposed to anonymous LAN clients. Omits `qrCodeDataUrl`
+ *  (heavy base64 the mobile UI never renders); every other display field is
+ *  intentionally public on the trusted LAN (see LAN router). */
+export type PublicCatalogItem = Omit<InventoryItem, "qrCodeDataUrl">;
+
+/** Read-only catalog served to anonymous LAN clients so a floor worker who
+ *  scanned one QR (or opened the generic lookup URL) can browse/search the
+ *  whole inventory without re-scanning. Read-only — the admin remains the sole
+ *  mutator of inventory state. */
+export interface PublicItemCatalog {
+  items: PublicCatalogItem[];
+  language: Language;
+  currency: CurrencyCode;
+}
+
 export interface AppSnapshot {
   items: InventoryItem[];
   alerts: InventoryAlert[];

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { localizeStockStatus, stockStatusSeverity } from "../../app/i18n";
 import { formatPrice } from "../../app/formatters";
 import type { ActionKind, CurrencyCode, InventoryItem, Language } from "../../domain/models";
+import { filterInventoryItems } from "../../domain/itemFilter";
 import { exportQrLabel, exportSelectedQrLabels } from "../../services/inventoryGateway";
 import { buildQrLabelExportPayload, buildQrLabelExportPayloads } from "../export/qrLabelExport";
 import { useTT } from "../hooks/useTT";
@@ -88,23 +89,12 @@ export function UnifiedInventoryTable({
     [items],
   );
 
-  // --- Client-side filtering ---
+  // --- Client-side filtering (shared with the mobile LAN lookup list) ---
 
-  const filtered = useMemo(() => {
-    const searchLower = search.toLowerCase();
-    return items.filter((item) => {
-      if (filter === "low_stock" && item.status !== "low_stock") return false;
-      if (filter === "out_of_stock" && item.status !== "out_of_stock") return false;
-      if (
-        search &&
-        !item.name.toLowerCase().includes(searchLower) &&
-        !item.sku.toLowerCase().includes(searchLower) &&
-        !item.location.toLowerCase().includes(searchLower)
-      )
-        return false;
-      return true;
-    });
-  }, [items, filter, search]);
+  const filtered = useMemo(
+    () => filterInventoryItems(items, { search, filter }),
+    [items, filter, search],
+  );
 
   const sorted = useMemo(
     () => sortData(filtered, sortState, (row, key) => {
