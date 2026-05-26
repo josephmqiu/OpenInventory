@@ -227,6 +227,18 @@ describe("useTableColumns — prop bundles & options (PR-2)", () => {
     expect(JSON.parse(localStorage.getItem(KEY)!).order).toEqual(["supplier", "price", "sku"]);
   });
 
+  // T12: independent persistKeys (the Audit Summary 3-table case) — toggling one
+  // table's columns must not bleed into another's state or storage.
+  it("isolates state across persistKeys", () => {
+    const a = renderHook(() => useTableColumns("summary-a", catalog));
+    const b = renderHook(() => useTableColumns("summary-b", catalog));
+    act(() => a.result.current.toggle("sku")); // hide sku in table A only
+    expect(a.result.current.isHidden("sku")).toBe(true);
+    expect(b.result.current.isHidden("sku")).toBe(false); // B untouched
+    expect(localStorage.getItem("oi-table-cols:summary-a")).not.toBeNull();
+    expect(localStorage.getItem("oi-table-cols:summary-b")).toBeNull(); // B never written
+  });
+
   // T10: migration on REMOUNT — a column that was hideable becomes pinned + non-hideable
   it("migrates a stored column that is now pinned + non-hideable (severity-stripe case)", () => {
     // Stored config from a release where "stripe" was an ordinary hideable column.

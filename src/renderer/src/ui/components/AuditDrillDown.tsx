@@ -1,8 +1,11 @@
+import { useMemo } from "react";
 import { formatDate } from "../../app/formatDate";
 import type { AuditMovementFilters, AuditMovementRow, Language } from "../../domain/models";
 import { getAuditMovements } from "../../services/inventoryGateway";
 import { useTranslation } from "react-i18next";
 import { useAsyncData } from "../hooks/useAsyncData";
+import { useTableColumns } from "../hooks/useTableColumns";
+import { ColumnsMenu } from "./ColumnsMenu";
 import { DataTable, type ColumnDef } from "./DataTable";
 import type { AuditTab } from "./AuditPanel";
 
@@ -24,7 +27,8 @@ export function AuditDrillDown({
   onBack,
 }: AuditDrillDownProps) {
   const { i18n } = useTranslation(["common", "audit"]);
-  const t = i18n.getFixedT(language, ["common", "audit"]);
+  // Memoize so the catalog (and useTableColumns' memos) stay stable across renders.
+  const t = useMemo(() => i18n.getFixedT(language, ["common", "audit"]), [i18n, language]);
 
   const { data: rows, loading, error } = useAsyncData(
     () =>
@@ -46,11 +50,13 @@ export function AuditDrillDown({
   };
   const breadcrumbLabel = tabLabelMap[sourceTab];
 
-  const columns: ColumnDef<AuditMovementRow>[] = [
-    { key: "date", header: t("date", { ns: "audit" }), render: (row) => formatDate(row.performedAt, language) },
+  const catalog = useMemo<ColumnDef<AuditMovementRow>[]>(() => [
+    { key: "date", header: t("date", { ns: "audit" }), menuLabel: t("date", { ns: "audit" }), defaultVisible: true, render: (row) => formatDate(row.performedAt, language) },
     {
       key: "type",
       header: t("type", { ns: "audit" }),
+      menuLabel: t("type", { ns: "audit" }),
+      defaultVisible: true,
       render: (row) =>
         row.movementType === "receive"
           ? t("receiveStock", { ns: "audit" })
@@ -59,22 +65,29 @@ export function AuditDrillDown({
     {
       key: "quantity",
       header: t("quantity", { ns: "audit" }),
+      menuLabel: t("quantity", { ns: "audit" }),
+      defaultVisible: true,
       className: "cell-mono",
       render: (row) => (row.movementType === "receive" ? `+${row.quantity}` : `-${row.quantity}`),
     },
-    { key: "balance", header: t("balance", { ns: "audit" }), className: "cell-mono cell-strong", render: (row) => row.newQuantity },
+    { key: "balance", header: t("balance", { ns: "audit" }), menuLabel: t("balance", { ns: "audit" }), defaultVisible: true, className: "cell-mono cell-strong", render: (row) => row.newQuantity },
     {
       key: "performedBy",
       header: t("performedBy", { ns: "audit" }),
+      menuLabel: t("performedBy", { ns: "audit" }),
+      defaultVisible: true,
       render: (row) =>
         row.performedBy || (
           <span className="cell-muted">{t("notProvided", { ns: "common" })}</span>
         ),
     },
-    { key: "reason", header: t("reason", { ns: "audit" }), render: (row) => row.reason || "" },
-    { key: "referenceNo", header: t("referenceNo", { ns: "audit" }), render: (row) => row.referenceNo || "" },
-    { key: "notes", header: t("notes", { ns: "audit" }), render: (row) => row.notes || "" },
-  ];
+    { key: "reason", header: t("reason", { ns: "audit" }), menuLabel: t("reason", { ns: "audit" }), defaultVisible: true, render: (row) => row.reason || "" },
+    { key: "referenceNo", header: t("referenceNo", { ns: "audit" }), menuLabel: t("referenceNo", { ns: "audit" }), defaultVisible: true, render: (row) => row.referenceNo || "" },
+    { key: "notes", header: t("notes", { ns: "audit" }), menuLabel: t("notes", { ns: "audit" }), defaultVisible: true, render: (row) => row.notes || "" },
+  ], [t, language]);
+
+  // No sort on this table → no sortState/onClearSort. Show/hide + reorder only.
+  const cols = useTableColumns("audit-drilldown", catalog, { resize: false });
 
   return (
     <section className="panel">
@@ -92,6 +105,7 @@ export function AuditDrillDown({
           </p>
         </div>
         <div className="panel__actions">
+          <ColumnsMenu {...cols.menuProps} />
           <button type="button" className="button-secondary" onClick={onBack}>
             {t("backToList", { ns: "audit" })}
           </button>
@@ -102,7 +116,7 @@ export function AuditDrillDown({
         <div className="feedback-banner feedback-banner--error">{error}</div>
       ) : (
         <DataTable
-          columns={columns}
+          {...cols.dataTableProps}
           data={rows ?? []}
           rowKey={(row) => row.id}
           loading={loading}

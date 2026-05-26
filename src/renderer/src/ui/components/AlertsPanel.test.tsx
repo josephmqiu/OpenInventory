@@ -164,4 +164,23 @@ describe("AlertsPanel", () => {
     expect(openPills.length).toBe(2);
     expect(resolvedPills.length).toBe(1);
   });
+
+  // T14 + T13: the columns menu locks the severity stripe (a row indicator, not a
+  // hideable column) while hideable data columns actually hide from the table.
+  it("locks the severity stripe in the columns menu and hides hideable columns", () => {
+    const { container } = renderWithI18n(<AlertsPanel alerts={alerts} language="en" />);
+    fireEvent.click(container.querySelector(".columns-menu__trigger")!);
+
+    const opts = [...container.querySelectorAll(".columns-menu__opt")];
+    const labelOf = (o: Element) => o.querySelector(".columns-menu__opt-label")?.textContent;
+    const severityOpt = opts.find((o) => labelOf(o) === "Severity")!;
+    expect((severityOpt.querySelector("input") as HTMLInputElement).disabled).toBe(true);
+
+    const headerHasSku = () =>
+      [...container.querySelectorAll("thead th")].some((th) => th.textContent?.includes("SKU"));
+    expect(headerHasSku()).toBe(true);
+    const skuOpt = opts.find((o) => labelOf(o) === "SKU")!;
+    fireEvent.click(skuOpt.querySelector("input")!);
+    expect(headerHasSku()).toBe(false); // hideable column leaves the table; no layout-breaking %-shift
+  });
 });
