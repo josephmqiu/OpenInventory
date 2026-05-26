@@ -6,7 +6,9 @@ import type { CurrencyCode, InventoryItem, InventoryMovement, Language } from ".
 import { getItemMovements } from "../../services/inventoryGateway";
 import { useAsyncData } from "../hooks/useAsyncData";
 import { useTT } from "../hooks/useTT";
+import { useTableColumns } from "../hooks/useTableColumns";
 import { sortDataByKey } from "../utils/sortData";
+import { ColumnsMenu } from "./ColumnsMenu";
 import { DataTable, type ColumnDef, type SortState } from "./DataTable";
 import { QrCodeImage } from "./QrCodeImage";
 
@@ -40,13 +42,21 @@ export function ItemDetailsPanel({ language, currency, item, onBack, onExport, o
     [movements, sortState],
   );
 
-  const movementColumns: ColumnDef<InventoryMovement>[] = [
-    { key: "date", header: tt("date", "Date"), sortable: true, sortKey: "createdAt", render: (m) => formatDate(m.createdAt, language) },
-    { key: "type", header: tt("type", "Type"), sortable: true, sortKey: "movementType", render: (m) => (m.movementType === "receive" ? tt("receiveStock", "Receive Stock") : tt("issueMaterial", "Issue Material")) },
-    { key: "quantity", header: tt("quantity", "Quantity"), sortable: true, sortKey: "quantity", render: (m) => formatNumber(m.quantity, language) },
-    { key: "performedBy", header: tt("performedBy", "Performed By"), sortable: true, sortKey: "performedBy", render: (m) => m.performedBy || tt("notProvided", "Not provided") },
-    { key: "reason", header: tt("reason", "Reason"), render: (m) => m.reason || tt("notProvided", "Not provided") },
-  ];
+  const movementCatalog = useMemo<ColumnDef<InventoryMovement>[]>(() => [
+    { key: "date", header: tt("date", "Date"), menuLabel: tt("date", "Date"), defaultVisible: true, sortable: true, sortKey: "createdAt", render: (m) => formatDate(m.createdAt, language) },
+    { key: "type", header: tt("type", "Type"), menuLabel: tt("type", "Type"), defaultVisible: true, sortable: true, sortKey: "movementType", render: (m) => (m.movementType === "receive" ? tt("receiveStock", "Receive Stock") : tt("issueMaterial", "Issue Material")) },
+    { key: "quantity", header: tt("quantity", "Quantity"), menuLabel: tt("quantity", "Quantity"), defaultVisible: true, sortable: true, sortKey: "quantity", render: (m) => formatNumber(m.quantity, language) },
+    { key: "performedBy", header: tt("performedBy", "Performed By"), menuLabel: tt("performedBy", "Performed By"), defaultVisible: true, sortable: true, sortKey: "performedBy", render: (m) => m.performedBy || tt("notProvided", "Not provided") },
+    { key: "reason", header: tt("reason", "Reason"), menuLabel: tt("reason", "Reason"), defaultVisible: true, render: (m) => m.reason || tt("notProvided", "Not provided") },
+  ], [tt, language]);
+
+  // Movement history only (the key/value details table stays a plain <table>).
+  // Show/hide + reorder, no resize.
+  const cols = useTableColumns("item-movements", movementCatalog, {
+    sortState,
+    onClearSort: () => setSortState(null),
+    resize: false,
+  });
 
   return (
     <section className="panel item-details-panel" data-testid="item-details-panel">
@@ -91,6 +101,9 @@ export function ItemDetailsPanel({ language, currency, item, onBack, onExport, o
             <h3>{tt("movementHistory", "Movement History")}</h3>
             <p>{tt("movementHistoryHint", "Latest 50 stock movements for this item.")}</p>
           </div>
+          <div className="panel__actions">
+            <ColumnsMenu {...cols.menuProps} />
+          </div>
         </div>
         {movementError ? (
           <div className="feedback-banner feedback-banner--error">{
@@ -98,7 +111,7 @@ export function ItemDetailsPanel({ language, currency, item, onBack, onExport, o
           }</div>
         ) : (
           <DataTable
-            columns={movementColumns}
+            {...cols.dataTableProps}
             data={sortedMovements}
             rowKey={(m) => m.id}
             loading={loadingMovements}
