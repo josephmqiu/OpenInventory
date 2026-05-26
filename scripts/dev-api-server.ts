@@ -7,22 +7,48 @@
  * LAN serving is handled by src/main/infrastructure/lan/router.ts and remains
  * QR/read-only.
  */
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { createRequire } from "module";
 
 // Preflight: ensure better-sqlite3 is compiled for the current Node ABI.
-// The Electron rebuild scripts may leave it compiled for a different ABI.
+// The Electron rebuild scripts (npm run dev / pack / dist) leave the .node
+// binary compiled for Electron's ABI, which fails to dlopen under plain Node —
+// so a browser-preview start right after Electron dev would otherwise crash.
+//
+// IMPORTANT: requiring the module is NOT enough to detect a mismatch.
+// better-sqlite3 loads its native addon lazily inside the Database constructor
+// (via the `bindings` package), so the dlopen — and any NODE_MODULE_VERSION
+// error — only happens on the first `new Database()`. We must actually open a
+// throwaway DB here to force the load, then self-heal before the real one below.
 const _require = createRequire(import.meta.url);
-try {
-  _require("better-sqlite3");
-} catch {
-  console.log("Rebuilding better-sqlite3 for current Node ABI...");
-  const npmPath = process.env.npm_execpath ?? "/opt/homebrew/bin/npm";
-  execSync(`${npmPath} rebuild better-sqlite3`, { stdio: "inherit" });
-  // Re-clear the module cache isn't possible for native addons — restart is needed.
-  // Since this runs at startup before anything else, the execSync is blocking
-  // and we can just re-require after rebuild.
-  _require("better-sqlite3");
+function betterSqlite3LoadsForThisNode(): boolean {
+  try {
+    const BetterSqlite3 = _require("better-sqlite3") as typeof import("better-sqlite3");
+    new BetterSqlite3(":memory:").close(); // forces the native dlopen
+    return true;
+  } catch {
+    return false;
+  }
+}
+if (!betterSqlite3LoadsForThisNode()) {
+  console.log(
+    `Rebuilding better-sqlite3 for the current Node ABI (Node ${process.version}, module ${process.versions.modules})...`,
+  );
+  const nodePath = _require("node:path") as typeof import("node:path");
+  const nodeFs = _require("node:fs") as typeof import("node:fs");
+  // Invalidate the Electron rebuild cache so a later `npm run dev` rebuilds for
+  // Electron (mirrors the `rebuild:native:node` npm script).
+  try {
+    nodeFs.unlinkSync("node_modules/.electron-rebuild-hash");
+  } catch {
+    /* cache file absent — fine */
+  }
+  // Resolve npm next to the running node binary to avoid PATH surprises when
+  // launched directly (e.g. from .claude/launch.json), not via an npm script.
+  const npmCandidate = nodePath.join(nodePath.dirname(process.execPath), "npm");
+  const npmBin = nodeFs.existsSync(npmCandidate) ? npmCandidate : "npm";
+  execFileSync(npmBin, ["rebuild", "better-sqlite3"], { stdio: "inherit" });
+  console.log("better-sqlite3 rebuilt for Node.");
 }
 
 import http from "http";
@@ -64,8 +90,6 @@ import { Schema } from "@effect/schema";
 import { Effect } from "effect";
 import { errorToHttpStatus, type AppError, validationError } from "../src/main/domain/errors";
 import { BackupService, BackupServiceLive } from "../src/main/services/BackupService";
-
-type Json = Record<string, unknown>;
 
 async function runEffect<A>(effect: Effect.Effect<A, AppError, BackupService>): Promise<A> {
   return Effect.runPromise(Effect.provide(effect, BackupServiceLive));
