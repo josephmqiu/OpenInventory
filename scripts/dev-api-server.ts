@@ -11,32 +11,51 @@ import { execFileSync } from "child_process";
 import { createRequire } from "module";
 
 // Preflight: ensure better-sqlite3 is compiled for the current Node ABI.
-// The Electron rebuild scripts may leave it compiled for a different ABI.
+// The Electron rebuild scripts (npm run dev / pack / dist) leave the .node
+// binary compiled for Electron's ABI, which fails to dlopen under plain Node —
+// so a browser-preview start right after Electron dev would otherwise crash.
 //
-// NOTE: require() only loads the JS wrapper — the native .node binary is
-// dlopen'd lazily on the first `new Database()`. So a require() that succeeds
-// does NOT prove the ABI matches. We must actually construct a database to
-// trigger the load; otherwise a wrong-ABI binary slips past this check and
-// crashes later (which broke spinning up the preview on a fresh run).
+// IMPORTANT: requiring the module is NOT enough to detect a mismatch.
+// better-sqlite3 loads its native addon lazily inside the Database constructor
+// (via the `bindings` package), so the dlopen — and any NODE_MODULE_VERSION
+// error — only happens on the first `new Database()`. We must actually open a
+// throwaway DB here to force the load, then self-heal before the real one below.
 const _require = createRequire(import.meta.url);
-function ensureNodeAbiBinary(): void {
-  const probe = () => {
-    const BetterSqlite3 = _require("better-sqlite3");
-    new BetterSqlite3(":memory:").close();
-  };
+function probeBetterSqlite3(): void {
+  const BetterSqlite3 = _require("better-sqlite3") as typeof import("better-sqlite3");
+  new BetterSqlite3(":memory:").close(); // forces the native dlopen
+}
+function betterSqlite3LoadsForThisNode(): boolean {
   try {
-    probe();
+    probeBetterSqlite3();
+    return true;
   } catch {
-    console.log("Rebuilding better-sqlite3 for current Node ABI...");
-    const npmPath = process.env.npm_execpath ?? "/opt/homebrew/bin/npm";
-    execFileSync(npmPath, ["rebuild", "better-sqlite3"], { stdio: "inherit" });
-    // The previous dlopen failed (not cached), so constructing again now loads
-    // the freshly rebuilt binary. This also surfaces a clear error if the
-    // rebuild somehow didn't take, instead of crashing deeper in startup.
-    probe();
+    return false;
   }
 }
-ensureNodeAbiBinary();
+if (!betterSqlite3LoadsForThisNode()) {
+  console.log(
+    `Rebuilding better-sqlite3 for the current Node ABI (Node ${process.version}, module ${process.versions.modules})...`,
+  );
+  const nodePath = _require("node:path") as typeof import("node:path");
+  const nodeFs = _require("node:fs") as typeof import("node:fs");
+  // Invalidate the Electron rebuild cache so a later `npm run dev` rebuilds for
+  // Electron (mirrors the `rebuild:native:node` npm script).
+  try {
+    nodeFs.unlinkSync("node_modules/.electron-rebuild-hash");
+  } catch {
+    /* cache file absent — fine */
+  }
+  // Resolve npm next to the running node binary to avoid PATH surprises when
+  // launched directly (e.g. from .claude/launch.json), not via an npm script.
+  const npmCandidate = nodePath.join(nodePath.dirname(process.execPath), "npm");
+  const npmBin = nodeFs.existsSync(npmCandidate) ? npmCandidate : "npm";
+  execFileSync(npmBin, ["rebuild", "better-sqlite3"], { stdio: "inherit" });
+  // Re-probe so a rebuild that didn't take rethrows the real dlopen error here
+  // instead of crashing deeper in startup.
+  probeBetterSqlite3();
+  console.log("better-sqlite3 rebuilt for Node.");
+}
 
 import http from "http";
 import path from "path";
@@ -78,8 +97,6 @@ import { Schema } from "@effect/schema";
 import { Effect } from "effect";
 import { errorToHttpStatus, type AppError, validationError } from "../src/main/domain/errors";
 import { BackupService, BackupServiceLive } from "../src/main/services/BackupService";
-
-type Json = Record<string, unknown>;
 
 async function runEffect<A>(effect: Effect.Effect<A, AppError, BackupService>): Promise<A> {
   return Effect.runPromise(Effect.provide(effect, BackupServiceLive));
