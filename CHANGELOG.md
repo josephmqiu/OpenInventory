@@ -4,7 +4,16 @@ All notable changes to OpenInventory will be documented in this file.
 
 ## [Unreleased]
 
-## [0.1.8] - 2026-05-26
+## [0.2.0] - 2026-05-27
+
+### Added
+- New **Reports** tab — an executive Period Summary. Pick a month, quarter, half-year, or year and see the period's inventory movement value, received/issued/net value, and an inventory-health count, each with a prior-period change and a year-over-year comparison. Defaults to the last completed month so the headline numbers are never half-formed.
+- The Reports tab shows a six-period trend of issued value, a "biggest movers" list (items whose issued value changed most versus the prior period), and Top Items / By Personnel breakdowns. Click any item to drill into its movement history for the period.
+- Export a period report as a **multi-section CSV** (summary, top items, by personnel, alerts) or **print to PDF** with a clean, full-width document layout.
+- Value figures are labeled "at current prices," and when items are missing a price the report says how many were excluded, so the numbers are never silently misleading.
+
+### Fixed
+- Print-to-PDF of a report now uses the full page width. It previously printed inside a narrow column with clipped cards and tables.
 
 ### Added
 - Configurable columns now reach more of the app. The **Columns** menu (show/hide + drag-to-reorder) is available on the Alerts table, the Activity drill-down, the Activity summary views (By Personnel / By Item / Alert Frequency), and an item's Movement History. Each table remembers your layout per machine.
