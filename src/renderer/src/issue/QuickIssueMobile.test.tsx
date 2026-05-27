@@ -31,7 +31,7 @@ describe("QuickIssueMobile (read-only lookup)", () => {
   });
 
   it("renders item name, SKU, current qty, location, and supplier", () => {
-    render(<QuickIssueMobile item={makeItem()} language="en" currency="CNY" onRefresh={vi.fn()} />);
+    render(<QuickIssueMobile item={makeItem()} language="en" currency="CNY" onRefresh={vi.fn()} onViewAll={vi.fn()} />);
     expect(screen.getByText("Test Item")).toBeDefined();
     expect(screen.getByText("SKU-001")).toBeDefined();
     expect(screen.getByText("100")).toBeDefined();
@@ -40,7 +40,7 @@ describe("QuickIssueMobile (read-only lookup)", () => {
   });
 
   it("does not render any stock-mutation controls", () => {
-    render(<QuickIssueMobile item={makeItem()} language="en" currency="CNY" onRefresh={vi.fn()} />);
+    render(<QuickIssueMobile item={makeItem()} language="en" currency="CNY" onRefresh={vi.fn()} onViewAll={vi.fn()} />);
     // No quantity input, no preset buttons, no issue/submit button.
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("combobox")).toBeNull();
@@ -49,7 +49,7 @@ describe("QuickIssueMobile (read-only lookup)", () => {
   });
 
   it("shows an out-of-stock badge when quantity is zero", () => {
-    render(<QuickIssueMobile item={makeItem({ currentQuantity: 0 })} language="en" currency="CNY" onRefresh={vi.fn()} />);
+    render(<QuickIssueMobile item={makeItem({ currentQuantity: 0 })} language="en" currency="CNY" onRefresh={vi.fn()} onViewAll={vi.fn()} />);
     expect(screen.getByText(/out of stock/i)).toBeDefined();
   });
 
@@ -60,20 +60,30 @@ describe("QuickIssueMobile (read-only lookup)", () => {
         language="en"
         currency="CNY"
         onRefresh={vi.fn()}
+        onViewAll={vi.fn()}
       />,
     );
     expect(screen.getByText(/15\.99/)).toBeDefined();
   });
 
   it("omits the price row when no price is set", () => {
-    render(<QuickIssueMobile item={makeItem({ unitPriceMinor: null })} language="en" currency="CNY" onRefresh={vi.fn()} />);
+    render(<QuickIssueMobile item={makeItem({ unitPriceMinor: null })} language="en" currency="CNY" onRefresh={vi.fn()} onViewAll={vi.fn()} />);
     expect(screen.queryByText(i18n.t("price", { ns: "inventory" }))).toBeNull();
   });
 
   it("calls onRefresh when the refresh button is clicked", () => {
     const onRefresh = vi.fn();
-    render(<QuickIssueMobile item={makeItem()} language="en" currency="CNY" onRefresh={onRefresh} />);
+    render(<QuickIssueMobile item={makeItem()} language="en" currency="CNY" onRefresh={onRefresh} onViewAll={vi.fn()} />);
     fireEvent.click(screen.getByTestId("qi-refresh"));
     expect(onRefresh).toHaveBeenCalledOnce();
+  });
+
+  it("renders a 'View all items' action and calls onViewAll when clicked", () => {
+    const onViewAll = vi.fn();
+    render(<QuickIssueMobile item={makeItem()} language="en" currency="CNY" onRefresh={vi.fn()} onViewAll={onViewAll} />);
+    const viewAll = screen.getByTestId("qi-view-all");
+    expect(viewAll.textContent).toMatch(/view all items/i);
+    fireEvent.click(viewAll);
+    expect(onViewAll).toHaveBeenCalledOnce();
   });
 });

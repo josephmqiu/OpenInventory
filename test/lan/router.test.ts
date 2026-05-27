@@ -131,6 +131,65 @@ describe("LAN Router — public routes", () => {
   });
 });
 
+describe("LAN Router — public catalog (GET /public/items)", () => {
+  it("returns the catalog (items + language + currency) without an access key", async () => {
+    seedItem(t.db, { name: "Widget A", sku: "WDG-001", currentQuantity: 50 });
+    seedItem(t.db, { name: "Widget B", sku: "WDG-002", currentQuantity: 5, reorderQuantity: 10 });
+
+    const res = await request("/public/items");
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      items: Array<{ name: string; sku: string }>;
+      language: string;
+      currency: string;
+    };
+    expect(body.items.length).toBe(2);
+    expect(body.items.map((i) => i.sku).sort()).toEqual(["WDG-001", "WDG-002"]);
+    expect(body.language).toBeDefined();
+    expect(body.currency).toBeDefined();
+  });
+
+  it("does not leak snapshot fields beyond items/language/currency", async () => {
+    seedItem(t.db, { name: "Widget A", sku: "WDG-001" });
+    seedPersonnel(t.db, "Should Not Leak");
+
+    const res = await request("/public/items");
+    expect(res.status).toBe(200);
+    const body = res.body as Record<string, unknown>;
+    // Anonymous LAN clients must never see the roster, backup config, LAN key, or alerts.
+    expect(body.personnel).toBeUndefined();
+    expect(body.backupPlan).toBeUndefined();
+    expect(body.lanAccess).toBeUndefined();
+    expect(body.alerts).toBeUndefined();
+    expect(Object.keys(body).sort()).toEqual(["currency", "items", "language"]);
+  });
+
+  it("omits qrCodeDataUrl from each catalog item (lighter payload, not rendered on mobile)", async () => {
+    seedItem(t.db, { name: "Widget A", sku: "WDG-001" });
+    const res = await request("/public/items");
+    const body = res.body as { items: Array<Record<string, unknown>> };
+    expect(body.items[0]).toBeDefined();
+    expect("qrCodeDataUrl" in body.items[0]).toBe(false);
+    // The display fields the mobile UI needs are present.
+    for (const key of ["id", "sku", "name", "currentQuantity", "status", "location"]) {
+      expect(body.items[0][key]).toBeDefined();
+    }
+  });
+
+  it("returns an empty array (not an error) when the catalog is empty", async () => {
+    const res = await request("/public/items");
+    expect(res.status).toBe(200);
+    const body = res.body as { items: unknown[] };
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items.length).toBe(0);
+  });
+
+  it("does not accept writes — POST /public/items returns 404", async () => {
+    const res = await request("/public/items", { method: "POST", body: {} });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("LAN Router — auth", () => {
   it("returns 401 for API routes without key", async () => {
     const res = await request("/api/health");

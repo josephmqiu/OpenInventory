@@ -3,7 +3,9 @@ import { formatDate } from "../../app/formatDate";
 import { localizeAlertStatus } from "../../app/i18n";
 import type { InventoryAlert, Language } from "../../domain/models";
 import { useTT } from "../hooks/useTT";
+import { useTableColumns } from "../hooks/useTableColumns";
 import { sortDataByKey } from "../utils/sortData";
+import { ColumnsMenu } from "./ColumnsMenu";
 import { DataTable, type ColumnDef, type SortState } from "./DataTable";
 
 interface AlertsPanelProps {
@@ -34,23 +36,33 @@ export function AlertsPanel({ alerts, language }: AlertsPanelProps) {
     return alert.currentQuantity === 0 ? "danger" : "warning";
   };
 
-  const columns = useMemo<ColumnDef<InventoryAlert>[]>(() => [
+  // px defaultWidths (not %) so hiding a column doesn't break a 100%-sum layout;
+  // `fluid` lets the table stretch like the inventory table. The severity stripe
+  // is a structural row indicator (DESIGN.md): pinned, non-hideable, non-resizable.
+  const catalog = useMemo<ColumnDef<InventoryAlert>[]>(() => [
     {
       key: "severity",
       header: "",
-      width: "3%",
+      menuLabel: tt("severity", "Severity"),
+      pin: "start",
+      hideable: false,
+      resizable: false,
+      defaultVisible: true,
+      defaultWidth: 28,
       className: "cell-severity-stripe",
       render: (alert) => {
         const severity = severityClass(alert);
         return severity ? <span className={`severity-bar severity-bar--${severity}`} /> : null;
       },
     },
-    { key: "name", header: tt("itemName", "Item Name"), width: "25%", className: "cell-title", sortable: true, sortKey: "itemName", render: (a) => a.itemName },
-    { key: "sku", header: tt("sku", "SKU"), width: "17%", className: "cell-mono cell-truncate", sortable: true, sortKey: "sku", render: (a) => a.sku },
+    { key: "name", header: tt("itemName", "Item Name"), menuLabel: tt("itemName", "Item Name"), defaultVisible: true, defaultWidth: 220, className: "cell-title", sortable: true, sortKey: "itemName", render: (a) => a.itemName },
+    { key: "sku", header: tt("sku", "SKU"), menuLabel: tt("sku", "SKU"), defaultVisible: true, defaultWidth: 150, className: "cell-mono cell-truncate", sortable: true, sortKey: "sku", render: (a) => a.sku },
     {
       key: "qty",
       header: tt("currentQuantity", "Qty"),
-      width: "13%",
+      menuLabel: tt("currentQuantity", "Qty"),
+      defaultVisible: true,
+      defaultWidth: 110,
       sortable: true,
       sortKey: "currentQuantity",
       render: (alert) => {
@@ -58,11 +70,13 @@ export function AlertsPanel({ alerts, language }: AlertsPanelProps) {
         return <span className={`cell-strong${severity ? ` cell-strong--${severity}` : ""}`}>{alert.currentQuantity}</span>;
       },
     },
-    { key: "reorder", header: tt("reorderLevel", "Reorder"), width: "13%", className: "cell-strong", sortable: true, sortKey: "thresholdQuantity", render: (a) => a.thresholdQuantity },
+    { key: "reorder", header: tt("reorderLevel", "Reorder"), menuLabel: tt("reorderLevel", "Reorder"), defaultVisible: true, defaultWidth: 110, className: "cell-strong", sortable: true, sortKey: "thresholdQuantity", render: (a) => a.thresholdQuantity },
     {
       key: "status",
       header: tt("status", "Status"),
-      width: "13%",
+      menuLabel: tt("status", "Status"),
+      defaultVisible: true,
+      defaultWidth: 130,
       sortable: true,
       sortKey: "status",
       render: (alert) => (
@@ -71,8 +85,15 @@ export function AlertsPanel({ alerts, language }: AlertsPanelProps) {
         </span>
       ),
     },
-    { key: "date", header: tt("date", "Date"), width: "16%", className: "cell-date", sortable: true, sortKey: "triggeredAt", render: (a) => formatDate(a.triggeredAt, language) },
+    { key: "date", header: tt("date", "Date"), menuLabel: tt("date", "Date"), defaultVisible: true, defaultWidth: 160, className: "cell-date", sortable: true, sortKey: "triggeredAt", render: (a) => formatDate(a.triggeredAt, language) },
   ], [tt, language]);
+
+  // Show/hide + reorder only — no resize on this short fixed table (resize:false).
+  const cols = useTableColumns("alerts", catalog, {
+    sortState,
+    onClearSort: () => setSortState(null),
+    resize: false,
+  });
 
   const sorted = useMemo(
     () => sortDataByKey(filtered, sortState),
@@ -95,12 +116,14 @@ export function AlertsPanel({ alerts, language }: AlertsPanelProps) {
             </button>
           ))}
         </div>
+        <ColumnsMenu {...cols.menuProps} />
       </div>
       <DataTable
-        columns={columns}
+        {...cols.dataTableProps}
         data={sorted}
         rowKey={(a) => a.id}
         className="table--fixed"
+        fluid
         rowClassName={(alert) => {
           const severity = severityClass(alert);
           return severity ? `row-severity row-severity--${severity}` : "";

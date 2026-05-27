@@ -46,9 +46,12 @@ describe("LanAccessPanel", () => {
       "en",
     );
 
-    const link = screen.getByRole("link", { name: "http://192.168.0.102:4123/issue/" });
+    // The lookup URL appears both in the URL list and in the "Inventory Lookup QR"
+    // block, so there may be more than one link to it.
+    const links = screen.getAllByRole("link", { name: "http://192.168.0.102:4123/issue/" });
+    expect(links.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("QR Lookup Page")).toBeTruthy();
-    expect(link.getAttribute("href")).toBe("http://192.168.0.102:4123/issue/");
+    expect(links[0].getAttribute("href")).toBe("http://192.168.0.102:4123/issue/");
   });
 
   it("keeps save disabled until the port changes to a valid value", () => {

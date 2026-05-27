@@ -282,34 +282,22 @@ export function AuditLogTable({
     [labels, t, language, clickDate, handleDeleteClick, onItemClick, onQuickFilter],
   );
 
-  const cols = useTableColumns("audit-log-table", catalog);
-
-  // Audit sort is server-side. Hiding the column you're sorted by would strand
-  // an invisible sort, so clear it via onQuickFilter — note this triggers a
-  // refetch. Column key (e.g. "itemName") may differ from sortKey, so compare
-  // the resolved sortKey against the active server sort.
-  const handleToggleColumn = (key: string) => {
-    if (!cols.isHidden(key)) {
-      const col = catalog.find((c) => c.key === key);
-      const sk = col?.sortKey ?? key;
-      if (filters.sortBy === sk) onQuickFilter({ sortBy: undefined, sortDir: undefined });
-    }
-    cols.toggle(key);
-  };
+  // Audit sort is server-side: clearing a stranded sort goes through onQuickFilter
+  // (triggers a refetch), not local state — so the hook's sort-clear is injected here.
+  // No resize on this table (max-content sizing, shipped without resize).
+  const cols = useTableColumns("audit-log-table", catalog, {
+    sortState,
+    onClearSort: () => onQuickFilter({ sortBy: undefined, sortDir: undefined }),
+    resize: false,
+  });
 
   return (
     <>
       <div className="audit-toolbar">
-        <ColumnsMenu
-          catalog={cols.catalog}
-          isHidden={cols.isHidden}
-          onToggle={handleToggleColumn}
-          onReset={cols.reset}
-          hiddenCount={cols.hiddenCount}
-        />
+        <ColumnsMenu {...cols.menuProps} />
       </div>
       <DataTable
-        columns={cols.visibleColumns}
+        {...cols.dataTableProps}
         data={rows}
         rowKey={(row) => row.id}
         rowClassName={(row) => (row.isAnomaly ? "audit-row--anomaly" : "")}
@@ -320,7 +308,6 @@ export function AuditLogTable({
         emptyHint={emptyHint}
         sortState={sortState}
         onSortChange={handleSortChange}
-        onColumnReorder={cols.moveColumn}
       />
       {!loading && rows.length > 0 && (
         <div className="audit-pagination">

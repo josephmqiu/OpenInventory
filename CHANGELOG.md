@@ -4,6 +4,18 @@ All notable changes to OpenInventory will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-05-26
+
+### Added
+- Configurable columns now reach more of the app. The **Columns** menu (show/hide + drag-to-reorder) is available on the Alerts table, the Activity drill-down, the Activity summary views (By Personnel / By Item / Alert Frequency), and an item's Movement History. Each table remembers your layout per machine.
+- Columns can now be reordered with the keyboard. The Columns menu has **Move left / Move right** buttons next to each column, so reordering no longer requires a mouse drag.
+
+### Changed
+- The Columns menu lists shown columns in their current on-screen order and names each Move button after its column, so it is clearer and works with a screen reader.
+
+### For contributors
+- `useTableColumns(persistKey, catalog, options?)` now returns ready-made `dataTableProps` and `menuProps` bundles, so a table opts into configurable columns with two prop spreads. `options` carries `{ sortState, onClearSort, resize }`; the menu's `onToggle` clears a stranded sort (resolving `sortKey`, client- or server-side) and `resize:false` omits the resize handles. `ColumnsMenu` now exports its props type and offers keyboard reorder; `ColumnDef` gained a `resizable?` flag (used to lock indicator columns like the Alerts severity stripe). Inventory + Activity Log were migrated onto the bundles with no behavior change, then the feature rolled out to four more tables. Dashboard widgets, Personnel, and Batch Issue were intentionally left out (glanceable readouts / workflow forms).
+
 ## [0.1.7] - 2026-05-25
 
 ### Added

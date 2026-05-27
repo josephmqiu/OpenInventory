@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { localizeStockStatus, stockStatusSeverity } from "../../app/i18n";
 import { formatPrice } from "../../app/formatters";
 import type { ActionKind, CurrencyCode, InventoryItem, Language } from "../../domain/models";
+import { filterInventoryItems } from "../../domain/itemFilter";
 import { exportQrLabel, exportSelectedQrLabels } from "../../services/inventoryGateway";
 import { buildQrLabelExportPayload, buildQrLabelExportPayloads } from "../export/qrLabelExport";
 import { useTT } from "../hooks/useTT";
@@ -88,23 +89,12 @@ export function UnifiedInventoryTable({
     [items],
   );
 
-  // --- Client-side filtering ---
+  // --- Client-side filtering (shared with the mobile LAN lookup list) ---
 
-  const filtered = useMemo(() => {
-    const searchLower = search.toLowerCase();
-    return items.filter((item) => {
-      if (filter === "low_stock" && item.status !== "low_stock") return false;
-      if (filter === "out_of_stock" && item.status !== "out_of_stock") return false;
-      if (
-        search &&
-        !item.name.toLowerCase().includes(searchLower) &&
-        !item.sku.toLowerCase().includes(searchLower) &&
-        !item.location.toLowerCase().includes(searchLower)
-      )
-        return false;
-      return true;
-    });
-  }, [items, filter, search]);
+  const filtered = useMemo(
+    () => filterInventoryItems(items, { search, filter }),
+    [items, filter, search],
+  );
 
   const sorted = useMemo(
     () => sortData(filtered, sortState, (row, key) => {
@@ -347,18 +337,11 @@ export function UnifiedInventoryTable({
     },
   ], [tt, language, currency, busy, onAction]);
 
-  const cols = useTableColumns("inventory", catalog);
-
-  // Hiding the column you're sorted by would leave an invisible, un-clearable
-  // sort — clear it first. Note column key (e.g. "price") ≠ sortKey ("unitPriceMinor").
-  const handleToggleColumn = (key: string) => {
-    if (!cols.isHidden(key)) {
-      const col = catalog.find((c) => c.key === key);
-      const sk = col?.sortKey ?? key;
-      if (sortState && sortState.key === sk) setSortState(null);
-    }
-    cols.toggle(key);
-  };
+  const cols = useTableColumns("inventory", catalog, {
+    sortState,
+    onClearSort: () => setSortState(null),
+    resize: true,
+  });
 
   // --- Empty state messages ---
 
@@ -493,24 +476,16 @@ export function UnifiedInventoryTable({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
           />
-          <ColumnsMenu
-            catalog={cols.catalog}
-            isHidden={cols.isHidden}
-            onToggle={handleToggleColumn}
-            onReset={cols.reset}
-            hiddenCount={cols.hiddenCount}
-          />
+          <ColumnsMenu {...cols.menuProps} />
         </div>
 
         {/* 5. Table */}
         <DataTable
-          columns={cols.visibleColumns}
+          {...cols.dataTableProps}
           data={sorted}
           rowKey={(item) => item.id}
           className="table--fixed"
           fluid
-          onColumnResize={cols.setWidth}
-          onColumnReorder={cols.moveColumn}
           onRowClick={(item) => onDetailItemIdChange(item.id)}
           selection={{
             selectedIds,

@@ -1,16 +1,17 @@
 import { useTranslation } from "react-i18next";
 import { localizeCategory, localizeStockStatus, localizeUnit } from "../app/i18n";
 import { formatNumber, formatPrice } from "../app/formatters";
-import type { CurrencyCode, InventoryItem, Language } from "../../../shared/types";
+import type { CurrencyCode, Language, PublicCatalogItem } from "../../../shared/types";
 
 interface QuickIssueMobileProps {
-  item: InventoryItem;
+  item: PublicCatalogItem;
   language: Language;
   currency: CurrencyCode;
   onRefresh: () => void;
+  onViewAll: () => void;
 }
 
-export function QuickIssueMobile({ item, language, currency, onRefresh }: QuickIssueMobileProps) {
+export function QuickIssueMobile({ item, language, currency, onRefresh, onViewAll }: QuickIssueMobileProps) {
   const { t } = useTranslation(["inventory", "quickIssue", "common"]);
 
   const isOutOfStock = item.currentQuantity <= 0;
@@ -62,7 +63,7 @@ export function QuickIssueMobile({ item, language, currency, onRefresh }: QuickI
         )}
       </div>
 
-      <div className="qi-submit-area">
+      <div className="qi-submit-area qi-submit-area--actions">
         <button
           className="qi-refresh-btn"
           data-testid="qi-refresh"
@@ -70,6 +71,14 @@ export function QuickIssueMobile({ item, language, currency, onRefresh }: QuickI
           onClick={onRefresh}
         >
           {t("refresh", { ns: "common" })}
+        </button>
+        <button
+          className="qi-view-all-btn"
+          data-testid="qi-view-all"
+          type="button"
+          onClick={onViewAll}
+        >
+          {t("viewAllItems", { ns: "quickIssue" })}
         </button>
       </div>
     </div>

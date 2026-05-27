@@ -21,10 +21,13 @@ import { createRequire } from "module";
 // error — only happens on the first `new Database()`. We must actually open a
 // throwaway DB here to force the load, then self-heal before the real one below.
 const _require = createRequire(import.meta.url);
+function probeBetterSqlite3(): void {
+  const BetterSqlite3 = _require("better-sqlite3") as typeof import("better-sqlite3");
+  new BetterSqlite3(":memory:").close(); // forces the native dlopen
+}
 function betterSqlite3LoadsForThisNode(): boolean {
   try {
-    const BetterSqlite3 = _require("better-sqlite3") as typeof import("better-sqlite3");
-    new BetterSqlite3(":memory:").close(); // forces the native dlopen
+    probeBetterSqlite3();
     return true;
   } catch {
     return false;
@@ -48,6 +51,9 @@ if (!betterSqlite3LoadsForThisNode()) {
   const npmCandidate = nodePath.join(nodePath.dirname(process.execPath), "npm");
   const npmBin = nodeFs.existsSync(npmCandidate) ? npmCandidate : "npm";
   execFileSync(npmBin, ["rebuild", "better-sqlite3"], { stdio: "inherit" });
+  // Re-probe so a rebuild that didn't take rethrows the real dlopen error here
+  // instead of crashing deeper in startup.
+  probeBetterSqlite3();
   console.log("better-sqlite3 rebuilt for Node.");
 }
 
@@ -56,6 +62,7 @@ import path from "path";
 import fs from "fs";
 import Database from "better-sqlite3";
 import { makeDatabaseService } from "../src/main/services/DatabaseService";
+import { toPublicCatalogItem } from "../src/shared/publicCatalog";
 import { runPendingMigrations } from "../src/main/infrastructure/migrations";
 import { configureSqlitePragmas } from "../src/main/infrastructure/sqlite-pragmas";
 import {
@@ -257,6 +264,16 @@ const server = http.createServer(async (req, res) => {
       const { language } = decodeBody(UpdateLanguageBody, await readJsonBody(req));
       await runEffect(dbService.updateLanguage(language));
       sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    // Public catalog — read-only browse/search for QR scans (no auth). Mirrors the
+    // production LAN route's explicit projection (omits qrCodeDataUrl; never the
+    // whole snapshot) so the preview exercises the real public shape.
+    if (pathname === "/public/items" && method === "GET") {
+      const snapshot = await runEffect(dbService.loadSnapshot());
+      const items = snapshot.items.map(toPublicCatalogItem);
+      sendJson(res, 200, { items, language: snapshot.language, currency: snapshot.currency });
       return;
     }
 

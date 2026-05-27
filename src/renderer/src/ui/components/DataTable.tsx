@@ -35,6 +35,10 @@ export interface ColumnDef<TRow> {
   menuLabel?: string;
   /** Server-side sort key (reserved for tables that sort via the backend). */
   backendSortKey?: string;
+  /** false = no resize handle, even when not the last column (default: true).
+   *  Use for structural/indicator columns (e.g. a status stripe) and editable
+   *  input columns where a draggable width makes no sense. */
+  resizable?: boolean;
 }
 
 /** Minimum column width (px) a resize drag can produce. */
@@ -220,7 +224,7 @@ export function DataTable<TRow>({
             {columns.map((col, i) => {
               const sk = col.sortKey ?? col.key;
               const reorderable = !!onColumnReorder && !col.pin;
-              const resizable = !!onColumnResize && i < columns.length - 1;
+              const resizable = !!onColumnResize && col.resizable !== false && i < columns.length - 1;
               const dropClass =
                 dropTarget && dropTarget.key === col.key
                   ? dropTarget.after
