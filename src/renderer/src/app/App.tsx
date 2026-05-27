@@ -10,6 +10,7 @@ import { ActionPanel } from "../ui/components/ActionPanel";
 import { BatchIssuePanel } from "../ui/components/BatchIssuePanel";
 import { LanAccessPanel } from "../ui/components/LanAccessPanel";
 import { AuditPanel } from "../ui/components/AuditPanel";
+import { PeriodReportPanel } from "../ui/components/PeriodReportPanel";
 import { RestoreDialog } from "../ui/components/RestoreDialog";
 import { useInventoryState } from "./useInventoryState";
 import { useAutoUpdate } from "./useAutoUpdate";
@@ -18,6 +19,7 @@ import { UpdateChip } from "../ui/components/UpdateChip";
 import { UpdateSettingsPanel } from "../ui/components/UpdateSettingsPanel";
 import {
   ClipboardList,
+  FileBarChart,
   LayoutDashboard,
   LogOut,
   Moon,
@@ -29,20 +31,22 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-type Section = "dashboard" | "inventory" | "activity" | "settings";
+type Section = "dashboard" | "inventory" | "activity" | "reports" | "settings";
 type SettingsTab = "general" | "personnel" | "backup" | "lan" | "update";
 
-const navOrder: Section[] = ["dashboard", "inventory", "activity", "settings"];
+const navOrder: Section[] = ["dashboard", "inventory", "activity", "reports", "settings"];
 
 const sectionIcons: Record<Section, LucideIcon> = {
   dashboard: LayoutDashboard,
   inventory: Warehouse,
   activity: ClipboardList,
+  reports: FileBarChart,
   settings: Settings,
 };
 
 function sectionTitle(section: Section, t: ReturnType<typeof useTranslation>["t"]): string {
   if (section === "activity") return t("activity");
+  if (section === "reports") return t("reports", { ns: "audit" });
   return t(section);
 }
 
@@ -54,6 +58,8 @@ function sectionSubtitle(section: Section, t: ReturnType<typeof useTranslation>[
       return t("inventoryHint");
     case "activity":
       return t("auditHint", { ns: "audit" });
+    case "reports":
+      return t("reportsHint", { ns: "audit" });
     case "settings":
       return t("settingsHint");
     default:
@@ -405,6 +411,10 @@ export function App() {
                 language={language}
                 personnel={snapshot.personnel}
               />
+            )}
+
+            {section === "reports" && (
+              <PeriodReportPanel language={language} />
             )}
 
             {section === "settings" && (

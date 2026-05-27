@@ -48,5 +48,6 @@ export default defineConfig({
     { name: "shutdown", testMatch: /graceful-shutdown\.spec/, use: { seedScenario: "none" } },
     { name: "regression", testMatch: /regression\.spec/, use: { seedScenario: "inventory-basics" } },
     { name: "pricing", testMatch: /pricing\.spec/, use: { seedScenario: "pricing" } },
+    { name: "reports", testMatch: /reports\.spec/, use: { seedScenario: "audit-history" } },
   ],
 });

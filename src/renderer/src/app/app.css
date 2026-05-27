@@ -2591,3 +2591,197 @@ td input[type="checkbox"] {
     width: 100%;
   }
 }
+
+/* ─── Reports / Period Summary tab ──────────────────────────────────────── */
+
+/* MetricCard delta + subline (instrument band) */
+.metric-card__delta {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted); /* neutral by default — up is not "good" for movement */
+}
+.metric-card__delta--success { color: var(--success); }
+.metric-card__delta--danger { color: var(--danger); }
+.metric-card__delta--warning { color: var(--warning); }
+.metric-card__subline {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.metrics-grid--instrument { grid-template-columns: repeat(4, 1fr); }
+.metrics-grid--secondary { grid-template-columns: repeat(3, 1fr); }
+
+/* Identity / header block (doubles as the print title block) */
+.report-identity {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.report-identity__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.report-identity__meta {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.report-identity__caveat {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.report-identity__warning {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--warning);
+}
+
+/* Period control row */
+.report-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.report-period-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.report-period-select {
+  height: 30px;
+  padding: 0 8px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+}
+.report-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* Sections */
+.report-section { margin-top: 20px; }
+.report-section-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.report-empty {
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.report-panel .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+.report-panel .muted { color: var(--text-muted); font-size: 11px; }
+.data-table__row--clickable { cursor: pointer; }
+.data-table__row--clickable:hover { background: var(--accent-muted); }
+
+/* Trend strip — monochrome calibrated bars, amber = current period */
+.trend-strip { margin-top: 20px; }
+.trend-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 96px;
+  padding: 8px 0;
+}
+.trend-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+.trend-bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.trend-bar {
+  width: 60%;
+  max-width: 32px;
+  background: var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.trend-bar--current { background: var(--accent); }
+.trend-bar-label {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Print: render a document, not a screenshot */
+@media print {
+  .sidebar,
+  .topbar,
+  .nav,
+  .no-print { display: none !important; }
+
+  /* Collapse the sidebar grid for print. The app shell is `grid 180px 1fr` at
+     `height: 100vh` with a scrolling `.content`; without resetting it the report
+     prints inside the narrow on-screen content column (a ~190px strip) and every
+     row/KPI clips. Flatten to a single full-width, auto-height flow. */
+  html, body { height: auto !important; overflow: visible !important; }
+  .app-shell,
+  .app-shell--collapsed {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .content,
+  main.content {
+    padding: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  .report-panel { width: 100% !important; max-width: none !important; color: #111111; }
+
+  :root {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --text: #111111;
+    --text-muted: #555555;
+    --border: #cccccc;
+    --border-strong: #999999;
+  }
+
+  /* Print backgrounds instead of stripping them to white — the trend bars and
+     KPI tone fills are background-color, which print engines drop by default. */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .report-panel table.data-table { width: 100% !important; }
+  .report-section, .trend-strip, .metric-card { break-inside: avoid; }
+  .report-section-title { break-after: avoid; }
+  table.data-table { break-inside: auto; }
+  table.data-table tr { break-inside: avoid; }
+  @page { margin: 1.5cm; }
+}

@@ -4,6 +4,8 @@ import type {
   AuditAnalyticsResult,
   AuditMovementFilters,
   AuditPageResult,
+  AuditReportPeriodArgs,
+  AuditReportResult,
   BatchIssueMaterialInput,
   CreateInventoryItemInput,
   CurrencyCode,
@@ -545,6 +547,22 @@ export async function getAuditAnalytics(
     return invokeCommand<AuditAnalyticsResult>("get_audit_analytics", { filters });
   }
   throw unsupportedRuntimeError("Loading audit analytics");
+}
+
+export async function getPeriodReport(
+  period: AuditReportPeriodArgs,
+): Promise<AuditReportResult> {
+  if (supportsHttpApi()) {
+    const params = new URLSearchParams();
+    params.set("granularity", period.granularity);
+    params.set("year", String(period.year));
+    params.set("index", String(period.index));
+    return fetchJson<AuditReportResult>(`/api/audit/report?${params}`, { method: "GET" });
+  }
+  if (detectRuntime() === "desktop") {
+    return invokeCommand<AuditReportResult>("get_period_report", { period });
+  }
+  throw unsupportedRuntimeError("Loading the period report");
 }
 
 // ─── Auto-update ──────────────────────────────────────────────────────────────
