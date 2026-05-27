@@ -174,6 +174,32 @@ export const AuditAnalyticsFilterArgs = Schema.Struct({
   }),
 });
 
+const AuditGranularitySchema = Schema.Literal("month", "quarter", "half", "year");
+const ReportYear = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.between(2000, 2100));
+const ReportIndex = Schema.Number.pipe(Schema.finite(), Schema.int(), Schema.between(1, 12));
+
+/** Max valid `index` per granularity — the external-input chokepoint. */
+const MAX_INDEX: Record<"month" | "quarter" | "half" | "year", number> = {
+  month: 12,
+  quarter: 4,
+  half: 2,
+  year: 1,
+};
+
+export const AuditReportArgs = Schema.Struct({
+  period: Schema.Struct({
+    granularity: AuditGranularitySchema,
+    year: ReportYear,
+    index: ReportIndex,
+  }).pipe(
+    // Reject a malformed index (e.g. quarter 7) at decode time so it never
+    // reaches the period math and produces a bogus window.
+    Schema.filter((p) => p.index <= MAX_INDEX[p.granularity], {
+      message: () => "period.index out of range for the given granularity",
+    }),
+  ),
+});
+
 export const DirPathArgs = Schema.Struct({
   dirPath: Schema.String,
 });
