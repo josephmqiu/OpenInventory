@@ -178,7 +178,7 @@ admin surface.
 
 `src/renderer/src/` is organized as:
 
-- **app/** — `App.tsx` (4-tab shell: Dashboard, Inventory, Activity, Settings),
+- **app/** — `App.tsx` (5-tab shell: Dashboard, Inventory, Activity, Reports, Settings),
   `useInventoryState` (polling state manager), `useAutoUpdate`, `useTheme`,
   `i18nResources` (en + zh-CN), runtime detection (desktop vs LAN).
 - **domain/** — TypeScript models shared via `src/shared/types.ts`.
@@ -187,8 +187,9 @@ admin surface.
   preview / read-only LAN routes).
 - **ui/components/** — the panels and tables (DashboardView,
   UnifiedInventoryTable, ActionPanel, BatchIssuePanel, ItemDetailsPanel,
-  PersonnelPanel, BackupPanel, LanAccessPanel, the Audit* views, plus modals
-  and shared primitives like DataTable and MetricCard).
+  PersonnelPanel, BackupPanel, LanAccessPanel, the Audit* views,
+  PeriodReportPanel (the Reports tab), plus modals and shared primitives like
+  DataTable and MetricCard).
 - **ui/printing/**, **ui/export/** — QR label rendering (canvas → PNG) and CSV
   helpers.
 - **issue/** — a separate entry point (`issue-main.tsx`) for the

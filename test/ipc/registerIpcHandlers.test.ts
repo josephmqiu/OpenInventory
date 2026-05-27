@@ -77,6 +77,7 @@ function makeMockDb(overrides: Partial<DatabaseServiceApi> = {}): DatabaseServic
     saveLanAccessSettings: vi.fn(),
     getAuditMovements: vi.fn(),
     getAuditAnalytics: vi.fn(),
+    getAuditReport: vi.fn(),
     close: vi.fn(),
     ...overrides,
   } as unknown as DatabaseServiceApi;
@@ -798,6 +799,41 @@ describe("registerIpcHandlers", () => {
 
     expect(result).toHaveProperty("ok", false);
     expect(result).toHaveProperty("error._tag", "ValidationError");
+
+    await runtime.dispose();
+  });
+
+  it("delegates get-period-report to the database service", async () => {
+    const report = { period: { label: "May 2026", from: "2026-05-01 00:00:00", to: "2026-05-31 23:59:59" } };
+    const db = makeMockDb({
+      getAuditReport: vi.fn(() => Effect.succeed(report as never)),
+    });
+    const runtime = makeTestRuntime(db, { sendLowStockAlert: vi.fn(() => Effect.void) }, makeMockLan());
+
+    registerIpcHandlers(runtime, { primaryUrl: "" }, autoUpdateService);
+
+    const handler = electronMocks.handlers.get("get-period-report");
+    expect(handler).toBeTruthy();
+    const result = await handler?.({}, { period: { granularity: "month", year: 2026, index: 5 } });
+
+    expect(db.getAuditReport).toHaveBeenCalledWith({ granularity: "month", year: 2026, index: 5 });
+    expect(result).toEqual({ ok: true, data: report });
+
+    await runtime.dispose();
+  });
+
+  it("returns a decode error for get-period-report with an out-of-range index", async () => {
+    const db = makeMockDb({ getAuditReport: vi.fn() });
+    const runtime = makeTestRuntime(db, { sendLowStockAlert: vi.fn(() => Effect.void) }, makeMockLan());
+
+    registerIpcHandlers(runtime, { primaryUrl: "" }, autoUpdateService);
+
+    const handler = electronMocks.handlers.get("get-period-report");
+    // quarter only has indices 1-4; 7 must be rejected at decode, never reaching the service.
+    const result = await handler?.({}, { period: { granularity: "quarter", year: 2026, index: 7 } });
+
+    expect(result).toHaveProperty("ok", false);
+    expect(db.getAuditReport).not.toHaveBeenCalled();
 
     await runtime.dispose();
   });

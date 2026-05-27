@@ -119,4 +119,36 @@ describe("MetricCard", () => {
     const card = container.querySelector(".metric-card");
     expect(card?.getAttribute("aria-label")).toBe("Low Stock");
   });
+
+  it("renders a neutral delta + subline for the common inventory case", () => {
+    const { container } = renderWithI18n(
+      <MetricCard
+        label="Value Issued"
+        value="¥5,000"
+        delta={{ text: "+12%", direction: "up" }}
+        subline="YoY +3%"
+      />,
+    );
+    const delta = container.querySelector(".metric-card__delta");
+    expect(delta).not.toBeNull();
+    // Default delta tone is neutral — must not inherit success/danger color.
+    expect(delta?.className).toContain("metric-card__delta--neutral");
+    expect(delta?.className).not.toContain("--success");
+    expect(delta?.className).not.toContain("--danger");
+    expect(delta?.textContent).toContain("+12%");
+    expect(screen.getByText("YoY +3%")).toBeTruthy();
+  });
+
+  it("renders no delta element when delta is absent", () => {
+    const { container } = renderWithI18n(<MetricCard label="Movements" value={10} />);
+    expect(container.querySelector(".metric-card__delta")).toBeNull();
+    expect(container.querySelector(".metric-card__subline")).toBeNull();
+  });
+
+  it("honors an explicit valence tone (alerts)", () => {
+    const { container } = renderWithI18n(
+      <MetricCard label="Alerts" value={3} delta={{ text: "+2", direction: "up", tone: "danger" }} />,
+    );
+    expect(container.querySelector(".metric-card__delta--danger")).not.toBeNull();
+  });
 });

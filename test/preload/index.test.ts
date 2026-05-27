@@ -61,6 +61,15 @@ describe("preload electronAPI bridge", () => {
     expect(electronMocks.invoke).toHaveBeenCalledWith("load-app-snapshot", { refresh: true });
   });
 
+  it("forwards the get-period-report channel to ipcRenderer", async () => {
+    const api = await loadElectronApi();
+    electronMocks.invoke.mockResolvedValueOnce({ ok: true });
+
+    const period = { granularity: "month", year: 2026, index: 5 };
+    await expect(api.invoke("get-period-report", { period })).resolves.toEqual({ ok: true });
+    expect(electronMocks.invoke).toHaveBeenCalledWith("get-period-report", { period });
+  });
+
   it("rejects invoke calls for disallowed channels", async () => {
     const api = await loadElectronApi();
 

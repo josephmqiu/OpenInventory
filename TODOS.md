@@ -280,3 +280,53 @@ in `src/main/infrastructure/lan/router.ts` and/or a per-IP limit on public route
 `useQuickIssueState` + `loadPublicItemContext` are kept as a catalog-load-failure fallback in
 `QuickIssueApp`. Once the catalog path has shipped one stable release, consider collapsing to
 the catalog-only path. **Revisit after:** one release with no catalog-load incidents.
+
+---
+
+## Reports / Period Summary — deferred follow-ups (from /autoplan + reviews, 2026-05-27)
+
+Deferred out of the v1 "Reports" (Period Summary) tab. Each was an explicit
+out-of-scope decision during the CEO/Design/Eng reviews, not an oversight:
+
+- **Multi-sheet Excel export (exceljs).** v1 ships a multi-section CSV (reusing the
+  existing `buildAuditCsvContent` Blob-download pattern) + print-to-PDF. Excel opens
+  CSV natively. Revisit only if admins need a formatted multi-tab `.xlsx` workbook;
+  adding `exceljs` (~1MB) and its packaging/test surface wasn't justified for v1.
+- **Opening/closing inventory balances ("period close").** The report shows net change
+  and movement value, not beginning/ending stock per period. Full balance reconstruction
+  from movement history (with no-movement and deleted-movement edge cases) is the v1.1
+  upgrade that turns this from a period *summary* into a period *close*.
+- **Point-in-time price capture on movements.** Value uses **current** item prices
+  (labeled "at current prices"), so a closed period's figures can change if a price is
+  later edited. A stable `unit_price_at_movement` column on `inventory_movements` +
+  price-change logging is the path to a true (reproducible) audit artifact.
+- **Reviewed-by / notes sign-off line on the printed report.** An exec sign-off field on
+  the print/PDF artifact. Pairs naturally with point-in-time pricing above.
+
+**Plan:** `~/.claude/plans/mutable-baking-rose.md` · CEO plan:
+`~/.gstack/projects/josephmqiu-OpenInventory/ceo-plans/2026-05-27-reports-period-summary.md`
+
+### Code-quality follow-ups (from /review specialists, 2026-05-27) — P3
+
+All informational, no correctness/security issues. Deferred to keep the feature PR focused:
+
+- **Reuse `DataTable` in `PeriodReportPanel`.** The panel hand-rolls three raw
+  `<table className="data-table">` blocks (biggest movers, top items, by-personnel) +
+  a parallel `.data-table__row--clickable` CSS class instead of the shared `DataTable`
+  component (columns/rowKey/onRowClick/empty-state). Reuse-before-rebuild gap.
+- **Extract a shared CSV-download util.** `downloadCsv` + `csvRow` in `PeriodReportPanel`
+  duplicate the Blob/`createObjectURL`/escape pattern in `AuditLogTable.tsx`; the
+  "reuses the pattern" comment is aspirational. Extract `escapeCsvCell` + `triggerCsvDownload`.
+- **Extract a shared `parseAuditReportPeriod(searchParams)` helper.** The 13-line decode
+  block is duplicated verbatim in `lan/router.ts` and `scripts/dev-api-server.ts` — the exact
+  dual-wiring drift the project memory warns about.
+- **Dedup period arithmetic in `PeriodReportPanel`.** `lastCompletedPeriod` re-derives
+  per-granularity modular math that `shiftPeriod` already owns; `maxIndex` duplicates the
+  module-private `UNITS_PER_YEAR`. Export the table + derive from `shiftPeriod`.
+- **Index `low_stock_alerts.triggered_at`.** The report's inventory-health + alert-frequency
+  queries range-scan `triggered_at`, which has no index (only `(item_id, status)`). Low impact
+  at typical alert volumes on local single-user SQLite, but a newly-exercised scan path.
+- **Test-hardening:** direct unit tests for `lastCompletedPeriod` year-boundary rollover
+  (faked clock), `biggestMovers` delta=0 exclusion + top-5 cap, the LAN missing-`index`
+  default for non-year granularities, and per-granularity `shiftPeriod` symmetry.
+  (`pctDelta` is now directly tested.)

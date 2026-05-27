@@ -252,6 +252,52 @@ describe("LAN Router — API routes", () => {
   });
 });
 
+describe("LAN Router — GET /api/audit/report validation", () => {
+  const auth = { "x-inventory-key": ACCESS_KEY };
+
+  it("returns 200 for a well-formed period", async () => {
+    const res = await request("/api/audit/report?granularity=month&year=2026&index=4", {
+      headers: auth,
+    });
+    expect(res.status).toBe(200);
+    const body = res.body as { period: { label: string }; totals: unknown };
+    expect(body.period).toBeDefined();
+    expect(body.totals).toBeDefined();
+  });
+
+  it("defaults missing params instead of resolving a bogus 1899/1900 window", async () => {
+    // Number(null) === 0 previously produced year 0 / index 0. The decode now
+    // backfills currentYear + index 1 so the report resolves to a real window.
+    const res = await request("/api/audit/report?granularity=year", { headers: auth });
+    expect(res.status).toBe(200);
+    const body = res.body as { period: { label: string } };
+    expect(body.period.label).toBe(String(new Date().getFullYear()));
+  });
+
+  it("rejects an unknown granularity with 400 (not a 500)", async () => {
+    const res = await request("/api/audit/report?granularity=foo&year=2026&index=1", {
+      headers: auth,
+    });
+    expect(res.status).toBe(400);
+    expect((res.body as { _tag: string })._tag).toBe("ValidationError");
+  });
+
+  it("rejects an out-of-range index for the granularity with 400", async () => {
+    // quarter only has 1-4; 7 must not silently roll over into the next year.
+    const res = await request("/api/audit/report?granularity=quarter&year=2026&index=7", {
+      headers: auth,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an out-of-bounds year with 400", async () => {
+    const res = await request("/api/audit/report?granularity=month&year=1000000000&index=1", {
+      headers: auth,
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("LAN Router — removed write routes return 404", () => {
   const REMOVED_ROUTES = [
     { method: "POST", path: "/api/items", label: "create item" },
@@ -286,6 +332,7 @@ describe("LAN Router — auth boundaries", () => {
     { method: "GET", path: "/api/items/test-id/movements" },
     { method: "GET", path: "/api/audit/movements" },
     { method: "GET", path: "/api/audit/analytics" },
+    { method: "GET", path: "/api/audit/report" },
   ];
 
   for (const route of API_ROUTES_NEEDING_AUTH) {

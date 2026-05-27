@@ -1,16 +1,21 @@
 import http from "http";
 import fs from "fs";
 import path from "path";
+import { Schema } from "@effect/schema";
 import { RateLimiter, getClientIp } from "./auth";
 import type { DatabaseServiceApi } from "../../services/DatabaseService";
 import type { AuditMovementFilters } from "../../../shared/types";
+import { AuditReportArgs } from "../../../shared/schemas";
 import { toPublicCatalogItem } from "../../../shared/publicCatalog";
 import {
   backendMessages,
   normalizeBackendLanguage,
   notFoundError,
   serializeAppError,
+  validationError,
 } from "../../domain/errors";
+
+const decodeReportArgs = Schema.decodeUnknownSync(AuditReportArgs);
 
 interface LanRouterDeps {
   dbService: DatabaseServiceApi;
@@ -124,6 +129,32 @@ async function handleApiRoute(
         textSearch: url.searchParams.get("textSearch") || undefined,
       };
       const result = await runEffect(db.getAuditAnalytics(filters));
+      sendJson(res, 200, result);
+      return;
+    }
+
+    // GET /api/audit/report
+    if (pathname === "/api/audit/report" && method === "GET") {
+      // Validate raw query params through the same schema the IPC path uses, so
+      // a bad granularity / out-of-range year / index can't reach the period
+      // math (which would 500 or silently return a bogus window). Missing
+      // params fall back to sensible defaults; only malformed values are rejected.
+      const rawYear = url.searchParams.get("year");
+      const rawIndex = url.searchParams.get("index");
+      const period = (() => {
+        try {
+          return decodeReportArgs({
+            period: {
+              granularity: url.searchParams.get("granularity") ?? "month",
+              year: rawYear === null || rawYear === "" ? new Date().getFullYear() : Number(rawYear),
+              index: rawIndex === null || rawIndex === "" ? 1 : Number(rawIndex),
+            },
+          }).period;
+        } catch {
+          throw validationError(messages.invalidInput, undefined, "invalid audit report period");
+        }
+      })();
+      const result = await runEffect(db.getAuditReport(period));
       sendJson(res, 200, result);
       return;
     }

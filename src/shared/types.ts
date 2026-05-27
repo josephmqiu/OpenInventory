@@ -335,3 +335,60 @@ export interface AuditAnalyticsResult {
   byItem: ItemActivityRow[];
   alertFrequency: AlertFrequencyRow[];
 }
+
+// ─── Period Report Types (Reports / Period Summary tab) ──────────────────────
+
+// Period math (granularity, args) lives in ./auditPeriod and is the source of
+// truth; re-exported here so consumers import report types from one place.
+export type { AuditPeriodGranularity, AuditReportPeriodArgs } from "./auditPeriod";
+
+export interface AuditReportTotals {
+  totalMovements: number;
+  totalReceivedQty: number;
+  totalIssuedQty: number;
+  netQty: number;
+  receivedValueMinor: number; // qty * current unit_price_minor (priced items only)
+  issuedValueMinor: number;
+  netValueMinor: number; // received - issued
+  valuedItemCount: number; // distinct moved items WITH a price set
+  unvaluedItemCount: number; // distinct moved items with NULL price (excluded from value)
+  hasData: boolean; // false when the window has no movements (vs a real zero)
+}
+
+export interface ItemValueRow {
+  itemId: string;
+  itemName: string;
+  itemSku: string;
+  issuedQty: number;
+  issuedValueMinor: number;
+  hasPrice: boolean; // false → contributes qty but not value
+}
+
+export interface MoverRow {
+  itemId: string;
+  itemName: string;
+  itemSku: string;
+  currentIssuedValueMinor: number;
+  priorIssuedValueMinor: number;
+  deltaValueMinor: number; // signed; rows sorted by |delta| desc
+}
+
+export interface TrendPoint {
+  label: string;
+  issuedValueMinor: number;
+}
+
+export interface AuditReportResult {
+  period: { label: string; from: string; to: string };
+  priorPeriod: { label: string; from: string; to: string };
+  yoyPeriod: { label: string; from: string; to: string };
+  totals: AuditReportTotals;
+  priorTotals: AuditReportTotals;
+  yoyTotals: AuditReportTotals;
+  topItems: ItemValueRow[];
+  biggestMovers: MoverRow[];
+  trend: TrendPoint[]; // last 6 periods, oldest -> newest, gap-free
+  inventoryHealth: { lowOrZeroItemCount: number };
+  analytics: AuditAnalyticsResult; // current period, from getAuditAnalytics
+  currency: CurrencyCode;
+}

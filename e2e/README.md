@@ -24,6 +24,7 @@ The lane runner sets `PW_FAIL_ON_FLAKY=1` by default. A test that passes only af
 - Stock: receive, issue, insufficient-stock guard, batch issue, low-stock alerts, movement history.
 - Dashboard: metric drill-through, alerts tab navigation, recent alert item drill-down.
 - Activity/audit: log table, filters, pagination, CSV export, summary tabs, item balance drill-down, empty state, movement deletion.
+- Reports/period summary: granularity switching, full instrument band + trend + breakdowns, unpriced warning, top-item drill-down, multi-section CSV export, empty-year state, period navigation, full-width print layout.
 - Personnel/settings: add/remove personnel, backup tab layout, stock-action blocking without personnel.
 - Backup/restore: configuration, backup creation, overwrite behavior, validation failures, pending restore handoff, stale/error status states.
 - LAN/mobile: production LAN admin shell blocking, access-key auth for read APIs, key regeneration, public QR lookup route, invalid ports, clipboard feedback, stopped status, occupied-port resilience.

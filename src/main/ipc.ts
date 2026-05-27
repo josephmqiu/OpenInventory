@@ -27,6 +27,7 @@ import {
   SaveAppCurrencyArgs,
   AuditMovementFilterArgs,
   AuditAnalyticsFilterArgs,
+  AuditReportArgs,
   DirPathArgs,
 } from "../shared/schemas";
 
@@ -173,6 +174,17 @@ export function registerIpcHandlers(
       const { filters } = decodeOrFail(AuditAnalyticsFilterArgs)(rawArgs);
       return await run(
         Effect.flatMap(DatabaseService, (s) => s.getAuditAnalytics(filters)),
+      );
+    } catch (error) {
+      return fail(serializeAppError(error));
+    }
+  });
+
+  ipcMain.handle("get-period-report", async (_event, rawArgs: unknown) => {
+    try {
+      const { period } = decodeOrFail(AuditReportArgs)(rawArgs);
+      return await run(
+        Effect.flatMap(DatabaseService, (s) => s.getAuditReport(period)),
       );
     } catch (error) {
       return fail(serializeAppError(error));

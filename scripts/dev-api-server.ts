@@ -67,6 +67,7 @@ import { runPendingMigrations } from "../src/main/infrastructure/migrations";
 import { configureSqlitePragmas } from "../src/main/infrastructure/sqlite-pragmas";
 import {
   AddPersonnelBody,
+  AuditReportArgs,
   BatchIssueMaterialBody,
   CreateInventoryItemBody,
   StockMutationBody,
@@ -319,6 +320,30 @@ const server = http.createServer(async (req, res) => {
         textSearch: url.searchParams.get("textSearch") || undefined,
       };
       sendJson(res, 200, await runEffect(dbService.getAuditAnalytics(filters)));
+      return;
+    }
+
+    // Period report (Reports tab) — mirrors the LAN router route so the
+    // two-server browser preview can exercise the Reports tab without a 404.
+    if (pathname === "/api/audit/report" && method === "GET") {
+      // Mirror the LAN router: validate raw query params through AuditReportArgs
+      // so bad input 400s instead of 500ing or resolving a bogus window.
+      const rawYear = url.searchParams.get("year");
+      const rawIndex = url.searchParams.get("index");
+      const period = (() => {
+        try {
+          return Schema.decodeUnknownSync(AuditReportArgs)({
+            period: {
+              granularity: url.searchParams.get("granularity") ?? "month",
+              year: rawYear === null || rawYear === "" ? new Date().getFullYear() : Number(rawYear),
+              index: rawIndex === null || rawIndex === "" ? 1 : Number(rawIndex),
+            },
+          }).period;
+        } catch {
+          throw validationError("invalidInput", undefined, "invalid audit report period");
+        }
+      })();
+      sendJson(res, 200, await runEffect(dbService.getAuditReport(period)));
       return;
     }
 

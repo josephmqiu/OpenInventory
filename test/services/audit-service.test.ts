@@ -10,6 +10,8 @@ import {
   seedAlert,
   type TestDb,
 } from "../setup/test-db";
+import { resolvePeriodBounds } from "../../src/shared/auditPeriod";
+import type { AuditReportPeriodArgs } from "../../src/shared/auditPeriod";
 
 let testDb: TestDb;
 let db: ReturnType<typeof makeDatabaseService>;
@@ -387,5 +389,136 @@ describe("migration v3", () => {
     expect(result.rows[0].quantity).toBe(10);
     expect(result.rows[1].quantity).toBe(20);
     expect(result.rows[2].quantity).toBe(30);
+  });
+});
+
+describe("getAuditReport", () => {
+  const MAY: AuditReportPeriodArgs = { granularity: "month", year: 2026, index: 5 };
+
+  it("totals split receive/issue value and distinguish NULL vs 0 price", () => {
+    const priced = seedItem(testDb.db, { name: "Priced", unitPriceMinor: 500 });
+    const free = seedItem(testDb.db, { name: "Free", unitPriceMinor: 0 });
+    const unpriced = seedItem(testDb.db, { name: "Unpriced", unitPriceMinor: null });
+    seedMovement(testDb.db, priced, { type: "issue", quantity: 10, performedAt: "2026-05-10 09:00:00" });
+    seedMovement(testDb.db, priced, { type: "receive", quantity: 4, performedAt: "2026-05-11 09:00:00" });
+    seedMovement(testDb.db, free, { type: "issue", quantity: 7, performedAt: "2026-05-12 09:00:00" });
+    seedMovement(testDb.db, unpriced, { type: "issue", quantity: 3, performedAt: "2026-05-13 09:00:00" });
+
+    const r = run(db.getAuditReport(MAY));
+    expect(r.totals.totalMovements).toBe(4);
+    expect(r.totals.totalReceivedQty).toBe(4);
+    expect(r.totals.totalIssuedQty).toBe(20);
+    expect(r.totals.receivedValueMinor).toBe(2000); // 4 * 500
+    expect(r.totals.issuedValueMinor).toBe(5000); // 10 * 500; free/unpriced add 0
+    expect(r.totals.netValueMinor).toBe(-3000);
+    expect(r.totals.valuedItemCount).toBe(2); // priced + free (0 is a price)
+    expect(r.totals.unvaluedItemCount).toBe(1); // NULL price excluded from value
+    expect(r.totals.hasData).toBe(true);
+  });
+
+  it("topItems are sorted by issued value desc and flag unpriced items", () => {
+    const a = seedItem(testDb.db, { name: "A", unitPriceMinor: 100 });
+    const b = seedItem(testDb.db, { name: "B", unitPriceMinor: 900 });
+    const c = seedItem(testDb.db, { name: "C", unitPriceMinor: null });
+    seedMovement(testDb.db, a, { type: "issue", quantity: 10, performedAt: "2026-05-10 09:00:00" }); // 1000
+    seedMovement(testDb.db, b, { type: "issue", quantity: 10, performedAt: "2026-05-10 09:00:00" }); // 9000
+    seedMovement(testDb.db, c, { type: "issue", quantity: 50, performedAt: "2026-05-10 09:00:00" }); // 0 (unpriced)
+
+    const r = run(db.getAuditReport(MAY));
+    expect(r.topItems[0].itemName).toBe("B");
+    expect(r.topItems[0].issuedValueMinor).toBe(9000);
+    const cRow = r.topItems.find((x) => x.itemName === "C");
+    expect(cRow?.hasPrice).toBe(false);
+  });
+
+  it("prior-period window is the previous month", () => {
+    const item = seedItem(testDb.db, { unitPriceMinor: 100 });
+    seedMovement(testDb.db, item, { type: "issue", quantity: 5, performedAt: "2026-05-10 09:00:00" });
+    seedMovement(testDb.db, item, { type: "issue", quantity: 8, performedAt: "2026-04-10 09:00:00" });
+
+    const r = run(db.getAuditReport(MAY));
+    expect(r.priorPeriod.label).toBe("April 2026");
+    expect(r.totals.issuedValueMinor).toBe(500);
+    expect(r.priorTotals.issuedValueMinor).toBe(800);
+  });
+
+  it("analytics equals getAuditAnalytics for the period bounds", () => {
+    const item = seedItem(testDb.db, { name: "Widget", unitPriceMinor: 100 });
+    seedMovement(testDb.db, item, { type: "issue", quantity: 5, performedBy: "Alice", performedAt: "2026-05-10 09:00:00" });
+    const bounds = resolvePeriodBounds(MAY);
+
+    const r = run(db.getAuditReport(MAY));
+    const analytics = run(db.getAuditAnalytics({ dateFrom: bounds.from, dateTo: bounds.to }));
+    expect(r.analytics).toEqual(analytics);
+  });
+
+  it("biggestMovers include new (prior=0) and dropped (current=0) items", () => {
+    const grew = seedItem(testDb.db, { name: "Grew", unitPriceMinor: 100 });
+    const fresh = seedItem(testDb.db, { name: "New", unitPriceMinor: 100 });
+    const dropped = seedItem(testDb.db, { name: "Dropped", unitPriceMinor: 100 });
+    // Grew: prior 1000, current 5000
+    seedMovement(testDb.db, grew, { type: "issue", quantity: 10, performedAt: "2026-04-10 09:00:00" });
+    seedMovement(testDb.db, grew, { type: "issue", quantity: 50, performedAt: "2026-05-10 09:00:00" });
+    // New: only May
+    seedMovement(testDb.db, fresh, { type: "issue", quantity: 40, performedAt: "2026-05-10 09:00:00" });
+    // Dropped: only April
+    seedMovement(testDb.db, dropped, { type: "issue", quantity: 30, performedAt: "2026-04-10 09:00:00" });
+
+    const r = run(db.getAuditReport(MAY));
+    const names = r.biggestMovers.map((m) => m.itemName);
+    expect(names).toContain("New"); // prior = 0
+    expect(names).toContain("Dropped"); // current = 0
+    const droppedRow = r.biggestMovers.find((m) => m.itemName === "Dropped");
+    expect(droppedRow?.currentIssuedValueMinor).toBe(0);
+    expect(droppedRow?.deltaValueMinor).toBeLessThan(0);
+  });
+
+  it("trend returns 6 buckets oldest->newest with zero-movement periods present as 0", () => {
+    const item = seedItem(testDb.db, { unitPriceMinor: 100 });
+    seedMovement(testDb.db, item, { type: "issue", quantity: 10, performedAt: "2026-05-10 09:00:00" }); // May = 1000
+    seedMovement(testDb.db, item, { type: "issue", quantity: 5, performedAt: "2026-03-10 09:00:00" }); // Mar = 500
+
+    const r = run(db.getAuditReport(MAY));
+    expect(r.trend).toHaveLength(6);
+    expect(r.trend.map((p) => p.label)).toEqual([
+      "December 2025",
+      "January 2026",
+      "February 2026",
+      "March 2026",
+      "April 2026",
+      "May 2026",
+    ]);
+    expect(r.trend[3].issuedValueMinor).toBe(500); // March
+    expect(r.trend[4].issuedValueMinor).toBe(0); // April — zero-movement bucket still present
+    expect(r.trend[5].issuedValueMinor).toBe(1000); // May
+  });
+
+  it("inventoryHealth counts distinct items alerted within the period", () => {
+    const a = seedItem(testDb.db);
+    const b = seedItem(testDb.db);
+    seedAlert(testDb.db, a, { triggeredAt: "2026-05-05 09:00:00" });
+    seedAlert(testDb.db, a, { triggeredAt: "2026-05-20 09:00:00" }); // same item twice
+    seedAlert(testDb.db, b, { triggeredAt: "2026-05-15 09:00:00" });
+    seedAlert(testDb.db, b, { triggeredAt: "2026-04-15 09:00:00" }); // outside period
+
+    const r = run(db.getAuditReport(MAY));
+    expect(r.inventoryHealth.lowOrZeroItemCount).toBe(2);
+  });
+
+  it("YoY hasData is false when last year's window is empty", () => {
+    const item = seedItem(testDb.db, { unitPriceMinor: 100 });
+    seedMovement(testDb.db, item, { type: "issue", quantity: 5, performedAt: "2026-05-10 09:00:00" });
+
+    const r = run(db.getAuditReport(MAY));
+    expect(r.yoyPeriod.label).toBe("May 2025");
+    expect(r.yoyTotals.hasData).toBe(false);
+  });
+
+  it("reports hasData=false for an empty period", () => {
+    seedItem(testDb.db, { unitPriceMinor: 100 }); // item exists but no movements
+    const r = run(db.getAuditReport({ granularity: "month", year: 2026, index: 8 }));
+    expect(r.totals.hasData).toBe(false);
+    expect(r.totals.totalMovements).toBe(0);
+    expect(r.topItems).toHaveLength(0);
   });
 });
