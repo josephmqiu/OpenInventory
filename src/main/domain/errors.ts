@@ -27,6 +27,7 @@ export const backendMessages = () => ({
   backupTargetPathNotWritable: "backupTargetPathNotWritable",
   requestBodyTooLarge: "requestBodyTooLarge",
   invalidJsonBody: "invalidJsonBody",
+  invalidInput: "invalidInput",
   forbidden: "forbidden",
   unexpectedError: "unexpectedError",
   databaseError: "databaseError",

@@ -29,17 +29,29 @@ import type {
   AuditMovementFilters,
   AuditMovementRow,
   AuditPageResult,
+  AuditReportResult,
+  AuditReportTotals,
   BatchIssueMaterialInput,
   CreateInventoryItemInput,
   CurrencyCode,
   InventoryAlert,
   InventoryItem,
   InventoryMovement,
+  ItemValueRow,
+  MoverRow,
   StockMutationInput,
+  TrendPoint,
   UpdateBackupPlanInput,
   UpdateInventoryItemInput,
 } from "../../shared/types";
 import { DEFAULT_CURRENCY } from "../../shared/types";
+import {
+  type AuditReportPeriodArgs,
+  resolvePeriodBounds,
+  priorPeriodOf,
+  yoyPeriodOf,
+  trailingPeriods,
+} from "../../shared/auditPeriod";
 
 // Allowed app currencies (must match CurrencyCodeSchema / CurrencyCode).
 const ALLOWED_CURRENCIES: readonly CurrencyCode[] = [
@@ -267,6 +279,9 @@ export interface DatabaseServiceApi {
   readonly getAuditAnalytics: (
     filters: Omit<AuditMovementFilters, "page" | "pageSize">,
   ) => Effect.Effect<AuditAnalyticsResult, AppError>;
+  readonly getAuditReport: (
+    period: AuditReportPeriodArgs,
+  ) => Effect.Effect<AuditReportResult, AppError>;
   readonly deleteMovement: (
     movementId: string,
   ) => Effect.Effect<MutationResult, AppError>;
@@ -493,6 +508,408 @@ function syncLowStockAlert(
   }
 
   return false;
+}
+
+// ─── Audit analytics (shared by getAuditAnalytics + getAuditReport) ──────────
+
+/** Local-time SQL bounds, already in "YYYY-MM-DD HH:MM:SS" shape. */
+interface DateBounds {
+  from: string;
+  to: string;
+}
+
+/**
+ * Pure computation behind `getAuditAnalytics`. Extracted so the period report
+ * can reuse the exact same aggregation (by passing computed period bounds)
+ * without duplicating SQL. Behaviour-preserving — `getAuditAnalytics` just
+ * wraps this in `Effect.try`.
+ */
+function computeAuditAnalytics(
+  db: Database.Database,
+  filters: Omit<AuditMovementFilters, "page" | "pageSize">,
+): AuditAnalyticsResult {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (filters.dateFrom) {
+    conditions.push("m.performed_at >= ?");
+    params.push(filters.dateFrom.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:00"));
+  }
+  if (filters.dateTo) {
+    conditions.push("m.performed_at <= ?");
+    params.push(filters.dateTo.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:59"));
+  }
+  if (filters.movementType) {
+    conditions.push("m.movement_type = ?");
+    params.push(filters.movementType);
+  }
+  if (filters.itemId) {
+    conditions.push("m.item_id = ?");
+    params.push(filters.itemId);
+  } else if (filters.itemSearch) {
+    const escaped = filters.itemSearch.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+    conditions.push("(i.name LIKE '%' || ? || '%' ESCAPE '\\' OR i.sku LIKE '%' || ? || '%' ESCAPE '\\')");
+    params.push(escaped, escaped);
+  }
+  if (filters.performedBy) {
+    conditions.push("m.performed_by = ?");
+    params.push(filters.performedBy);
+  }
+  if (filters.textSearch) {
+    const escaped = filters.textSearch.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+    conditions.push(
+      "(m.reason LIKE '%' || ? || '%' ESCAPE '\\' OR m.reference_no LIKE '%' || ? || '%' ESCAPE '\\' OR m.notes LIKE '%' || ? || '%' ESCAPE '\\' OR m.performed_by LIKE '%' || ? || '%' ESCAPE '\\')",
+    );
+    params.push(escaped, escaped, escaped, escaped);
+  }
+
+  const whereClause = conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "";
+
+  const summaryRow = db
+    .prepare(
+      `SELECT
+        COUNT(*) AS total_movements,
+        COALESCE(SUM(CASE WHEN m.movement_type = 'receive' THEN m.quantity ELSE 0 END), 0) AS total_received,
+        COALESCE(SUM(CASE WHEN m.movement_type = 'issue' THEN m.quantity ELSE 0 END), 0) AS total_issued,
+        COUNT(DISTINCT m.item_id) AS unique_items,
+        COUNT(DISTINCT m.performed_by) AS unique_personnel
+      FROM inventory_movements m
+      JOIN inventory_items i ON i.id = m.item_id
+      ${whereClause}`,
+    )
+    .get(...params) as {
+    total_movements: number;
+    total_received: number;
+    total_issued: number;
+    unique_items: number;
+    unique_personnel: number;
+  };
+
+  const personnelRows = db
+    .prepare(
+      `SELECT
+        COALESCE(m.performed_by, '(not provided)') AS performed_by,
+        SUM(CASE WHEN m.movement_type = 'receive' THEN 1 ELSE 0 END) AS receive_count,
+        SUM(CASE WHEN m.movement_type = 'issue' THEN 1 ELSE 0 END) AS issue_count,
+        SUM(m.quantity) AS total_quantity,
+        COUNT(DISTINCT m.item_id) AS distinct_items
+      FROM inventory_movements m
+      JOIN inventory_items i ON i.id = m.item_id
+      ${whereClause}
+      GROUP BY COALESCE(m.performed_by, '(not provided)')
+      ORDER BY total_quantity DESC`,
+    )
+    .all(...params) as Array<{
+    performed_by: string;
+    receive_count: number;
+    issue_count: number;
+    total_quantity: number;
+    distinct_items: number;
+  }>;
+
+  const itemRows = db
+    .prepare(
+      `SELECT
+        m.item_id, i.name AS item_name, i.sku AS item_sku,
+        SUM(CASE WHEN m.movement_type = 'receive' THEN 1 ELSE 0 END) AS receive_count,
+        SUM(CASE WHEN m.movement_type = 'issue' THEN 1 ELSE 0 END) AS issue_count,
+        COALESCE(SUM(CASE WHEN m.movement_type = 'receive' THEN m.quantity ELSE 0 END), 0) AS total_received,
+        COALESCE(SUM(CASE WHEN m.movement_type = 'issue' THEN m.quantity ELSE 0 END), 0) AS total_issued,
+        i.current_quantity
+      FROM inventory_movements m
+      JOIN inventory_items i ON i.id = m.item_id
+      ${whereClause}
+      GROUP BY m.item_id, i.name, i.sku, i.current_quantity
+      ORDER BY (SUM(CASE WHEN m.movement_type = 'receive' THEN 1 ELSE 0 END) + SUM(CASE WHEN m.movement_type = 'issue' THEN 1 ELSE 0 END)) DESC`,
+    )
+    .all(...params) as Array<{
+    item_id: string;
+    item_name: string;
+    item_sku: string;
+    receive_count: number;
+    issue_count: number;
+    total_received: number;
+    total_issued: number;
+    current_quantity: number;
+  }>;
+
+  const alertConditions: string[] = [];
+  const alertParams: unknown[] = [];
+  if (filters.dateFrom) {
+    alertConditions.push("a.triggered_at >= ?");
+    alertParams.push(filters.dateFrom.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:00"));
+  }
+  if (filters.dateTo) {
+    alertConditions.push("a.triggered_at <= ?");
+    alertParams.push(filters.dateTo.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:59"));
+  }
+  const alertWhereClause = alertConditions.length > 0 ? "WHERE " + alertConditions.join(" AND ") : "";
+
+  const alertRows = db
+    .prepare(
+      `SELECT
+        a.item_id, i.name AS item_name, i.sku AS item_sku,
+        COUNT(*) AS trigger_count,
+        MAX(a.triggered_at) AS last_triggered_at,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM low_stock_alerts a2
+          WHERE a2.item_id = a.item_id AND a2.status = 'open'
+        ) THEN 'open' ELSE 'resolved' END AS current_status,
+        i.current_quantity
+      FROM low_stock_alerts a
+      JOIN inventory_items i ON i.id = a.item_id
+      ${alertWhereClause}
+      GROUP BY a.item_id, i.name, i.sku, i.current_quantity
+      ORDER BY trigger_count DESC`,
+    )
+    .all(...alertParams) as Array<{
+    item_id: string;
+    item_name: string;
+    item_sku: string;
+    trigger_count: number;
+    last_triggered_at: string;
+    current_status: string;
+    current_quantity: number;
+  }>;
+
+  return {
+    summary: {
+      totalMovements: summaryRow.total_movements,
+      totalReceived: summaryRow.total_received,
+      totalIssued: summaryRow.total_issued,
+      uniqueItems: summaryRow.unique_items,
+      uniquePersonnel: summaryRow.unique_personnel,
+    },
+    byPersonnel: personnelRows.map((r) => ({
+      performedBy: r.performed_by,
+      receiveCount: r.receive_count,
+      issueCount: r.issue_count,
+      totalQuantity: r.total_quantity,
+      distinctItems: r.distinct_items,
+    })),
+    byItem: itemRows.map((r) => ({
+      itemId: r.item_id,
+      itemName: r.item_name,
+      itemSku: r.item_sku,
+      receiveCount: r.receive_count,
+      issueCount: r.issue_count,
+      totalReceived: r.total_received,
+      totalIssued: r.total_issued,
+      netChange: r.total_received - r.total_issued,
+      currentQuantity: r.current_quantity,
+    })),
+    alertFrequency: alertRows.map((r) => ({
+      itemId: r.item_id,
+      itemName: r.item_name,
+      itemSku: r.item_sku,
+      triggerCount: r.trigger_count,
+      lastTriggeredAt: r.last_triggered_at,
+      currentStatus: r.current_status,
+      currentQuantity: r.current_quantity,
+    })),
+  };
+}
+
+// ─── Period Report helpers (Reports / Period Summary tab) ────────────────────
+// All windows arrive as already-normalized "YYYY-MM-DD HH:MM:SS" local-time
+// bounds from auditPeriod.ts, fed straight into `m.performed_at >= ? / <= ?`.
+
+/** Movement totals (qty + value, receive/issue split) for one window. */
+function reportTotals(db: Database.Database, b: DateBounds): AuditReportTotals {
+  const row = db
+    .prepare(
+      `SELECT
+        COUNT(*) AS movements,
+        COALESCE(SUM(CASE WHEN m.movement_type='receive' THEN m.quantity ELSE 0 END),0) AS recv_qty,
+        COALESCE(SUM(CASE WHEN m.movement_type='issue'   THEN m.quantity ELSE 0 END),0) AS iss_qty,
+        COALESCE(SUM(CASE WHEN m.movement_type='receive' THEN m.quantity*COALESCE(i.unit_price_minor,0) ELSE 0 END),0) AS recv_val,
+        COALESCE(SUM(CASE WHEN m.movement_type='issue'   THEN m.quantity*COALESCE(i.unit_price_minor,0) ELSE 0 END),0) AS iss_val,
+        COUNT(DISTINCT CASE WHEN i.unit_price_minor IS NOT NULL THEN m.item_id END) AS valued_items,
+        COUNT(DISTINCT CASE WHEN i.unit_price_minor IS NULL THEN m.item_id END) AS unvalued_items
+      FROM inventory_movements m
+      JOIN inventory_items i ON i.id = m.item_id
+      WHERE m.performed_at >= ? AND m.performed_at <= ?`,
+    )
+    .get(b.from, b.to) as {
+    movements: number;
+    recv_qty: number;
+    iss_qty: number;
+    recv_val: number;
+    iss_val: number;
+    valued_items: number;
+    unvalued_items: number;
+  };
+  return {
+    totalMovements: row.movements,
+    totalReceivedQty: row.recv_qty,
+    totalIssuedQty: row.iss_qty,
+    netQty: row.recv_qty - row.iss_qty,
+    receivedValueMinor: row.recv_val,
+    issuedValueMinor: row.iss_val,
+    netValueMinor: row.recv_val - row.iss_val,
+    valuedItemCount: row.valued_items,
+    unvaluedItemCount: row.unvalued_items,
+    hasData: row.movements > 0,
+  };
+}
+
+/** Top items by issued value (the money story) for one window. */
+function reportTopItems(db: Database.Database, b: DateBounds, limit = 10): ItemValueRow[] {
+  const rows = db
+    .prepare(
+      `SELECT m.item_id, i.name AS name, i.sku AS sku,
+        COALESCE(SUM(m.quantity),0) AS issued_qty,
+        COALESCE(SUM(m.quantity*COALESCE(i.unit_price_minor,0)),0) AS issued_val,
+        MAX(CASE WHEN i.unit_price_minor IS NOT NULL THEN 1 ELSE 0 END) AS has_price
+      FROM inventory_movements m
+      JOIN inventory_items i ON i.id = m.item_id
+      WHERE m.performed_at >= ? AND m.performed_at <= ? AND m.movement_type='issue'
+      GROUP BY m.item_id, i.name, i.sku
+      ORDER BY issued_val DESC, issued_qty DESC
+      LIMIT ?`,
+    )
+    .all(b.from, b.to, limit) as Array<{
+    item_id: string;
+    name: string;
+    sku: string;
+    issued_qty: number;
+    issued_val: number;
+    has_price: number;
+  }>;
+  return rows.map((r) => ({
+    itemId: r.item_id,
+    itemName: r.name,
+    itemSku: r.sku,
+    issuedQty: r.issued_qty,
+    issuedValueMinor: r.issued_val,
+    hasPrice: r.has_price === 1,
+  }));
+}
+
+/** Issued value per item for one window, keyed by item id. */
+function issuedValueByItem(
+  db: Database.Database,
+  b: DateBounds,
+): Map<string, { name: string; sku: string; value: number }> {
+  const rows = db
+    .prepare(
+      `SELECT m.item_id, i.name AS name, i.sku AS sku,
+        COALESCE(SUM(m.quantity*COALESCE(i.unit_price_minor,0)),0) AS val
+      FROM inventory_movements m
+      JOIN inventory_items i ON i.id = m.item_id
+      WHERE m.performed_at >= ? AND m.performed_at <= ? AND m.movement_type='issue'
+      GROUP BY m.item_id, i.name, i.sku`,
+    )
+    .all(b.from, b.to) as Array<{ item_id: string; name: string; sku: string; val: number }>;
+  const map = new Map<string, { name: string; sku: string; value: number }>();
+  for (const r of rows) map.set(r.item_id, { name: r.name, sku: r.sku, value: r.val });
+  return map;
+}
+
+/**
+ * Top items by absolute issued-value change vs the prior period. Builds a value
+ * map for each window and unions the item ids — SQLite has no FULL OUTER JOIN,
+ * and a one-sided join would silently drop new (prior=0) or dropped (current=0)
+ * items, which are exactly the biggest movers.
+ */
+function biggestMovers(
+  db: Database.Database,
+  current: DateBounds,
+  prior: DateBounds,
+  limit = 5,
+): MoverRow[] {
+  const cur = issuedValueByItem(db, current);
+  const pri = issuedValueByItem(db, prior);
+  const ids = new Set<string>([...cur.keys(), ...pri.keys()]);
+  const rows: MoverRow[] = [];
+  for (const id of ids) {
+    const c = cur.get(id);
+    const p = pri.get(id);
+    const currentVal = c?.value ?? 0;
+    const priorVal = p?.value ?? 0;
+    const delta = currentVal - priorVal;
+    if (delta === 0) continue;
+    const meta = c ?? p!;
+    rows.push({
+      itemId: id,
+      itemName: meta.name,
+      itemSku: meta.sku,
+      currentIssuedValueMinor: currentVal,
+      priorIssuedValueMinor: priorVal,
+      deltaValueMinor: delta,
+    });
+  }
+  rows.sort((a, b) => Math.abs(b.deltaValueMinor) - Math.abs(a.deltaValueMinor));
+  return rows.slice(0, limit);
+}
+
+/** Issued value summed over one window (single number, for trend buckets). */
+function issuedValueInRange(db: Database.Database, b: DateBounds): number {
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(m.quantity*COALESCE(i.unit_price_minor,0)),0) AS val
+      FROM inventory_movements m
+      JOIN inventory_items i ON i.id = m.item_id
+      WHERE m.performed_at >= ? AND m.performed_at <= ? AND m.movement_type='issue'`,
+    )
+    .get(b.from, b.to) as { val: number };
+  return row.val;
+}
+
+/**
+ * Issued-value trend over the last 6 periods, oldest first. One indexed
+ * range-sum per bucket (not a GROUP BY) so a zero-movement period returns 0 and
+ * still appears — gap-free by construction, no silent drop, and correct across
+ * all granularities without fragile bucket-key SQL.
+ */
+function reportTrend(
+  db: Database.Database,
+  period: AuditReportPeriodArgs,
+  locale: string,
+): TrendPoint[] {
+  return trailingPeriods(period, 6, locale).map(({ bounds }) => ({
+    label: bounds.label,
+    issuedValueMinor: issuedValueInRange(db, { from: bounds.from, to: bounds.to }),
+  }));
+}
+
+/** Distinct items that triggered a low-stock/zero alert within the window. */
+function inventoryHealthCount(db: Database.Database, b: DateBounds): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(DISTINCT item_id) AS n FROM low_stock_alerts
+       WHERE triggered_at >= ? AND triggered_at <= ?`,
+    )
+    .get(b.from, b.to) as { n: number };
+  return row.n;
+}
+
+/** Assemble the full period report (synchronous; wrapped in Effect.try by the service). */
+function buildAuditReport(
+  db: Database.Database,
+  period: AuditReportPeriodArgs,
+): AuditReportResult {
+  const locale = currentLanguage(db);
+  const cur = resolvePeriodBounds(period, locale);
+  const prior = priorPeriodOf(period, locale).bounds;
+  const yoy = yoyPeriodOf(period, locale).bounds;
+  const curB: DateBounds = { from: cur.from, to: cur.to };
+  const priorB: DateBounds = { from: prior.from, to: prior.to };
+  const yoyB: DateBounds = { from: yoy.from, to: yoy.to };
+  return {
+    period: { label: cur.label, from: cur.from, to: cur.to },
+    priorPeriod: { label: prior.label, from: prior.from, to: prior.to },
+    yoyPeriod: { label: yoy.label, from: yoy.from, to: yoy.to },
+    totals: reportTotals(db, curB),
+    priorTotals: reportTotals(db, priorB),
+    yoyTotals: reportTotals(db, yoyB),
+    topItems: reportTopItems(db, curB, 10),
+    biggestMovers: biggestMovers(db, curB, priorB, 5),
+    trend: reportTrend(db, period, locale),
+    inventoryHealth: { lowOrZeroItemCount: inventoryHealthCount(db, curB) },
+    analytics: computeAuditAnalytics(db, { dateFrom: cur.from, dateTo: cur.to }),
+    currency: currentCurrency(db),
+  };
 }
 
 // ─── Layer Factory ───────────────────────────────────────────────────────────
@@ -1589,192 +2006,13 @@ export function makeDatabaseService(
 
     getAuditAnalytics: (filters) =>
       Effect.try({
-        try: () => {
-          const conditions: string[] = [];
-          const params: unknown[] = [];
+        try: () => computeAuditAnalytics(db, filters),
+        catch: () => localizedDatabaseError(db),
+      }),
 
-          if (filters.dateFrom) {
-            conditions.push("m.performed_at >= ?");
-            params.push(filters.dateFrom.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:00"));
-          }
-          if (filters.dateTo) {
-            conditions.push("m.performed_at <= ?");
-            params.push(filters.dateTo.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:59"));
-          }
-          if (filters.movementType) {
-            conditions.push("m.movement_type = ?");
-            params.push(filters.movementType);
-          }
-          if (filters.itemId) {
-            conditions.push("m.item_id = ?");
-            params.push(filters.itemId);
-          } else if (filters.itemSearch) {
-            const escaped = filters.itemSearch.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-            conditions.push("(i.name LIKE '%' || ? || '%' ESCAPE '\\' OR i.sku LIKE '%' || ? || '%' ESCAPE '\\')");
-            params.push(escaped, escaped);
-          }
-          if (filters.performedBy) {
-            conditions.push("m.performed_by = ?");
-            params.push(filters.performedBy);
-          }
-          if (filters.textSearch) {
-            const escaped = filters.textSearch.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-            conditions.push(
-              "(m.reason LIKE '%' || ? || '%' ESCAPE '\\' OR m.reference_no LIKE '%' || ? || '%' ESCAPE '\\' OR m.notes LIKE '%' || ? || '%' ESCAPE '\\' OR m.performed_by LIKE '%' || ? || '%' ESCAPE '\\')",
-            );
-            params.push(escaped, escaped, escaped, escaped);
-          }
-
-          const whereClause = conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "";
-
-          // Summary
-          const summaryRow = db
-            .prepare(
-              `SELECT
-                COUNT(*) AS total_movements,
-                COALESCE(SUM(CASE WHEN m.movement_type = 'receive' THEN m.quantity ELSE 0 END), 0) AS total_received,
-                COALESCE(SUM(CASE WHEN m.movement_type = 'issue' THEN m.quantity ELSE 0 END), 0) AS total_issued,
-                COUNT(DISTINCT m.item_id) AS unique_items,
-                COUNT(DISTINCT m.performed_by) AS unique_personnel
-              FROM inventory_movements m
-              JOIN inventory_items i ON i.id = m.item_id
-              ${whereClause}`,
-            )
-            .get(...params) as {
-            total_movements: number;
-            total_received: number;
-            total_issued: number;
-            unique_items: number;
-            unique_personnel: number;
-          };
-
-          // By Personnel
-          const personnelRows = db
-            .prepare(
-              `SELECT
-                COALESCE(m.performed_by, '(not provided)') AS performed_by,
-                SUM(CASE WHEN m.movement_type = 'receive' THEN 1 ELSE 0 END) AS receive_count,
-                SUM(CASE WHEN m.movement_type = 'issue' THEN 1 ELSE 0 END) AS issue_count,
-                SUM(m.quantity) AS total_quantity,
-                COUNT(DISTINCT m.item_id) AS distinct_items
-              FROM inventory_movements m
-              JOIN inventory_items i ON i.id = m.item_id
-              ${whereClause}
-              GROUP BY COALESCE(m.performed_by, '(not provided)')
-              ORDER BY total_quantity DESC`,
-            )
-            .all(...params) as Array<{
-            performed_by: string;
-            receive_count: number;
-            issue_count: number;
-            total_quantity: number;
-            distinct_items: number;
-          }>;
-
-          // By Item
-          const itemRows = db
-            .prepare(
-              `SELECT
-                m.item_id, i.name AS item_name, i.sku AS item_sku,
-                SUM(CASE WHEN m.movement_type = 'receive' THEN 1 ELSE 0 END) AS receive_count,
-                SUM(CASE WHEN m.movement_type = 'issue' THEN 1 ELSE 0 END) AS issue_count,
-                COALESCE(SUM(CASE WHEN m.movement_type = 'receive' THEN m.quantity ELSE 0 END), 0) AS total_received,
-                COALESCE(SUM(CASE WHEN m.movement_type = 'issue' THEN m.quantity ELSE 0 END), 0) AS total_issued,
-                i.current_quantity
-              FROM inventory_movements m
-              JOIN inventory_items i ON i.id = m.item_id
-              ${whereClause}
-              GROUP BY m.item_id, i.name, i.sku, i.current_quantity
-              ORDER BY (SUM(CASE WHEN m.movement_type = 'receive' THEN 1 ELSE 0 END) + SUM(CASE WHEN m.movement_type = 'issue' THEN 1 ELSE 0 END)) DESC`,
-            )
-            .all(...params) as Array<{
-            item_id: string;
-            item_name: string;
-            item_sku: string;
-            receive_count: number;
-            issue_count: number;
-            total_received: number;
-            total_issued: number;
-            current_quantity: number;
-          }>;
-
-          // Alert Frequency (uses date filters only)
-          const alertConditions: string[] = [];
-          const alertParams: unknown[] = [];
-          if (filters.dateFrom) {
-            alertConditions.push("a.triggered_at >= ?");
-            alertParams.push(filters.dateFrom.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:00"));
-          }
-          if (filters.dateTo) {
-            alertConditions.push("a.triggered_at <= ?");
-            alertParams.push(filters.dateTo.replace("T", " ").replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/, "$1:59"));
-          }
-          const alertWhereClause = alertConditions.length > 0 ? "WHERE " + alertConditions.join(" AND ") : "";
-
-          const alertRows = db
-            .prepare(
-              `SELECT
-                a.item_id, i.name AS item_name, i.sku AS item_sku,
-                COUNT(*) AS trigger_count,
-                MAX(a.triggered_at) AS last_triggered_at,
-                CASE WHEN EXISTS (
-                  SELECT 1 FROM low_stock_alerts a2
-                  WHERE a2.item_id = a.item_id AND a2.status = 'open'
-                ) THEN 'open' ELSE 'resolved' END AS current_status,
-                i.current_quantity
-              FROM low_stock_alerts a
-              JOIN inventory_items i ON i.id = a.item_id
-              ${alertWhereClause}
-              GROUP BY a.item_id, i.name, i.sku, i.current_quantity
-              ORDER BY trigger_count DESC`,
-            )
-            .all(...alertParams) as Array<{
-            item_id: string;
-            item_name: string;
-            item_sku: string;
-            trigger_count: number;
-            last_triggered_at: string;
-            current_status: string;
-            current_quantity: number;
-          }>;
-
-          return {
-            summary: {
-              totalMovements: summaryRow.total_movements,
-              totalReceived: summaryRow.total_received,
-              totalIssued: summaryRow.total_issued,
-              uniqueItems: summaryRow.unique_items,
-              uniquePersonnel: summaryRow.unique_personnel,
-            },
-            byPersonnel: personnelRows.map((r) => ({
-              performedBy: r.performed_by,
-              receiveCount: r.receive_count,
-              issueCount: r.issue_count,
-              totalQuantity: r.total_quantity,
-              distinctItems: r.distinct_items,
-            })),
-            byItem: itemRows.map((r) => ({
-              itemId: r.item_id,
-              itemName: r.item_name,
-              itemSku: r.item_sku,
-              receiveCount: r.receive_count,
-              issueCount: r.issue_count,
-              totalReceived: r.total_received,
-              totalIssued: r.total_issued,
-              netChange: r.total_received - r.total_issued,
-              currentQuantity: r.current_quantity,
-            })),
-            alertFrequency: alertRows.map((r) => ({
-              itemId: r.item_id,
-              itemName: r.item_name,
-              itemSku: r.item_sku,
-              triggerCount: r.trigger_count,
-              lastTriggeredAt: r.last_triggered_at,
-              currentStatus: r.current_status,
-              currentQuantity: r.current_quantity,
-            })),
-          };
-        },
+    getAuditReport: (period) =>
+      Effect.try({
+        try: () => buildAuditReport(db, period),
         catch: () => localizedDatabaseError(db),
       }),
 

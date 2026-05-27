@@ -186,6 +186,8 @@ export function seedItem(
     reorderQuantity: number;
     currentQuantity: number;
     status: string;
+    /** NULL (default) = unpriced; 0 = explicitly free; positive = priced. */
+    unitPriceMinor: number | null;
   }> = {},
 ): string {
   const id = overrides.id ?? genId("item");
@@ -194,6 +196,30 @@ export function seedItem(
   const reorderQty = overrides.reorderQuantity ?? 10;
   const status =
     overrides.status ?? stockStatusKey(currentQty, reorderQty);
+
+  // Only touch unit_price_minor when a price is explicitly given, so this helper
+  // still works against pre-pricing schema versions in the migration tests.
+  if (overrides.unitPriceMinor !== undefined) {
+    db.prepare(
+      `INSERT INTO inventory_items
+       (id, sku, barcode, name, category, location_id, supplier_id, unit_of_measure,
+        reorder_quantity, current_quantity, unit_price_minor, status, created_at, updated_at)
+       VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+    ).run(
+      id,
+      sku,
+      overrides.name ?? "Test Item",
+      overrides.category ?? "General",
+      overrides.locationId ?? null,
+      overrides.supplierId ?? null,
+      overrides.unit ?? "pcs",
+      reorderQty,
+      currentQty,
+      overrides.unitPriceMinor,
+      status,
+    );
+    return id;
+  }
 
   db.prepare(
     `INSERT INTO inventory_items
