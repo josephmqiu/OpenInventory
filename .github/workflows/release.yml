@@ -88,13 +88,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb >/dev/null
+          # Electron's Linux runtime libs (libnss3, libgbm1, libasound2, ...). Use
+          # Playwright's installer so the package list stays correct per Ubuntu version.
+          npx playwright install-deps chromium
           APP=$(ls dist/*.AppImage | head -n1)
           if [ -z "$APP" ]; then echo "No .AppImage found in dist/" >&2; exit 1; fi
           chmod +x "$APP"
           TMP=$(mktemp -d)
-          # --appimage-extract-and-run avoids the FUSE dependency on ubuntu-latest.
-          xvfb-run -a "$APP" --appimage-extract-and-run --smoke-test --user-data-dir="$TMP" &
+          # --appimage-extract-and-run avoids the FUSE dependency on ubuntu-latest;
+          # --no-sandbox because CI has no SUID chrome-sandbox helper.
+          xvfb-run -a "$APP" --appimage-extract-and-run --no-sandbox --smoke-test --user-data-dir="$TMP" &
           PID=$!
           ( sleep 90 && kill -9 $PID 2>/dev/null ) & WATCH=$!
           set +e; wait $PID; CODE=$?; set -e
