@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+# Never let two runs for the same tag race on asset upload / the "Latest" pointer.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   test-suite:
     uses: ./.github/workflows/test-suite.yml
@@ -68,7 +73,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BIN=$(find dist/mac* -maxdepth 3 -type f -path '*/Contents/MacOS/*' | head -n1)
+          BIN=$(find dist/mac* -maxdepth 4 -type f -path '*/Contents/MacOS/*' | head -n1)
           if [ -z "$BIN" ]; then echo "No packaged .app binary found in dist/mac*" >&2; exit 1; fi
           TMP=$(mktemp -d)
           "$BIN" --smoke-test --user-data-dir="$TMP" &
@@ -104,10 +109,10 @@ jobs:
           # manifests it wants (and deliberately drop latest-mac.yml).
           path: |
             dist/*.exe
-            dist/*.exe.blockmap
             dist/*.dmg
             dist/*.zip
             dist/*.AppImage
+            dist/*.blockmap
             dist/latest*.yml
           if-no-files-found: error
 
@@ -144,12 +149,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # A prerelease tag (e.g. v1.2.3-rc.1) must NEVER become the stable "Latest"
+          # that electron-updater serves to every client. A suffix after the version
+          # (anything with a "-") marks it as a prerelease.
+          IS_PRERELEASE=false
+          case "$REF_NAME" in *-*) IS_PRERELEASE=true ;; esac
+
           # The release is normally created as a DRAFT (with changelog notes) by the
           # ship/tag flow. If it does not exist yet, create it as a draft so assets are
           # never visible before they are complete.
           if ! gh release view "$REF_NAME" >/dev/null 2>&1; then
-            gh release create "$REF_NAME" --draft --title "$REF_NAME" --generate-notes
+            if [ "$IS_PRERELEASE" = true ]; then
+              gh release create "$REF_NAME" --draft --prerelease --title "$REF_NAME" --generate-notes
+            else
+              gh release create "$REF_NAME" --draft --title "$REF_NAME" --generate-notes
+            fi
           fi
           gh release upload "$REF_NAME" release-assets/* --clobber
-          # Publish LAST — this is the atomic activation point for the GitHub channel.
-          gh release edit "$REF_NAME" --draft=false --latest
+          # Publish LAST — the atomic activation point for the GitHub channel. Only a
+          # real (non-prerelease) build is flipped to "Latest" for auto-update.
+          if [ "$IS_PRERELEASE" = true ]; then
+            gh release edit "$REF_NAME" --draft=false --latest=false
+          else
+            gh release edit "$REF_NAME" --draft=false --latest=true
+          fi
