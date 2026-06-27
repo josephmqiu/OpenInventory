@@ -39,6 +39,11 @@ export default defineConfig({
           name: "backend",
           environment: "node",
           include: ["test/**/*.test.ts"],
+          // Mirror vitest.config.node.ts: the migration-heavy DB setup is slow on
+          // Windows CI, and coverage instrumentation makes it slower still, so the
+          // default 5s timeout flakes (e.g. DatabaseService migration tests).
+          hookTimeout: 60000,
+          testTimeout: 30000,
         },
       },
     ],
