@@ -1,5 +1,11 @@
 # Update & Migration Hardening — Forward Plan (from v0.1.5)
 
+> **Update (v0.3.0, 2026-06-27):** update delivery has migrated **off Cloudflare R2 onto
+> GitHub Releases** (electron-updater `github` provider, now that the repo is public). The
+> R2 references below are historical. A one-time Windows-only R2 mirror (the `bridge-r2`
+> job in `.github/workflows/release.yml`) carries the existing installed Windows base onto
+> the GitHub channel, then is retired. See `CHANGELOG.md` [0.3.0].
+
 Companion to `production-hardening-todo.md` (whose "Phase 1 — Update Safety" is
 done). This doc covers the **next** layer of hardening for the update + schema
 migration path, written after a full trace of the current flow on 2026-05-22.

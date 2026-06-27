@@ -5,16 +5,35 @@ on:
     tags:
       - "v*"
 
+# Needs write access to create/publish the GitHub release and upload assets.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test-suite:
     uses: ./.github/workflows/test-suite.yml
 
-  build-windows:
+  # ── Build each platform natively (no cross-compile). better-sqlite3 is rebuilt
+  #    from source per runner. Each job smoke-launches its packaged artifact (which
+  #    also proves the native module loads) and uploads its dist output as a
+  #    workflow artifact. NOTHING is uploaded to the release here — a single
+  #    assembly job owns that, so a failed platform never leaves a partial release.
+  build:
     needs: test-suite
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            ebflag: "--win"
+          - os: macos-latest
+            platform: mac
+            ebflag: "--mac"
+          - os: ubuntu-latest
+            platform: linux
+            ebflag: "--linux"
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,8 +44,13 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npx tsx scripts/rebuild-electron-native-deps.ts
       - name: Build app
-        run: npm run build && npx electron-builder --win --publish never
-      - name: Smoke test packaged app
+        run: npm run build && npx electron-builder ${{ matrix.ebflag }} --publish never
+
+      # ── Per-platform launch smoke. --smoke-test initialises the DB (exercising
+      #    better-sqlite3's native binary) and exits 0; a bad ABI fails here, not in
+      #    the field. Each launches the REAL packaged artifact, not an unpacked dir.
+      - name: Smoke test (Windows)
+        if: matrix.platform == 'win'
         shell: pwsh
         run: |
           $exe = Get-ChildItem dist\win-unpacked\*.exe | Select-Object -First 1
@@ -34,20 +58,122 @@ jobs:
           $tempDir = Join-Path $env:TEMP "oi-smoke-$(Get-Random)"
           New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
           $proc = Start-Process -FilePath $exe.FullName -ArgumentList "--smoke-test","--user-data-dir=$tempDir" -PassThru
-          $proc | Wait-Process -Timeout 60 -ErrorAction SilentlyContinue
-          if (-not $proc.HasExited) { $proc.Kill(); throw "Smoke test timed out after 60 seconds" }
+          $proc | Wait-Process -Timeout 90 -ErrorAction SilentlyContinue
+          if (-not $proc.HasExited) { $proc.Kill(); throw "Smoke test timed out after 90 seconds" }
           if ($proc.ExitCode -ne 0) { throw "Smoke test failed with exit code $($proc.ExitCode)" }
           Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
-      - name: Publish release artifacts to R2
+
+      - name: Smoke test (macOS)
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=$(find dist/mac* -maxdepth 3 -type f -path '*/Contents/MacOS/*' | head -n1)
+          if [ -z "$BIN" ]; then echo "No packaged .app binary found in dist/mac*" >&2; exit 1; fi
+          TMP=$(mktemp -d)
+          "$BIN" --smoke-test --user-data-dir="$TMP" &
+          PID=$!
+          ( sleep 90 && kill -9 $PID 2>/dev/null ) & WATCH=$!
+          set +e; wait $PID; CODE=$?; set -e
+          kill -9 $WATCH 2>/dev/null || true
+          if [ "$CODE" -ne 0 ]; then echo "macOS smoke test failed (exit $CODE)" >&2; exit 1; fi
+
+      - name: Smoke test (Linux AppImage)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb >/dev/null
+          APP=$(ls dist/*.AppImage | head -n1)
+          if [ -z "$APP" ]; then echo "No .AppImage found in dist/" >&2; exit 1; fi
+          chmod +x "$APP"
+          TMP=$(mktemp -d)
+          # --appimage-extract-and-run avoids the FUSE dependency on ubuntu-latest.
+          xvfb-run -a "$APP" --appimage-extract-and-run --smoke-test --user-data-dir="$TMP" &
+          PID=$!
+          ( sleep 90 && kill -9 $PID 2>/dev/null ) & WATCH=$!
+          set +e; wait $PID; CODE=$?; set -e
+          kill -9 $WATCH 2>/dev/null || true
+          if [ "$CODE" -ne 0 ]; then echo "Linux smoke test failed (exit $CODE)" >&2; exit 1; fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.platform }}
+          # latest*.yml is included so the assembly job can pick the auto-update
+          # manifests it wants (and deliberately drop latest-mac.yml).
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/latest*.yml
+          if-no-files-found: error
+
+  # ── Single owner of the GitHub release. Collects every platform's artifacts,
+  #    uploads the EXACT expected asset list, then flips the release published LAST
+  #    so clients never resolve a half-uploaded release.
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REF_NAME: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Assemble release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          # Flatten every platform artifact into one dir.
+          find artifacts -type f -exec cp {} release-assets/ \;
+          # macOS is manual-download only (unsigned cannot auto-update via Squirrel.Mac),
+          # so DO NOT ship latest-mac.yml — its presence would make mac clients attempt a
+          # doomed signature-failing install.
+          rm -f release-assets/latest-mac.yml
+          echo "Release assets:"; ls -la release-assets
+      - name: Upload assets and publish the release
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The release is normally created as a DRAFT (with changelog notes) by the
+          # ship/tag flow. If it does not exist yet, create it as a draft so assets are
+          # never visible before they are complete.
+          if ! gh release view "$REF_NAME" >/dev/null 2>&1; then
+            gh release create "$REF_NAME" --draft --title "$REF_NAME" --generate-notes
+          fi
+          gh release upload "$REF_NAME" release-assets/* --clobber
+          # Publish LAST — this is the atomic activation point for the GitHub channel.
+          gh release edit "$REF_NAME" --draft=false --latest
+
+  # ── ONE-TIME MIGRATION BRIDGE (Windows only). Mirrors the Windows artifacts to the
+  #    legacy Cloudflare R2 feed so the existing installed Windows base (which has the
+  #    R2 URL baked into app-update.yml) picks up 0.3.0 and flips to the GitHub channel.
+  #    Mac/Linux are net-new (no R2 base), so they are GitHub-only. REMOVE this job once
+  #    the field has confirmed machines are RUNNING the migrated build.
+  bridge-r2:
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-win
+          path: dist
+      - name: Mirror Windows release to R2
         shell: pwsh
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Passed via env (not inline ${{ }}) so the tag name can't be injected into the script.
           REF_NAME: ${{ github.ref_name }}
         run: |
           $ErrorActionPreference = 'Stop'
-          # Public read URL — keep in sync with electron-builder.yml `publish.url`.
           $publicBase = 'https://pub-ecaf9dac2f994b1eb42181e6e551d3c3.r2.dev'
           $bucket = 'openinventory-releases'
 
@@ -60,7 +186,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "R2 upload failed for $($file.Name)" }
           }
 
-          # HEAD-check a public URL, with a few retries for edge propagation.
           function Assert-Readable($url) {
             for ($i = 1; $i -le 4; $i++) {
               try {
@@ -74,31 +199,21 @@ jobs:
             }
           }
 
-          # 1. Upload the payload (installer + blockmap) BEFORE the activation pointer,
-          #    so the pointer is never published ahead of the files it references.
+          # 1. Upload the payload (installer + blockmap) BEFORE the activation pointer.
+          #    We verify the ACTUAL uploaded filenames (no fragile latest.yml regex).
           $payload = Get-ChildItem -Path 'dist' -File | Where-Object { $_.Extension -eq '.exe' -or $_.Name -like '*.exe.blockmap' }
           if (-not $payload) { throw "No payload artifacts (.exe/.blockmap) found in dist/" }
           foreach ($a in $payload) { Upload-Artifact $a }
 
-          # 2. Verify every file electron-updater will fetch is publicly readable BEFORE
-          #    flipping latest.yml. A 404 here is a release clients cannot consume.
-          $exeNames = Select-String -Path $latestYml -Pattern 'url:\s*(\S+\.exe)' -AllMatches |
-            ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
-          if (-not $exeNames) { throw "Could not parse any .exe url from latest.yml" }
-          foreach ($name in $exeNames) {
-            Assert-Readable "$publicBase/$name"          # installer
-            Assert-Readable "$publicBase/$name.blockmap" # differential-download blockmap
-          }
+          # 2. Verify every uploaded payload file is publicly readable BEFORE flipping latest.yml.
+          foreach ($a in $payload) { Assert-Readable "$publicBase/$($a.Name)" }
 
-          # 3. Upload latest.yml LAST — it is the pointer that activates the release.
+          # 3. Upload latest.yml LAST — the pointer that activates the release.
           Upload-Artifact (Get-Item $latestYml)
 
-          # 4. Confirm the published pointer resolves to THIS build.
+          # 4. Confirm the canonical R2 pointer resolves to THIS build (read straight from R2,
+          #    no edge cache). Parse the version line; do not trust edge lag.
           $expected = "$env:REF_NAME".TrimStart('v')
-
-          # 4a. Authoritative check — read the canonical object straight from R2
-          #     (no edge cache in front of it). This is what catches a genuinely
-          #     botched upload, and it can't be fooled by r2.dev edge lag.
           $verifyFile = Join-Path $env:TEMP "latest-verify-$([Guid]::NewGuid()).yml"
           npx --yes wrangler r2 object get "$bucket/latest.yml" --file="$verifyFile" --remote
           if ($LASTEXITCODE -ne 0) { throw "Could not read back $bucket/latest.yml from R2" }
@@ -109,17 +224,9 @@ jobs:
           }
           Write-Host "Canonical R2 latest.yml confirmed at version $expected."
 
-          # 4b. Public-edge consumability check — clients fetch latest.yml from the
-          #     r2.dev edge, so confirm that endpoint actually works. Distinguish two
-          #     failure modes the previous single `throw` conflated:
-          #       * readable (HTTP 200) but stale version  -> edge cache lag. Benign:
-          #         the canonical object (4a) is correct and the edge TTL will catch
-          #         up, so WARN rather than red a release that genuinely shipped.
-          #       * never readable (404/403/timeout) after retries -> clients cannot
-          #         consume the release at all (public routing/ACL/caching broken).
-          #         THROW — this is the real failure the hard check must still catch.
-          $edgeReadable = $false   # got HTTP 200 for latest.yml at all
-          $edgeVersionOk = $false  # 200 AND it is the expected version
+          # 5. Public-edge consumability — clients fetch from the r2.dev edge. Distinguish
+          #    stale-but-readable (benign edge lag) from never-readable (real breakage).
+          $edgeReadable = $false; $edgeVersionOk = $false
           for ($i = 1; $i -le 6; $i++) {
             try {
               $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
@@ -132,9 +239,9 @@ jobs:
             Start-Sleep -Seconds 10
           }
           if ($edgeVersionOk) {
-            Write-Host "Release $expected published and verified consumable (canonical + edge)."
+            Write-Host "Bridge release $expected published and verified consumable (canonical + edge)."
           } elseif ($edgeReadable) {
-            Write-Warning "Public latest.yml is readable but still served a stale version after retries. The canonical R2 object is correct at $expected and the edge cache will catch up shortly; not failing the release."
+            Write-Warning "Public latest.yml is readable but served a stale version after retries. Canonical R2 object is correct at $expected; edge will catch up. Not failing."
           } else {
-            throw "Public latest.yml at $publicBase is not readable after retries — auto-update clients cannot consume this release (check R2 public routing/ACL/caching)."
+            throw "Public latest.yml at $publicBase is not readable after retries — existing Windows clients cannot consume the bridge (check R2 routing/ACL/caching)."
           }

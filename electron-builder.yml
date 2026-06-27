@@ -38,12 +38,14 @@ asarUnpack:
   - "**/*.node"
   - "out/renderer/**/*"
 publish:
-  provider: generic
-  url: https://pub-ecaf9dac2f994b1eb42181e6e551d3c3.r2.dev
+  provider: github
+  owner: josephmqiu
+  repo: OpenInventory
+  releaseType: release
 mac:
   category: public.app-category.business
   artifactName: "${productName}-${version}-${arch}.${ext}"
-  identity: null # REMOVEME: re-enable codesigning once CSC secrets are configured in CI
+  identity: null # macOS ships unsigned; set CSC_LINK / CSC_KEY_PASSWORD (+ notarization) to enable signing. Unsigned mac cannot auto-update — shipped as manual download.
   target:
     - target: dmg
       arch:
@@ -55,6 +57,13 @@ win:
   artifactName: "${productName}-${version}-${arch}.${ext}"
   target:
     - target: nsis
+      arch:
+        - x64
+linux:
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  category: Utility
+  target:
+    - target: AppImage
       arch:
         - x64
 nsis:

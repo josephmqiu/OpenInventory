@@ -57,11 +57,16 @@ Config files: `vitest.config.ts` (frontend), `vitest.config.node.ts` (backend),
 main process), `electron-builder.yml` (unpacks `.node` files and renderer assets from
 ASAR — renderer must stay unpacked for LAN server static file serving).
 
-**Build targets:** Windows x64 is the production/release target. The CI release
-workflow builds → smoke tests → publishes Windows only (artifacts are validated
-before upload). Mac arm64 builds locally (`npm run dist`) for dev, but CI no
-longer builds or publishes Mac — Windows is the production customer platform,
-Mac is dev-only.
+**Build targets:** Windows x64 is the primary production target. Since open-sourcing,
+the CI release workflow builds **all three platforms** in GitHub CI (public repo = free
+Actions minutes): Windows x64 (NSIS), macOS arm64 (dmg/zip), and Linux x64 (AppImage).
+Each platform builds natively on its own runner, is launch-smoke-tested, and publishes to
+**GitHub Releases** (electron-updater `github` provider). Windows and the Linux AppImage
+auto-update; **macOS ships unsigned as a manual download** (Squirrel.Mac can't apply
+updates without a signature), so no `latest-mac.yml` is published — Mac signing is a TODO.
+A one-time Windows-only Cloudflare R2 mirror (`bridge-r2` job) carries the pre-OSS installed
+Windows base onto the GitHub channel; it is removed once the field has migrated. The default
+CI test matrix still runs on Windows only.
 
 ## Testing
 

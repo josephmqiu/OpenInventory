@@ -16,7 +16,7 @@ setting). Each was an explicit out-of-scope decision, not an oversight:
 - **Price-edit audit log.** Changing a price isn't recorded as a movement.
 - **AI cost insights.** Cloud/SaaS phase.
 
-Reviewed plan: `~/.gstack/projects/josephmqiu-OpenInventory/joe-pricing-plan-fresh-20260522.md`
+Reviewed and approved during planning (item-price feature, 2026-05-22).
 
 ## Backup UI: Native directory picker
 
@@ -52,6 +52,45 @@ it via `win.azureSignOptions` config.
 
 **Files:** `electron-builder.yml`, `.github/workflows/release.yml` (add signing
 secrets)
+
+---
+
+## macOS code signing + notarization (enable Mac auto-update)
+
+The Mac build ships **unsigned and manual-download only**. electron-updater on macOS
+uses Squirrel.Mac, which requires a valid code signature to apply an update — an unsigned
+Mac app downloads the update then fails signature validation, so it cannot self-update.
+That's why the release pipeline does **not** publish `latest-mac.yml`.
+
+**Why:** to give Mac users the same silent auto-update Windows and the Linux AppImage get.
+
+**Depends on:** Apple Developer Program enrollment ($99/yr); `CSC_LINK` / `CSC_KEY_PASSWORD`
++ notarization credentials configured as CI secrets.
+
+**Scope:** sign + notarize the Mac build in CI; start publishing `latest-mac.yml`; flip Mac
+to auto-updating in the docs/README.
+
+**Files:** `electron-builder.yml` (mac `identity` + notarize), `.github/workflows/release.yml`
+(signing secrets + asset assembly to include `latest-mac.yml`).
+
+---
+
+## Define R2-retirement field-confirmation criteria (before removing the bridge)
+
+The one-time Windows R2 bridge (`.github/workflows/release.yml` → `bridge-r2` job) and the
+`CLOUDFLARE_*` secrets must stay until the existing installed base has actually migrated.
+"Confirmed" must mean machines are **running** the migrated build — not merely that one test
+client updated. The updater downloads automatically but installs only on explicit Restart, so
+a client can have 0.3.0 downloaded yet still be R2-pointed until it restarts.
+
+**Why:** retiring R2 too early permanently strands any client that hadn't installed-and-restarted
+the bridge build (the accepted straggler risk).
+
+**Scope:** define a concrete confirmation signal (e.g. field check / telemetry that machines report
+the migrated version), then remove the `bridge-r2` job + `CLOUDFLARE_API_TOKEN` /
+`CLOUDFLARE_ACCOUNT_ID` repo secrets and retire the R2 bucket.
+
+**Files:** `.github/workflows/release.yml`, repo secrets.
 
 ---
 
@@ -303,8 +342,7 @@ out-of-scope decision during the CEO/Design/Eng reviews, not an oversight:
 - **Reviewed-by / notes sign-off line on the printed report.** An exec sign-off field on
   the print/PDF artifact. Pairs naturally with point-in-time pricing above.
 
-**Plan:** `~/.claude/plans/mutable-baking-rose.md` · CEO plan:
-`~/.gstack/projects/josephmqiu-OpenInventory/ceo-plans/2026-05-27-reports-period-summary.md`
+Planned and reviewed during the Reports / Period Summary work (2026-05-27).
 
 ### Code-quality follow-ups (from /review specialists, 2026-05-27) — P3
 

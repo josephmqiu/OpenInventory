@@ -123,6 +123,19 @@ The app follows an industrial/utilitarian design system documented in `DESIGN.md
 - Max 4px border radius
 - Dark-first with warm light theme option
 
+## Contributing
+
+Contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup, the
+native-module build notes, and the test gate. Please also read the
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). To report a security issue, follow
+[`SECURITY.md`](SECURITY.md) (private disclosure, not a public issue).
+
+## Releases
+
+Builds are published to [GitHub Releases](https://github.com/josephmqiu/OpenInventory/releases).
+Windows (installer) and Linux (AppImage) auto-update in place; the macOS build is currently a
+**manual download** (unsigned, no auto-update yet).
+
 ## License
 
 [MIT](LICENSE) © josephmqiu

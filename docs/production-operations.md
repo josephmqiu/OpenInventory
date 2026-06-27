@@ -1,5 +1,11 @@
 # OpenInventory Production Operations
 
+> **Update (v0.3.0, 2026-06-27):** releases now build Windows (NSIS) + macOS (arm64) +
+> Linux (AppImage) in GitHub CI and publish to **GitHub Releases**. Windows and the Linux
+> AppImage auto-update; macOS ships unsigned as a **manual download** (no auto-update until
+> code signing). The legacy Cloudflare R2 feed is kept only as a one-time migration bridge
+> for the existing Windows base. See `CHANGELOG.md` [0.3.0].
+
 ## Release Rule
 
 No production release ships unless all of the following are true:

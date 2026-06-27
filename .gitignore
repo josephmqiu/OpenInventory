@@ -19,6 +19,9 @@ Thumbs.db
 # Runtime app data
 data/
 .dev-data/
+*.db
+*.sqlite
+*.sqlite3
 *.db-shm
 *.db-wal
 .gstack/

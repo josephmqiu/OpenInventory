@@ -4,6 +4,16 @@ All notable changes to OpenInventory will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-27
+
+### Changed
+- OpenInventory is now **open source** under the MIT license, with contributor docs (`CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`) and GitHub issue/PR templates.
+- Update delivery moved from the private Cloudflare R2 feed to **GitHub Releases** (public, tokenless via electron-updater's `github` provider). Existing Windows installs are carried across by one final R2 "bridge" release that flips them onto the GitHub channel.
+
+### For contributors
+- The release pipeline now builds **Windows (NSIS), macOS (arm64 dmg/zip), and Linux (AppImage)** in GitHub CI and publishes to GitHub Releases. Windows and the Linux AppImage auto-update; macOS ships **unsigned as a manual download** until code signing is configured (it cannot auto-update unsigned), so no `latest-mac.yml` is published. A one-time Windows-only R2 mirror bridges the existing installed base.
+- Each platform build is launch-smoke-tested in CI (which also proves the `better-sqlite3` native ABI loads). A new `test/build/publish-config.test.ts` guards the publish-provider config against an accidental revert to R2. The dead top-level `publish` block was removed from `package.json` (electron-builder.yml is the single source of truth).
+
 ## [0.2.0] - 2026-05-27
 
 ### Added

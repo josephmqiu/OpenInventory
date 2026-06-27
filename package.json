@@ -1,6 +1,6 @@
 {
   "name": "inventory-monitor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Desktop inventory monitoring and material issue tracking",
   "author": "josephmqiu <39745128+josephmqiu@users.noreply.github.com>",
   "license": "MIT",
@@ -47,10 +47,6 @@
   "dependencies": {
     "better-sqlite3": "^12.9.0",
     "electron-updater": "^6.8.3"
-  },
-  "publish": {
-    "provider": "generic",
-    "url": "https://pub-ecaf9dac2f994b1eb42181e6e551d3c3.r2.dev"
   },
   "devDependencies": {
     "@effect/platform": "^0.96.0",
