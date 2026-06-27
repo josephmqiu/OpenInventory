@@ -113,7 +113,9 @@ jobs:
 
   # ── Single owner of the GitHub release. Collects every platform's artifacts,
   #    uploads the EXACT expected asset list, then flips the release published LAST
-  #    so clients never resolve a half-uploaded release.
+  #    so clients never resolve a half-uploaded release. GitHub-only — the one-time
+  #    Cloudflare R2 migration bridge lives on the private OpenInventory-internal
+  #    repo (r2-bridge.yml), which holds the CLOUDFLARE_* secrets.
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -151,97 +153,3 @@ jobs:
           gh release upload "$REF_NAME" release-assets/* --clobber
           # Publish LAST — this is the atomic activation point for the GitHub channel.
           gh release edit "$REF_NAME" --draft=false --latest
-
-  # ── ONE-TIME MIGRATION BRIDGE (Windows only). Mirrors the Windows artifacts to the
-  #    legacy Cloudflare R2 feed so the existing installed Windows base (which has the
-  #    R2 URL baked into app-update.yml) picks up 0.3.0 and flips to the GitHub channel.
-  #    Mac/Linux are net-new (no R2 base), so they are GitHub-only. REMOVE this job once
-  #    the field has confirmed machines are RUNNING the migrated build.
-  bridge-r2:
-    needs: release
-    runs-on: windows-latest
-    steps:
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist-win
-          path: dist
-      - name: Mirror Windows release to R2
-        shell: pwsh
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $publicBase = 'https://pub-ecaf9dac2f994b1eb42181e6e551d3c3.r2.dev'
-          $bucket = 'openinventory-releases'
-
-          $latestYml = Join-Path 'dist' 'latest.yml'
-          if (-not (Test-Path $latestYml)) { throw "latest.yml not found in dist/" }
-
-          function Upload-Artifact($file) {
-            Write-Host "Uploading $($file.Name)"
-            npx --yes wrangler r2 object put "$bucket/$($file.Name)" --file="$($file.FullName)" --remote
-            if ($LASTEXITCODE -ne 0) { throw "R2 upload failed for $($file.Name)" }
-          }
-
-          function Assert-Readable($url) {
-            for ($i = 1; $i -le 4; $i++) {
-              try {
-                $resp = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec 30 -UseBasicParsing
-                if ($resp.StatusCode -eq 200) { Write-Host "Readable: $url"; return }
-                throw "HTTP $($resp.StatusCode)"
-              } catch {
-                if ($i -eq 4) { throw "Artifact not publicly readable after 4 tries: $url ($($_.Exception.Message))" }
-                Write-Host "Not yet readable ($url), retry $i..."; Start-Sleep -Seconds 5
-              }
-            }
-          }
-
-          # 1. Upload the payload (installer + blockmap) BEFORE the activation pointer.
-          #    We verify the ACTUAL uploaded filenames (no fragile latest.yml regex).
-          $payload = Get-ChildItem -Path 'dist' -File | Where-Object { $_.Extension -eq '.exe' -or $_.Name -like '*.exe.blockmap' }
-          if (-not $payload) { throw "No payload artifacts (.exe/.blockmap) found in dist/" }
-          foreach ($a in $payload) { Upload-Artifact $a }
-
-          # 2. Verify every uploaded payload file is publicly readable BEFORE flipping latest.yml.
-          foreach ($a in $payload) { Assert-Readable "$publicBase/$($a.Name)" }
-
-          # 3. Upload latest.yml LAST — the pointer that activates the release.
-          Upload-Artifact (Get-Item $latestYml)
-
-          # 4. Confirm the canonical R2 pointer resolves to THIS build (read straight from R2,
-          #    no edge cache). Parse the version line; do not trust edge lag.
-          $expected = "$env:REF_NAME".TrimStart('v')
-          $verifyFile = Join-Path $env:TEMP "latest-verify-$([Guid]::NewGuid()).yml"
-          npx --yes wrangler r2 object get "$bucket/latest.yml" --file="$verifyFile" --remote
-          if ($LASTEXITCODE -ne 0) { throw "Could not read back $bucket/latest.yml from R2" }
-          $canonical = Get-Content $verifyFile -Raw
-          Remove-Item $verifyFile -ErrorAction SilentlyContinue
-          if ($canonical -notmatch "(?m)^version:\s*$([regex]::Escape($expected))\s*$") {
-            throw "Uploaded latest.yml in R2 does not contain expected version $expected — upload botched"
-          }
-          Write-Host "Canonical R2 latest.yml confirmed at version $expected."
-
-          # 5. Public-edge consumability — clients fetch from the r2.dev edge. Distinguish
-          #    stale-but-readable (benign edge lag) from never-readable (real breakage).
-          $edgeReadable = $false; $edgeVersionOk = $false
-          for ($i = 1; $i -le 6; $i++) {
-            try {
-              $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-              $pointer = Invoke-WebRequest -Uri "$publicBase/latest.yml?cb=$bust" -Headers @{ 'Cache-Control' = 'no-cache' } -TimeoutSec 30 -UseBasicParsing
-              if ($pointer.StatusCode -eq 200) {
-                $edgeReadable = $true
-                if ($pointer.Content -match "(?m)^version:\s*$([regex]::Escape($expected))\s*$") { $edgeVersionOk = $true; break }
-              }
-            } catch { }
-            Start-Sleep -Seconds 10
-          }
-          if ($edgeVersionOk) {
-            Write-Host "Bridge release $expected published and verified consumable (canonical + edge)."
-          } elseif ($edgeReadable) {
-            Write-Warning "Public latest.yml is readable but served a stale version after retries. Canonical R2 object is correct at $expected; edge will catch up. Not failing."
-          } else {
-            throw "Public latest.yml at $publicBase is not readable after retries — existing Windows clients cannot consume the bridge (check R2 routing/ACL/caching)."
-          }
