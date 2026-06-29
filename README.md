@@ -1,24 +1,104 @@
+<div align="center">
+
 # OpenInventory
 
-Desktop inventory management app for small teams. Track stock levels, issue materials, manage reorder alerts, and generate QR labels — all from a local SQLite database with optional read-only LAN lookup for tablets.
+**Free, local-first inventory & material-issue tracking for small teams.**
 
-Built with Electron, TypeScript, React 19, and Effect TS.
+Track stock, issue materials with a full audit trail, catch low stock before it bites,
+and let anyone look up an item from their phone over your LAN — all backed by a single
+local SQLite file. No server, no accounts, no subscription.
+
+[![Latest release](https://img.shields.io/github/v/release/josephmqiu/OpenInventory?sort=semver&color=f59e0b)](https://github.com/josephmqiu/OpenInventory/releases)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20macOS%20·%20Linux-2b7489)](https://github.com/josephmqiu/OpenInventory/releases)
+[![License: MIT](https://img.shields.io/github/license/josephmqiu/OpenInventory)](LICENSE)
+
+[**Download**](#download) · [Features](#features) · [Mobile lookup](#scan-and-look-up-from-any-phone) · [Documentation](#documentation) · [Contributing](#contributing)
+
+<img src="docs/media/hero-desktop.png" alt="OpenInventory dashboard — inventory health, movement summary, and recent alerts" width="900">
+
+</div>
+
+---
 
 ## Features
 
-- **Inventory tracking** — create items with SKU, category, location, unit, supplier, and reorder thresholds
-- **Stock operations** — receive and issue materials with audit trail (who, when, why)
-- **Batch issue** — issue multiple items in a single transaction
-- **Low-stock alerts** — automatic alerts when quantities drop below reorder levels
-- **Reports** — executive period summary (month/quarter/half/year) with movement value, prior-period and year-over-year deltas, a six-period trend, biggest movers, and CSV / print-to-PDF export
-- **Item pricing** — optional per-item unit price with an app-wide currency (CNY/USD/EUR/GBP)
+### Issue & receive materials with a full audit trail
+
+Every stock movement records who, what, when, and why. Issue against a worker and a
+reason; on-hand quantities and low-stock alerts update the moment you submit.
+
+<img src="docs/media/flow-issue.gif" alt="Issuing material from the inventory table" width="900">
+
+### Batch issue in a single transaction
+
+Select multiple items, drop quantities into the Issue Cart, and commit them together —
+one operator, one reason, one atomic write.
+
+<img src="docs/media/flow-batch-issue.gif" alt="Batch issuing several items at once" width="900">
+
+### Find anything, instantly
+
+Search by name, SKU, or location; filter by stock status; sort and reorder columns.
+The table stays fast with thousands of movements behind it.
+
+<img src="docs/media/flow-inventory.gif" alt="Searching, filtering, and sorting the inventory table" width="900">
+
+### Executive period reports
+
+Month / quarter / half / year summaries with movement value, prior-period and
+year-over-year deltas, a six-period trend, biggest movers, and CSV / print-to-PDF export.
+
+<img src="docs/media/flow-reports.gif" alt="Executive period summary report" width="900">
+
+### Scan and look up from any phone
+
+Turn on the built-in LAN server and every item gets a QR label. Scan it from any phone
+or tablet on the same network for a read-only lookup — current stock, location, reorder
+level, and price — with no app install and no login.
+
+<p align="center">
+  <img src="docs/media/flow-mobile.gif" alt="Mobile QR item lookup over the LAN" width="300">
+</p>
+
+### And everything else
+
+- **Item pricing** — optional per-item unit price with an app-wide currency (CNY / USD / EUR / GBP)
+- **Low-stock alerts** — raised automatically when quantities drop below reorder levels
+- **Personnel management** — track who performs each stock movement
 - **Configurable columns** — show/hide, resize, and reorder inventory and activity-log columns; layout persists per machine
 - **QR labels** — generate and export labeled QR codes for quick item lookup
-- **Personnel management** — track who performs stock movements
 - **Backup** — scheduled and on-demand SQLite backups
-- **LAN access** — optional HTTP server for tablet/phone item lookup on the local network
 - **Bilingual** — English and Simplified Chinese (zh-CN)
-- **Dark/Light/Auto themes** — industrial design with amber accent
+- **Dark / Light / Auto themes** — industrial design with an amber accent
+
+## Download
+
+Grab the latest build from [**GitHub Releases**](https://github.com/josephmqiu/OpenInventory/releases):
+
+| Platform | Format | Auto-update |
+|----------|--------|-------------|
+| Windows x64 | NSIS installer | ✅ |
+| Linux x64 | AppImage | ✅ |
+| macOS arm64 | dmg / zip | Manual download |
+
+Everything runs on your machine — data lives in a local SQLite file (e.g.
+`~/Library/Application Support/inventory-monitor/data/` on macOS). Windows and the Linux
+AppImage update in place; the macOS build currently ships **unsigned** as a manual
+download (no auto-update yet — code signing is on the roadmap).
+
+<br>
+
+---
+
+<div align="center">
+
+### 🛠️ For developers
+
+Everything below covers building, testing, and contributing to OpenInventory.
+
+</div>
+
+---
 
 ## Tech Stack
 
@@ -129,12 +209,6 @@ Contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setu
 native-module build notes, and the test gate. Please also read the
 [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). To report a security issue, follow
 [`SECURITY.md`](SECURITY.md) (private disclosure, not a public issue).
-
-## Releases
-
-Builds are published to [GitHub Releases](https://github.com/josephmqiu/OpenInventory/releases).
-Windows (installer) and Linux (AppImage) auto-update in place; the macOS build is currently a
-**manual download** (unsigned, no auto-update yet).
 
 ## License
 

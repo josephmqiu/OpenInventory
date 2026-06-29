@@ -29,3 +29,7 @@ data/
 
 # AI context scaffolding
 .claude-context-snapshot.md
+
+# README media: keep the committed stills + GIFs under docs/media/, but not the
+# large regenerable WebM sources (kept locally for producing an MP4 later).
+docs/media/raw/
