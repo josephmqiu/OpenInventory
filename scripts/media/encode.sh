@@ -28,10 +28,12 @@ encode() {
   esac
   # Recording starts at browser-context creation, so each clip opens with a
   # second or two of the dark page loading. Trim that leading black so the GIF
-  # starts on real content.
+  # starts on real content. `grep` exits non-zero when a clip starts directly on
+  # content (no leading black); under `set -o pipefail` that would abort the whole
+  # script, so swallow it with `|| true` and fall back to 0 via the default below.
   local start
   start=$(ffmpeg -i "$in" -vf "blackdetect=d=0.1:pix_th=0.10" -an -f null - 2>&1 \
-    | grep -oE 'black_start:0 black_end:[0-9.]+' | head -1 | grep -oE '[0-9.]+$')
+    | grep -oE 'black_start:0 black_end:[0-9.]+' | head -1 | grep -oE '[0-9.]+$' || true)
   start=${start:-0}
   local pal="$TMP/$name.png" out="$OUT/$name.gif"
   local filters="fps=$FPS,scale=$w:-2:flags=lanczos"
