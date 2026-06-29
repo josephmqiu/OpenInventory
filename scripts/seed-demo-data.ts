@@ -24,7 +24,11 @@ const CANDIDATES = [
 ];
 const DATA_DIR = CANDIDATES.find((d) => fs.existsSync(path.join(d, "inventory-monitor.db")))
   ?? CANDIDATES[0];
-const DB_PATH = path.join(DATA_DIR, "inventory-monitor.db");
+// Allow targeting a specific DB (e.g. the browser-preview `.dev-data` database)
+// without touching the real app data under Application Support.
+const DB_PATH = process.env.SEED_DB_PATH
+  ? path.resolve(process.env.SEED_DB_PATH)
+  : path.join(DATA_DIR, "inventory-monitor.db");
 
 // ── ID generation (matches app convention) ─────────────────────────────────
 
@@ -196,6 +200,11 @@ const ISSUE_REASONS = [
 // ── Confirmation prompt ────────────────────────────────────────────────────
 
 async function confirm(msg: string): Promise<boolean> {
+  // Non-interactive escape hatch for scripted reseeds (e.g. seeding .dev-data).
+  if (process.env.SEED_ASSUME_YES === "1") {
+    console.log(`${msg} (auto-confirmed via SEED_ASSUME_YES)`);
+    return true;
+  }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
     rl.question(`${msg} (y/N) `, (answer) => {
@@ -354,8 +363,8 @@ async function main() {
   const insertAlert = db.prepare(
     `INSERT INTO low_stock_alerts
      (id, item_id, threshold_quantity, quantity_at_trigger, status,
-      triggered_at, resolved_at, channel_summary)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'desktop,in_app')`,
+      triggered_at, resolved_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
 
   // Track open alerts per item so we can resolve them on restock
@@ -363,9 +372,13 @@ async function main() {
   let moveCount = 0;
   let alertCount = 0;
 
-  const startDate = new Date("2025-04-02");
-  const endDate = new Date("2026-04-01");
   const oneDay = 24 * 60 * 60 * 1000;
+  // Anchor the demo window to SEED_END_DATE. Default keeps the original fixed
+  // range so existing/deterministic uses are unchanged; seeding the preview DB
+  // for README media passes today's date so the dashboard 30-day activity,
+  // recent alerts, and period reports are all populated.
+  const endDate = process.env.SEED_END_DATE ? new Date(process.env.SEED_END_DATE) : new Date("2026-04-01");
+  const startDate = new Date(endDate.getTime() - 364 * oneDay);
 
   // Assign workers role weights: first 6 are receivers, next 10 are issuers, last 4 do both
   const receivers = PERSONNEL_NAMES.slice(0, 6);
@@ -506,7 +519,7 @@ async function main() {
   const sortedItems = [...items].sort(() => Math.random() - 0.5);
   const targetLow = Math.round(items.length * 0.25);   // ~25% low stock
   const targetOos = Math.round(items.length * 0.12);    // ~12% out of stock
-  const recentDate = new Date("2026-03-28");
+  const recentDate = new Date(endDate.getTime() - 4 * oneDay);
 
   // Make some items out-of-stock
   for (let i = 0; i < targetOos && i < sortedItems.length; i++) {
